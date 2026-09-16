@@ -32,7 +32,7 @@ export type {
   MessageSchema,
 } from './define.js'
 
-export { EnvelopeOptionsError, MessageDataError, MessageDefinitionError } from './errors.js'
+export { EnvelopeMetadataError, EnvelopeOptionsError, MessageDataError, MessageDefinitionError } from './errors.js'
 export type { EnvelopeOptionIssue, MessageDataIssue } from './errors.js'
 
 export { validateStandard } from './standard.js'
