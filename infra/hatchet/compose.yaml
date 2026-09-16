@@ -26,8 +26,9 @@ services:
     # (a separate `kinesin_test` database, alongside the engine's own `hatchet`).
     # Default 15432, not Postgres's own 5432, so the stack doesn't collide
     # with a Postgres a developer already has running locally.
+    # Bound to loopback only: superuser credentials must not be reachable from the network.
     ports:
-      - '${KINESIN_POSTGRES_PORT:-15432}:5432'
+      - '127.0.0.1:${KINESIN_POSTGRES_PORT:-15432}:5432'
     volumes:
       - hatchet_postgres_data:/var/lib/postgresql/data
     healthcheck:
