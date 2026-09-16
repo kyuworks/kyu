@@ -1,14 +1,8 @@
-import { NonRetryableError } from './hatchet.js'
+import { KinesinError, NonRetryableError } from './hatchet.js'
 
-export { MessageDataError } from '@kinesin/schemas'
-
-/** Base for every SDK-raised error not already covered by the engine's own. */
-export class KinesinError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'KinesinError'
-  }
-}
+export { EnvelopeOptionsError, MessageDataError, MessageDefinitionError } from '@kinesin/schemas'
+export type { EnvelopeOptionIssue, MessageDataIssue } from '@kinesin/schemas'
+export { KinesinError } from './hatchet.js'
 
 /** `createWorker` refuses two subscriptions to the same command name. */
 export class CommandHasTwoSubscribersError extends KinesinError {
@@ -37,7 +31,7 @@ export class EnvelopeRejectedError extends NonRetryableError {
   constructor(reason: string, envelopeId?: string) {
     let message = `envelope rejected: ${reason}`
     if (envelopeId !== undefined) {
-      message = `envelope rejected: ${reason} (envelope ${envelopeId})`
+      message += ` (envelope ${envelopeId})`
     }
     super(message)
     this.name = 'EnvelopeRejectedError'

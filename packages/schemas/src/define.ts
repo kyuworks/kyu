@@ -4,7 +4,7 @@ import { messageNameSchema, messageVersionSchema } from './envelope.js'
 import { MessageDefinitionError } from './errors.js'
 import type { MessageDataShape } from './json.js'
 
-export type { JsonValue, MessageDataShape } from './json.js'
+export type { JsonObject, JsonPrimitive, JsonValue, MessageDataShape } from './json.js'
 
 export interface MessageDefinition<TData extends MessageDataShape> {
   name: MessageName
