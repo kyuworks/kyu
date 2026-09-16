@@ -1,4 +1,4 @@
-import { createEnvelope, defineEvent } from '@kinesin/schemas'
+import { createEnvelope, defineCommand, defineEvent } from '@kinesin/schemas'
 import { z } from 'zod'
 import { describe, expect, it } from 'vitest'
 import { EnvelopeRejectedError } from '../errors.js'
@@ -63,6 +63,23 @@ describe('decodeIncomingEnvelope', () => {
   it('rejects an envelope with the wrong version', async () => {
     const envelope = await createEnvelope(
       orderPlacedV2,
+      { orderId: '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f3a' },
+      { tenantId: null, source: 'shop.api' },
+    )
+
+    await expect(decodeIncomingEnvelope(orderPlaced, asIncoming(envelope))).rejects.toBeInstanceOf(
+      EnvelopeRejectedError,
+    )
+  })
+
+  it('rejects a command envelope at an event subscription with the same name and version', async () => {
+    const commandWithSameNameAndVersion = defineCommand({
+      name: 'shop.order.placed',
+      version: 1,
+      data: z.object({ orderId: z.uuid() }),
+    })
+    const envelope = await createEnvelope(
+      commandWithSameNameAndVersion,
       { orderId: '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f3a' },
       { tenantId: null, source: 'shop.api' },
     )

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { createEnvelope, defineCommand, defineEvent, toEnvelopeMetadata } from '@kinesin/schemas'
-import type { Envelope } from '@kinesin/schemas'
+import type { Envelope, EnvelopeMetadataFields } from '@kinesin/schemas'
 import { z } from 'zod'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { NonRetryableError, createHatchetClient } from '../hatchet.js'
@@ -95,7 +95,7 @@ describe('subscribe: tenant id', () => {
     data: z.object({ seq: z.number() }),
   })
 
-  const received: Array<{ envelope: Envelope<{ seq: number }>; metadata: Record<string, string> }> = []
+  const received: Array<{ envelope: Envelope<{ seq: number }>; metadata: EnvelopeMetadataFields }> = []
   let worker: KinesinWorker | undefined
 
   beforeAll(async () => {
@@ -114,7 +114,7 @@ describe('subscribe: tenant id', () => {
     await worker?.stop()
   })
 
-  it('reaches the handler and the metadata unchanged (flow 5)', async () => {
+  it('reaches the handler with the tenant id unchanged (flow 5)', async () => {
     const envelope = await createEnvelope(
       definition,
       { seq: 1 },
@@ -127,11 +127,13 @@ describe('subscribe: tenant id', () => {
 
     await waitUntil(() => received.some((r) => r.envelope.id === envelope.id), 10_000)
     const match = received.find((r) => r.envelope.id === envelope.id)
+    // Primary check: the envelope itself, decoded from the event payload.
     expect(match?.envelope.tenantId).toBe(envelope.tenantId)
-    expect(match?.metadata['tenantId']).toBe(envelope.tenantId)
+    // The decoded additionalMetadata must agree — runHandler rejects the run otherwise.
+    expect(match?.metadata.tenantId).toBe(envelope.tenantId)
   }, 30_000)
 
-  it('a global message has null tenantId and no metadata key (flow 6)', async () => {
+  it('a global message has null tenantId on the envelope and the decoded metadata (flow 6)', async () => {
     const envelope = await createEnvelope(definition, { seq: 2 }, { tenantId: null, source: 'sdk.test' })
     await hatchet.events.push(definition.name, envelope, {
       additionalMetadata: toEnvelopeMetadata(envelope),
@@ -141,8 +143,30 @@ describe('subscribe: tenant id', () => {
     await waitUntil(() => received.some((r) => r.envelope.id === envelope.id), 10_000)
     const match = received.find((r) => r.envelope.id === envelope.id)
     expect(match?.envelope.tenantId).toBeNull()
-    expect(match?.metadata['tenantId']).toBeUndefined()
+    expect(match?.metadata.tenantId).toBeNull()
   }, 30_000)
+
+  it('rejects a run whose additionalMetadata tenantId disagrees with the envelope (flow 24)', async () => {
+    const envelope = await createEnvelope(
+      definition,
+      { seq: 3 },
+      { tenantId: '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f30', source: 'sdk.test' },
+    )
+    const mismatchedMetadata = {
+      ...toEnvelopeMetadata(envelope),
+      tenantId: '00000000-0000-4000-8000-000000000000',
+    }
+    await hatchet.events.push(definition.name, envelope, {
+      additionalMetadata: mismatchedMetadata,
+      scope: envelope.tenantId ?? 'global',
+    })
+
+    const called = await waitUntil(() => received.some((r) => r.envelope.id === envelope.id), 3_000)
+    expect(called).toBe(false)
+
+    const failed = await waitForFailedRun({ additionalMetadata: { envelopeId: envelope.id } }, 30_000)
+    expect(failed?.retryCount).toBe(0)
+  }, 45_000)
 })
 
 describe('subscribe: fifo concurrency', () => {
@@ -366,9 +390,11 @@ describe('subscribe: retries', () => {
       scope: 'global',
     })
 
-    await waitUntil(() => retryCounts.length >= 3, 20_000)
+    // Same margin as the fifo-ordering test: a retried run needs more engine
+    // round trips than a single delivery, so 20s was too tight under load.
+    await waitUntil(() => retryCounts.length >= 3, 60_000)
     expect(retryCounts).toEqual([0, 1, 2])
-  }, 30_000)
+  }, 90_000)
 })
 
 describe('subscribe: non-retryable errors', () => {
@@ -407,10 +433,13 @@ describe('subscribe: non-retryable errors', () => {
     })
 
     await waitUntil(() => calls.length > 0, 10_000)
-    // Give a would-be retry a chance to arrive before asserting it never does.
-    await sleep(2_000)
+
+    // Proved by the engine's own record, not a fixed sleep: if a retry were
+    // wrongly honoured, retryCount on the failed run would be > 0.
+    const failed = await waitForFailedRun({ additionalMetadata: { envelopeId: envelope.id } }, 30_000)
+    expect(failed?.retryCount).toBe(0)
     expect(calls).toEqual([0])
-  }, 30_000)
+  }, 45_000)
 })
 
 describe('subscribe: command', () => {

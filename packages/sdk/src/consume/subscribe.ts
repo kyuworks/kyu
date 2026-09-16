@@ -1,13 +1,14 @@
-import { parseEnvelopeSafe, validateStandard } from '@kinesin/schemas'
+import { EnvelopeMetadataError, fromEnvelopeMetadata, parseEnvelopeSafe, validateStandard } from '@kinesin/schemas'
 import type {
   Envelope,
+  EnvelopeMetadataFields,
+  MessageData,
   MessageDataShape,
   MessageDefinition,
   MessageKind,
   MessageSchema,
   Unparsed,
 } from '@kinesin/schemas'
-import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { EnvelopeRejectedError } from '../errors.js'
 import { Priority, RateLimitDuration } from '../hatchet.js'
 import type {
@@ -99,7 +100,7 @@ function toConcurrencyList(
 export async function decodeIncomingEnvelope<S extends MessageSchema>(
   definition: MessageDefinition<S>,
   input: Unparsed,
-): Promise<Envelope<StandardSchemaV1.InferOutput<S>>> {
+): Promise<Envelope<MessageData<MessageDefinition<S>>>> {
   const parsed = parseEnvelopeSafe(input)
   if (!parsed.ok) {
     const summary = parsed.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')
@@ -107,9 +108,13 @@ export async function decodeIncomingEnvelope<S extends MessageSchema>(
   }
 
   const envelope = parsed.envelope
-  if (envelope.name !== definition.name || envelope.version !== definition.version) {
+  if (
+    envelope.name !== definition.name ||
+    envelope.version !== definition.version ||
+    envelope.kind !== definition.kind
+  ) {
     throw new EnvelopeRejectedError(
-      `expected ${definition.name} v${definition.version}, got ${envelope.name} v${envelope.version}`,
+      `expected ${definition.kind} ${definition.name} v${definition.version}, got ${envelope.kind} ${envelope.name} v${envelope.version}`,
       envelope.id,
     )
   }
@@ -123,22 +128,55 @@ export async function decodeIncomingEnvelope<S extends MessageSchema>(
   }
 }
 
+/**
+ * Decodes the engine's `additionalMetadata` at the trust edge and checks it
+ * agrees with the envelope the payload decoded to. A mismatch means the
+ * event was pushed with metadata that does not describe its own payload —
+ * never expected from `publish()`, so rejected rather than trusted.
+ */
+function decodeAndCheckMetadata(
+  hatchetContext: Context<JsonObject>,
+  envelope: Envelope<MessageDataShape>,
+): EnvelopeMetadataFields {
+  let metadata: EnvelopeMetadataFields
+  try {
+    metadata = fromEnvelopeMetadata(hatchetContext.additionalMetadata())
+  } catch (cause) {
+    if (!(cause instanceof EnvelopeMetadataError)) throw cause
+    throw new EnvelopeRejectedError('additionalMetadata failed validation', envelope.id, { cause })
+  }
+  if (metadata.envelopeId !== envelope.id) {
+    throw new EnvelopeRejectedError(
+      `additionalMetadata envelopeId ${metadata.envelopeId} does not match envelope id ${envelope.id}`,
+      envelope.id,
+    )
+  }
+  if (metadata.tenantId !== envelope.tenantId) {
+    throw new EnvelopeRejectedError(
+      `additionalMetadata tenantId ${String(metadata.tenantId)} does not match envelope tenantId ${String(envelope.tenantId)}`,
+      envelope.id,
+    )
+  }
+  return metadata
+}
+
 async function runHandler<S extends MessageSchema>(
   definition: MessageDefinition<S>,
-  handler: SubscribeOptions<StandardSchemaV1.InferOutput<S>>['handler'],
+  handler: SubscribeOptions<MessageData<MessageDefinition<S>>>['handler'],
   input: JsonObject,
   hatchetContext: Context<JsonObject>,
 ): Promise<void> {
   // Not caught here: a thrown error retries, `NonRetryableError` (and
   // `EnvelopeRejectedError`, which extends it) fails the run at once.
   const envelope = await decodeIncomingEnvelope(definition, input)
-  await handler(buildHandlerContext(envelope, hatchetContext))
+  const metadata = decodeAndCheckMetadata(hatchetContext, envelope)
+  await handler(buildHandlerContext(envelope, metadata, hatchetContext))
 }
 
 export function subscribe<S extends MessageSchema>(
   hatchet: HatchetClient,
   definition: MessageDefinition<S>,
-  options: SubscribeOptions<StandardSchemaV1.InferOutput<S>>,
+  options: SubscribeOptions<MessageData<MessageDefinition<S>>>,
 ): Subscription {
   const taskOptions: CreateTaskWorkflowOpts<JsonObject, void> = {
     name: options.name,

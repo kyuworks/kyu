@@ -1,4 +1,4 @@
-import type { Envelope, MessageDataShape } from '@kinesin/schemas'
+import type { Envelope, EnvelopeMetadataFields, MessageDataShape } from '@kinesin/schemas'
 import type { Context, JsonObject } from '../hatchet.js'
 
 export interface HandlerLogger {
@@ -10,7 +10,8 @@ export interface HandlerLogger {
 
 export interface HandlerContext<TData extends MessageDataShape> {
   envelope: Envelope<TData>
-  metadata: Record<string, string>
+  /** Decoded from the engine's `additionalMetadata`; `runHandler` has already checked it agrees with `envelope`. */
+  metadata: EnvelopeMetadataFields
   retryCount: number
   runId: string
   /** Aborts when the engine cancels this run (coalescing, timeout, manual cancel). */
@@ -23,11 +24,12 @@ export interface HandlerContext<TData extends MessageDataShape> {
 // need to await.
 export function buildHandlerContext<TData extends MessageDataShape>(
   envelope: Envelope<TData>,
+  metadata: EnvelopeMetadataFields,
   hatchetContext: Context<JsonObject>,
 ): HandlerContext<TData> {
   return {
     envelope,
-    metadata: hatchetContext.additionalMetadata(),
+    metadata,
     retryCount: hatchetContext.retryCount(),
     runId: hatchetContext.workflowRunId(),
     signal: hatchetContext.abortController.signal,

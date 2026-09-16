@@ -28,7 +28,9 @@ export class EnvelopeRejectedError extends NonRetryableError {
   readonly reason: string
   readonly envelopeId: string | undefined
 
-  constructor(reason: string, envelopeId?: string) {
+  // NonRetryableError's own constructor takes only a message, so `cause`
+  // cannot travel through its `super()` call; set directly instead.
+  constructor(reason: string, envelopeId?: string, options?: { cause: Error }) {
     let message = `envelope rejected: ${reason}`
     if (envelopeId !== undefined) {
       message += ` (envelope ${envelopeId})`
@@ -37,5 +39,6 @@ export class EnvelopeRejectedError extends NonRetryableError {
     this.name = 'EnvelopeRejectedError'
     this.reason = reason
     this.envelopeId = envelopeId
+    if (options !== undefined) this.cause = options.cause
   }
 }
