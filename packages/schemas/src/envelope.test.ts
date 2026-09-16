@@ -22,16 +22,30 @@ const validEnvelope = {
 } as const
 
 describe('messageNameSchema', () => {
-  it.each(['shop.order.placed', 'shop.invoice.send', 'mail.message.delivered'])('accepts %s', (name) => {
-    expect(messageNameSchema.safeParse(name).success).toBe(true)
-  })
-
-  it.each(['Shop.Order.Placed', 'listing.updated', 'shop..placed', 'shop.order.placed.', 'shop-order-placed'])(
-    'rejects %s',
+  it.each(['shop.order.placed', 'shop.invoice.send', 'mail.message.delivered', 'shop_x.order.placed'])(
+    'accepts %s',
     (name) => {
-      expect(messageNameSchema.safeParse(name).success).toBe(false)
+      expect(messageNameSchema.safeParse(name).success).toBe(true)
     },
   )
+
+  it.each([
+    'Shop.Order.Placed',
+    'listing.updated',
+    'shop..placed',
+    'shop.order.placed.',
+    'shop-order-placed',
+    'shop.order.placed.extra',
+  ])('rejects %s', (name) => {
+    expect(messageNameSchema.safeParse(name).success).toBe(false)
+  })
+
+  it('reports the exact three-segment error message', () => {
+    const result = messageNameSchema.safeParse('shop.order.placed.extra')
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.issues[0]?.message).toBe('message name must be exactly project.aggregate.verb in lower case')
+  })
 })
 
 describe('envelopeSchema', () => {
