@@ -1,5 +1,6 @@
 import { envelopeSchema, validateStandard } from '@kinesin/schemas'
-import type { Envelope, MessageDataShape, MessageDefinition, MessageKind } from '@kinesin/schemas'
+import type { Envelope, MessageDataShape, MessageDefinition, MessageKind, MessageSchema } from '@kinesin/schemas'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { EnvelopeRejectedError } from '../errors.js'
 import { Priority } from '../hatchet.js'
 import type {
@@ -91,10 +92,10 @@ function toConcurrencyList(
  * `EnvelopeRejectedError`, non-retryable: redelivering the same bad payload
  * fails the same way.
  */
-export async function decodeIncomingEnvelope<TData extends MessageDataShape>(
-  definition: MessageDefinition<TData>,
+export async function decodeIncomingEnvelope<S extends MessageSchema>(
+  definition: MessageDefinition<S>,
   input: JsonObject,
-): Promise<Envelope<TData>> {
+): Promise<Envelope<StandardSchemaV1.InferOutput<S>>> {
   const parsed = envelopeSchema.safeParse(input)
   if (!parsed.success) {
     const summary = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')
@@ -118,9 +119,9 @@ export async function decodeIncomingEnvelope<TData extends MessageDataShape>(
   }
 }
 
-async function runHandler<TData extends MessageDataShape>(
-  definition: MessageDefinition<TData>,
-  handler: SubscribeOptions<TData>['handler'],
+async function runHandler<S extends MessageSchema>(
+  definition: MessageDefinition<S>,
+  handler: SubscribeOptions<StandardSchemaV1.InferOutput<S>>['handler'],
   input: JsonObject,
   hatchetContext: Context<JsonObject>,
 ): Promise<void> {
@@ -130,10 +131,10 @@ async function runHandler<TData extends MessageDataShape>(
   await handler(buildHandlerContext(envelope, hatchetContext))
 }
 
-export function subscribe<TData extends MessageDataShape>(
+export function subscribe<S extends MessageSchema>(
   hatchet: HatchetClient,
-  definition: MessageDefinition<TData>,
-  options: SubscribeOptions<TData>,
+  definition: MessageDefinition<S>,
+  options: SubscribeOptions<StandardSchemaV1.InferOutput<S>>,
 ): Subscription {
   const taskOptions: CreateTaskWorkflowOpts<JsonObject, void> = {
     name: options.name,

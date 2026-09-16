@@ -63,6 +63,9 @@ importers:
       '@kinesin/schemas':
         specifier: workspace:*
         version: link:../schemas
+      '@standard-schema/spec':
+        specifier: ^1.1.0
+        version: 1.1.0
       zod:
         specifier: ^4.0.0
         version: 4.5.4
