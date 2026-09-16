@@ -2,13 +2,25 @@ import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { createEnvelope } from './createEnvelope.js'
 import { defineEvent } from './define.js'
-import { envelopeSchema } from './envelope.js'
+import { envelopeSchema, toEnvelopeMetadata } from './envelope.js'
 import { EnvelopeOptionsError, MessageDataError } from './errors.js'
 
 const orderPlaced = defineEvent({
   name: 'shop.order.placed',
   version: 1,
   data: z.object({ orderId: z.uuid() }),
+})
+
+const rawLength = defineEvent({
+  name: 'shop.thing.transformed',
+  version: 1,
+  data: z.object({ raw: z.string() }).transform((value) => ({ length: value.raw.length })),
+})
+
+const orderChanneled = defineEvent({
+  name: 'shop.order.channeled',
+  version: 1,
+  data: z.object({ orderId: z.uuid(), channel: z.string().default('web') }),
 })
 
 const tenantId = '3f2504e0-4f89-41d3-9a0c-0305e82c3301'
@@ -139,5 +151,21 @@ describe('createEnvelope', () => {
       source: 'shop.api',
       data: { orderId },
     })
+  })
+
+  it('accepts the schema input and stores the transformed output', async () => {
+    const envelope = await createEnvelope(rawLength, { raw: 'abc' }, { tenantId, source: 'shop.api' })
+    expect(envelope.data).toEqual({ length: 3 })
+  })
+
+  it('fills a defaulted field that was omitted at the call site', async () => {
+    const envelope = await createEnvelope(orderChanneled, { orderId }, { tenantId, source: 'shop.api' })
+    expect(envelope.data).toEqual({ orderId, channel: 'web' })
+  })
+
+  it('compiles a createEnvelope result straight through toEnvelopeMetadata', async () => {
+    const envelope = await createEnvelope(orderPlaced, { orderId }, { tenantId, source: 'shop.api' })
+    const metadata = toEnvelopeMetadata(envelope)
+    expect(metadata['envelopeId']).toBe(envelope.id)
   })
 })
