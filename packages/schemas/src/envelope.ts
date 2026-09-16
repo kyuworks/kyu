@@ -45,7 +45,7 @@ export type Envelope<TData extends MessageDataShape = EnvelopeData> = Omit<z.inf
 export const envelopeMetadataSchema = z.object({
   envelopeId: z.uuidv7(),
   kinesin_name: messageNameSchema,
-  kinesin_version: z.string().regex(/^[1-9]\d*$/, 'kinesin_version must be a positive integer string'),
+  kinesin_version: z.string().regex(/^[1-9]\d{0,8}$/, 'kinesin_version must be a positive integer string'),
   kinesin_kind: messageKindSchema,
   tenantId: z.uuid().optional(),
   orgUnitId: z.uuid().optional(),

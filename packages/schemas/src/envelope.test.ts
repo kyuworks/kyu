@@ -146,6 +146,37 @@ describe('fromEnvelopeMetadata', () => {
     expect(() => fromEnvelopeMetadata(metadata)).toThrow()
   })
 
+  it('rejects a kinesin_version so large it parses to a float, instead of letting it through as 1e20', () => {
+    const envelope: Envelope = envelopeSchema.parse(validEnvelope)
+    const metadata = { ...toEnvelopeMetadata(envelope), kinesin_version: '99999999999999999999' }
+    try {
+      fromEnvelopeMetadata(metadata)
+      expect.unreachable('fromEnvelopeMetadata should have thrown')
+    } catch (error) {
+      if (!(error instanceof EnvelopeMetadataError)) throw error
+      expect(error.issues.some((issue) => issue.path === 'kinesin_version')).toBe(true)
+    }
+  })
+
+  it('carries the underlying ZodError as cause', () => {
+    try {
+      fromEnvelopeMetadata({ envelopeId: 'nope' })
+      expect.unreachable('fromEnvelopeMetadata should have thrown')
+    } catch (error) {
+      if (!(error instanceof EnvelopeMetadataError)) throw error
+      const { cause } = error
+      if (!(cause instanceof Error)) throw new Error('cause should be an Error', { cause: error })
+      expect(cause.name).toBe('ZodError')
+    }
+  })
+
+  it('tolerates and strips extra metadata keys', () => {
+    const envelope: Envelope = envelopeSchema.parse(validEnvelope)
+    const metadata = { ...toEnvelopeMetadata(envelope), hatchet_run_id: 'x' }
+    const fields = fromEnvelopeMetadata(metadata)
+    expect(fields).not.toHaveProperty('hatchet_run_id')
+  })
+
   it('accepts envelopeMetadataSchema for a full envelope round-tripped through toEnvelopeMetadata', () => {
     const envelope: Envelope = envelopeSchema.parse({
       ...validEnvelope,

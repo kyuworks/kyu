@@ -15,7 +15,9 @@ function normalize(value: JsonValue, path: ReadonlyArray<string>, seen: WeakSet<
   if (Array.isArray(value)) {
     if (seen.has(value)) throw fail(path, 'circular reference')
     seen.add(value)
-    const result = value.map((item, index) => normalize(item, [...path, String(index)], seen))
+    // Array.from visits a sparse hole as undefined; Array.prototype.map skips it, which would
+    // let a hole through where an explicit `undefined` element is rejected.
+    const result = Array.from(value, (item, index) => normalize(item, [...path, String(index)], seen))
     seen.delete(value)
     return result
   }
@@ -25,16 +27,24 @@ function normalize(value: JsonValue, path: ReadonlyArray<string>, seen: WeakSet<
     const result: JsonObject = {}
     for (const key of Object.keys(value)) {
       const propertyValue = value[key]
-      if (propertyValue !== undefined) result[key] = normalize(propertyValue, [...path, key], seen)
+      if (propertyValue !== undefined) {
+        const normalized = normalize(propertyValue, [...path, key], seen)
+        // Plain `result[key] = …` on a `__proto__` key hits Object.prototype's setter instead
+        // of creating an own key; defineProperty always writes an own property.
+        Object.defineProperty(result, key, { value: normalized, writable: true, enumerable: true, configurable: true })
+      }
     }
     seen.delete(value)
     return result
   }
   const tag = Object.prototype.toString.call(value)
-  if (tag === '[object String]') return value
-  if (tag === '[object Number]' && Number.isFinite(value)) return value
+  const isPrimitive = Object(value) !== value
+  if (isPrimitive && tag === '[object String]') return value
+  if (isPrimitive && tag === '[object Number]' && Number.isFinite(value)) return value
   let detail = tag
-  if (tag === '[object Number]') detail = 'a non-finite number'
+  if (!isPrimitive && (tag === '[object String]' || tag === '[object Number]' || tag === '[object Boolean]')) {
+    detail = 'a boxed primitive'
+  } else if (isPrimitive && tag === '[object Number]') detail = 'a non-finite number'
   else if (tag === '[object Object]') detail = 'a class instance'
   throw fail(path, `not JSON-safe: ${detail}`)
 }
