@@ -32,8 +32,10 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
     "oxlint": "^1.82.0",
     "oxlint-tsgolint": "7.0.2001",
+    "pg": "^8.23.0",
     "typescript": "^6.0.0",
     "vitest": "^4.1.0"
   }

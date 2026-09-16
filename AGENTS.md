@@ -117,7 +117,7 @@ bash infra/hatchet/token.sh # worker token for the local engine
 pnpm --filter @kinesin/sdk test:integration   # needs the engine and HATCHET_CLIENT_TOKEN
 ```
 
-Integration tests read `HATCHET_CLIENT_TOKEN` and `HATCHET_CLIENT_TLS_STRATEGY=none`. They fail loudly when the engine is missing. They never skip.
+Integration tests read `HATCHET_CLIENT_TOKEN`, `HATCHET_CLIENT_TLS_STRATEGY=none`, and `KINESIN_TEST_DATABASE_URL` (e.g. `postgresql://hatchet:hatchet@localhost:5432/kinesin_test`). They fail loudly when the engine or database is missing. They never skip.
 
 ## Who runs which tests
 

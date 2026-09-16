@@ -20,6 +20,10 @@ services:
       POSTGRES_USER: hatchet
       POSTGRES_PASSWORD: hatchet
       POSTGRES_DB: hatchet
+    # Exposed so the SDK's integration tests can reach this Postgres directly
+    # (a separate `kinesin_test` database, alongside the engine's own `hatchet`).
+    ports:
+      - '${KINESIN_POSTGRES_PORT:-5432}:5432'
     volumes:
       - hatchet_postgres_data:/var/lib/postgresql/data
     healthcheck:
