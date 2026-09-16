@@ -14,13 +14,14 @@ CREATE TABLE kinesin_outbox (
   claimed_by    text,
   published_at  timestamptz,
   attempts      integer NOT NULL DEFAULT 0,
-  last_error    text
+  last_error    text,
+  CONSTRAINT kinesin_outbox_name_matches_envelope CHECK (name = envelope->>'name')
 );
 CREATE INDEX kinesin_outbox_pending_idx ON kinesin_outbox (created_at) WHERE published_at IS NULL;
-CREATE INDEX kinesin_outbox_claimed_idx ON kinesin_outbox (claimed_at) WHERE published_at IS NULL;
 CREATE TABLE kinesin_processed (
   envelope_id   uuid NOT NULL,
   handler       text NOT NULL,
   processed_at  timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (envelope_id, handler)
 );
+CREATE INDEX kinesin_processed_processed_at_idx ON kinesin_processed (processed_at);

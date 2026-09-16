@@ -19,8 +19,14 @@ Naming: `<YYYYMMDDHHMMSS>_<slug>.sql`.
 |---|---|---|
 | `publish()` | `kinesin_outbox` | INSERT |
 | relay | `kinesin_outbox` | SELECT, UPDATE |
-| `prunePublished` | `kinesin_outbox` | DELETE |
+| `prunePublished` | `kinesin_outbox` | DELETE, SELECT |
 | `onceById` | `kinesin_processed` | INSERT, SELECT |
+
+`kinesin_outbox.tenant_id` is `uuid`: business tenant ids must be UUIDs,
+matching the envelope schema.
+
+Statements in this file are not schema-qualified, so the tables land on
+whatever schema is first on the runner's `search_path`.
 
 Handler names in `kinesin_processed.handler` are stable identifiers: renaming a
 handler makes it re-process every envelope it already handled under the old
