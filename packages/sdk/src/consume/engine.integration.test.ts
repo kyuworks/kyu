@@ -6,7 +6,8 @@ import type { Worker } from '../hatchet.js'
 // Smoke test against the local engine: a task subscribed to an event key
 // receives an event pushed with that key. The client namespace is randomized
 // per run so parallel worktrees sharing one engine do not see each other's
-// events; the worker and task names below are fixed, not namespaced.
+// events; the client namespace prefixes the worker name, task names and
+// event keys per run.
 // Token and TLS strategy come from HATCHET_CLIENT_TOKEN / HATCHET_CLIENT_TLS_STRATEGY.
 
 type SmokeInput = { envelopeId: string }

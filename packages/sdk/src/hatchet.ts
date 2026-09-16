@@ -14,6 +14,19 @@ import type { Worker } from '@hatchet-dev/typescript-sdk/v1/index.js'
 export { ConcurrencyLimitStrategy, NonRetryableError, Or, Priority }
 export type { HatchetClient, Worker }
 
+/**
+ * Base for SDK-raised errors that are not envelope- or message-definition
+ * errors from `@kinesin/schemas`. Defined here, not in `errors.ts`, because
+ * `errors.ts` imports `NonRetryableError` from this file; defining it there
+ * and importing it back would make the two files circular.
+ */
+export class KinesinError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'KinesinError'
+  }
+}
+
 export interface HatchetClientOptions {
   token?: string
   tls?: 'tls' | 'mtls' | 'none'
@@ -33,7 +46,15 @@ export interface HatchetClientOptions {
  */
 export type HatchetClientConfig = NonNullable<Parameters<typeof HatchetClient.init>[0]>
 
-/** Maps Kinesin's own option names to the engine SDK's `ClientConfig` shape. */
+/**
+ * Maps Kinesin's own option names to the engine SDK's `ClientConfig` shape.
+ *
+ * The engine loader treats `tls_config` as a set: once any TLS option is
+ * given, it replaces the whole config (environment defaults included), not
+ * just the given keys. So `tls_config` is built only when at least one TLS
+ * option is present, and `tls_strategy` is always set on it — from
+ * `options.tls`, or a thrown `KinesinError` if that was left out.
+ */
 export function toHatchetClientConfig(options: HatchetClientOptions): HatchetClientConfig {
   const config: HatchetClientConfig = {}
   if (options.token !== undefined) {
@@ -46,10 +67,27 @@ export function toHatchetClientConfig(options: HatchetClientOptions): HatchetCli
     options.tlsRootCaFile !== undefined ||
     options.tlsServerName !== undefined
   if (hasTlsOption) {
-    config.tls_config = {}
-    if (options.tls !== undefined) {
-      config.tls_config.tls_strategy = options.tls
+    if (options.tls === undefined) {
+      throw new KinesinError(
+        'tls is required when tlsCertFile, tlsKeyFile, tlsRootCaFile or tlsServerName is set, because the engine ignores its environment defaults once any TLS option is given',
+      )
     }
+    if (options.tls === 'mtls') {
+      const missing: string[] = []
+      if (options.tlsCertFile === undefined) {
+        missing.push('tlsCertFile')
+      }
+      if (options.tlsKeyFile === undefined) {
+        missing.push('tlsKeyFile')
+      }
+      if (options.tlsRootCaFile === undefined) {
+        missing.push('tlsRootCaFile')
+      }
+      if (missing.length > 0) {
+        throw new KinesinError(`tls: 'mtls' requires ${missing.join(', ')}`)
+      }
+    }
+    config.tls_config = { tls_strategy: options.tls }
     if (options.tlsCertFile !== undefined) {
       config.tls_config.cert_file = options.tlsCertFile
     }
@@ -78,6 +116,6 @@ export function toHatchetClientConfig(options: HatchetClientOptions): HatchetCli
   return config
 }
 
-export function createHatchetClient(options: HatchetClientOptions): HatchetClient {
+export function createHatchetClient(options: HatchetClientOptions = {}): HatchetClient {
   return HatchetClient.init(toHatchetClientConfig(options))
 }

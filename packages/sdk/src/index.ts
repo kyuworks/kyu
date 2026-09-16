@@ -19,4 +19,4 @@ export {
   MessageDataError,
   MessageDefinitionError,
 } from './errors.js'
-export type { MessageDataIssue } from './errors.js'
+export type { EnvelopeOptionIssue, MessageDataIssue } from './errors.js'
