@@ -24,7 +24,7 @@ export default async function setup(): Promise<void> {
       [
         'KINESIN_TEST_DATABASE_URL is not set, so the integration suite has no database.',
         'Point it at the Postgres the local engine stack exposes:',
-        '  export KINESIN_TEST_DATABASE_URL="postgresql://hatchet:hatchet@localhost:5432/kinesin_test"',
+        '  export KINESIN_TEST_DATABASE_URL="postgresql://hatchet:hatchet@localhost:15432/kinesin_test"',
       ].join('\n'),
     )
   }
@@ -43,9 +43,27 @@ export default async function setup(): Promise<void> {
   const adminUrl = new URL(testDatabaseUrl)
   adminUrl.pathname = '/postgres'
   const admin = new Client({ connectionString: adminUrl.toString() })
-  await admin.connect()
   try {
-    await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`)
+    await admin.connect()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(
+      `Cannot reach Postgres at ${adminUrl.host}: ${message}. Start the stack with \`pnpm hatchet:up\`.`,
+      { cause: error },
+    )
+  }
+  try {
+    // A lingering session, or a Postgres that isn't the Kinesin engine
+    // stack, must never lose the `DROP DATABASE`. The stack's own `hatchet`
+    // database is the marker that this is the right server.
+    const marker = await admin.query("SELECT 1 FROM pg_database WHERE datname = 'hatchet'")
+    if (marker.rows.length === 0) {
+      throw new Error(
+        `Refusing to drop ${databaseName}: the server at ${adminUrl.host} is not the Kinesin engine stack ` +
+          '(no `hatchet` database). Point KINESIN_TEST_DATABASE_URL at the stack from infra/hatchet/compose.yaml.',
+      )
+    }
+    await admin.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`)
     await admin.query(`CREATE DATABASE "${databaseName}"`)
   } finally {
     await admin.end()
@@ -64,7 +82,8 @@ export default async function setup(): Promise<void> {
         await db.query('COMMIT')
       } catch (error) {
         await db.query('ROLLBACK')
-        throw error
+        const message = error instanceof Error ? error.message : String(error)
+        throw new Error(`migration ${file} failed: ${message}`, { cause: error })
       }
     }
   } finally {

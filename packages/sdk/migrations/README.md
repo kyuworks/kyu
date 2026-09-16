@@ -6,3 +6,7 @@ fix a mistake with a new file, never by editing an old one
 (`scripts/gates/check-migration-immutability.sh`).
 
 Naming: `<YYYYMMDDHHMMSS>_<slug>.sql`.
+
+## Rules
+
+- A migration file must not contain `BEGIN`, `COMMIT`, `ROLLBACK` or `SAVEPOINT`; the applier wraps each file in its own transaction.
