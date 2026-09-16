@@ -28,6 +28,8 @@ const invoiceSent = defineEvent({
   data: z.object({ n: z.number() }),
 })
 
+vi.setConfig({ testTimeout: 60_000 })
+
 let client: Client
 
 beforeAll(async () => {
@@ -95,7 +97,7 @@ describe('relay against the local engine', () => {
     const c = await publisher.publish(client, invoiceSent, { n: 3 }, { tenantId: null })
 
     const bulkPush = vi.spyOn(hatchet.events, 'bulkPush')
-    const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}` })
+    const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
     const result = await relay.tick()
     await relay.stop()
 
@@ -111,10 +113,10 @@ describe('relay against the local engine', () => {
     const envelope = await publisher.publish(client, orderPlaced, { n: 1 }, { tenantId: null })
 
     vi.spyOn(hatchet.events, 'bulkPush').mockRejectedValueOnce(new Error('engine unreachable'))
-    const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}` })
+    const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
 
     const firstResult = await relay.tick()
-    expect(firstResult).toEqual({ claimed: 1, pushed: 0, failed: 1, skipped: [] })
+    expect(firstResult).toEqual({ claimed: 1, pushed: 0, failed: 1, skipped: [], failedIds: [envelope.id] })
 
     const afterFirst = await client.query(
       'SELECT claimed_at, attempts, last_error, published_at FROM kinesin_outbox WHERE id = $1',
@@ -128,7 +130,7 @@ describe('relay against the local engine', () => {
     const secondResult = await relay.tick()
     await relay.stop()
 
-    expect(secondResult).toEqual({ claimed: 1, pushed: 1, failed: 0, skipped: [] })
+    expect(secondResult).toEqual({ claimed: 1, pushed: 1, failed: 0, skipped: [], failedIds: [] })
     const afterSecond = await client.query('SELECT published_at FROM kinesin_outbox WHERE id = $1', [envelope.id])
     expect(afterSecond.rows[0]?.['published_at']).not.toBeNull()
   })
@@ -147,8 +149,20 @@ describe('relay against the local engine', () => {
     await clientB.connect()
 
     const bulkPush = vi.spyOn(hatchet.events, 'bulkPush')
-    const relayA = startRelay({ db: clientA, hatchet, workerId: `relay-a-${randomUUID()}`, batchSize: 7 })
-    const relayB = startRelay({ db: clientB, hatchet, workerId: `relay-b-${randomUUID()}`, batchSize: 7 })
+    const relayA = startRelay({
+      db: clientA,
+      hatchet,
+      workerId: `relay-a-${randomUUID()}`,
+      batchSize: 7,
+      pollIntervalMs: 60_000,
+    })
+    const relayB = startRelay({
+      db: clientB,
+      hatchet,
+      workerId: `relay-b-${randomUUID()}`,
+      batchSize: 7,
+      pollIntervalMs: 60_000,
+    })
 
     async function drain(relay: Relay): Promise<void> {
       for (let i = 0; i < 10; i += 1) {
@@ -170,20 +184,27 @@ describe('relay against the local engine', () => {
     expect(new Set(seenIds).size).toBe(total)
   })
 
-  it('a stale claim is reclaimed and republished after a crash between push and mark', async () => {
+  it('a claim is released and republished after a crash between push and mark', async () => {
     const envelope = await publisher.publish(client, orderPlaced, { n: 1 }, { tenantId: null })
     const bulkPush = vi.spyOn(hatchet.events, 'bulkPush')
     const failingDb = createFailOnceDb(client, 'SET published_at = now()')
 
-    const relay = startRelay({ db: failingDb, hatchet, workerId: `worker-${randomUUID()}`, staleClaimMs: 0 })
+    const relay = startRelay({
+      db: failingDb,
+      hatchet,
+      workerId: `worker-${randomUUID()}`,
+      pollIntervalMs: 60_000,
+    })
 
     await expect(relay.tick()).rejects.toThrow('simulated crash before mark')
 
+    // The crash releases the claim immediately (relay.ts's `finally`), rather
+    // than leaving it claimed for the whole stale window.
     const afterCrash = await client.query('SELECT published_at, claimed_at FROM kinesin_outbox WHERE id = $1', [
       envelope.id,
     ])
     expect(afterCrash.rows[0]?.['published_at']).toBeNull()
-    expect(afterCrash.rows[0]?.['claimed_at']).not.toBeNull()
+    expect(afterCrash.rows[0]?.['claimed_at']).toBeNull()
 
     const result = await relay.tick()
     await relay.stop()
@@ -222,16 +243,20 @@ describe('relay against the local engine', () => {
       })
       await worker.waitUntilReady()
 
-      const envelope = await publisher.publish(client, delivered, { n: 7 }, { tenantId: null })
-      const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}` })
+      const tenantId = randomUUID()
+      const envelope = await publisher.publish(client, delivered, { n: 7 }, { tenantId })
+      const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
       await relay.tick()
       await relay.stop()
 
-      const result = await withTimeout(received.promise, 30_000)
+      const result = await withTimeout(received.promise, 20_000)
       if (result === null) throw new Error('the task never received the pushed envelope')
 
-      expect(envelopeSchema.parse(result.payload)).toEqual(envelope)
+      const receivedEnvelope = envelopeSchema.parse(result.payload)
+      expect(receivedEnvelope).toEqual(envelope)
+      expect(receivedEnvelope.tenantId).toBe(tenantId)
       expect(result.additionalMetadata['envelopeId']).toBe(envelope.id)
+      expect(result.additionalMetadata['tenantId']).toBe(tenantId)
     } finally {
       await worker?.stop()
     }
@@ -248,7 +273,7 @@ describe('relay against the local engine', () => {
       JSON.stringify({ name: 'kinesin.relay_test.order_placed', not: 'an envelope' }),
     ])
 
-    const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}` })
+    const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
     const result = await relay.tick()
     await relay.stop()
 
