@@ -158,8 +158,7 @@ export function startRelay(options: RelayOptions): Relay {
   }
 
   // `.then(onFulfilled, onRejected)`, not `.then(f).catch(g)`: a throwing
-  // `onTick` must not be reported to `onError` as a push failure, and the
-  // trailing `.catch` only exists to stop a callback's throw from escaping.
+  // `onTick` must not be reported to `onError` as a push failure.
   function loop(): void {
     tick()
       .then(
