@@ -39,7 +39,8 @@ export type { ConcurrencyOption } from './consume/concurrency.js'
 export type { HandlerContext, HandlerLogger } from './consume/handlerContext.js'
 
 export { subscribe } from './consume/subscribe.js'
-export type { RateLimitOption, SubscribeOptions, Subscription } from './consume/subscribe.js'
+export type { SubscribeOptions, Subscription } from './consume/subscribe.js'
+export type { RateLimitOption } from './consume/taskOptions.js'
 
 export { durable } from './consume/durable.js'
 export type { DurableHandlerContext, DurableOptions, WaitForOptions, WaitForResult } from './consume/durable.js'

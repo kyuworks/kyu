@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { EnvelopeRejectedError } from '../errors.js'
 import type { Context, CreateTaskWorkflowOpts, HatchetClient, JsonObject, TaskWorkflowDeclaration } from '../hatchet.js'
 import { ConcurrencyLimitStrategy, Priority, RateLimitDuration } from '../hatchet.js'
-import { decodeIncomingEnvelope, subscribe, toHatchetRateLimit } from './subscribe.js'
+import { decodeIncomingEnvelope, subscribe } from './subscribe.js'
+import { toHatchetRateLimit } from './taskOptions.js'
 
 const orderPlaced = defineEvent({
   name: 'shop.order.placed',

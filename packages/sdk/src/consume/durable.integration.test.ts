@@ -61,7 +61,9 @@ describe('durable: sleepFor', () => {
       name: 'sleep-then-continue',
       handler: async (ctx: DurableHandlerContext<{ marker: string }>) => {
         const before = Date.now()
-        await ctx.sleepFor('1s')
+        // Longer than the engine's 60s default execution timeout: proves
+        // durable()'s own 24h default keeps the wait alive past that point.
+        await ctx.sleepFor('75s')
         gaps.set(ctx.envelope.id, Date.now() - before)
       },
     })
@@ -81,11 +83,11 @@ describe('durable: sleepFor', () => {
       scope: 'global',
     })
 
-    await waitUntil(() => gaps.has(envelope.id), 90_000)
+    await waitUntil(() => gaps.has(envelope.id), 150_000)
     const gap = gaps.get(envelope.id)
     expect(gap).toBeDefined()
-    expect(gap ?? 0).toBeGreaterThanOrEqual(1_000)
-  }, 120_000)
+    expect(gap ?? 0).toBeGreaterThanOrEqual(75_000)
+  }, 180_000)
 })
 
 describe('durable: correlated waitFor', () => {
@@ -129,17 +131,6 @@ describe('durable: correlated waitFor', () => {
     worker = await createWorker(hatchet, 'kinesin-durable-wait', { subscriptions: [subscription], durableSlots: 5 })
     void worker.start()
     await worker.waitUntilReady()
-
-    // The engine's very first durable-task invocation on a freshly connected
-    // worker has been observed to arrive with an empty payload under load
-    // (a cold-start race, not a bug in decodeIncomingEnvelope, which is
-    // right to reject it). Absorb that invocation here so it never lands on
-    // a real assertion.
-    const warmupTenant = '00000000-0000-4000-8000-000000000001'
-    const warmupOrderId = `warmup-${randomBytes(4).toString('hex')}`
-    await pushShipped(warmupOrderId, warmupTenant)
-    await triggerWait(warmupTenant, warmupOrderId, '30s')
-    await sleep(45_000)
   }, 120_000)
 
   afterAll(async () => {

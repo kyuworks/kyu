@@ -5,8 +5,9 @@ import type {
   MessageDataShape,
   MessageDefinition,
   MessageSchema,
+  Unparsed,
 } from '@kinesin/schemas'
-import { KinesinError } from '../errors.js'
+import { EnvelopeRejectedError, KinesinError } from '../errors.js'
 import { Or, SleepCondition, UserEventCondition, durationToMs } from '../hatchet.js'
 import type { CreateDurableTaskWorkflowOpts, Duration, DurableContext, HatchetClient, JsonObject } from '../hatchet.js'
 import { decodeAndCheckMetadata, decodeIncomingEnvelope } from './subscribe.js'
@@ -23,6 +24,7 @@ export interface WaitForOptions {
   timeout: Extract<Duration, string>
 }
 
+// When several events match the filter, the first in the engine's own order wins.
 export type WaitForResult<S extends MessageSchema> =
   | { kind: 'message'; envelope: Envelope<MessageData<MessageDefinition<S>>> }
   | { kind: 'timeout' }
@@ -37,11 +39,15 @@ export interface DurableOptions<TData extends MessageDataShape> extends SharedTa
   handler: (ctx: DurableHandlerContext<TData>) => Promise<void> | void
 }
 
-// A CEL string literal: backslash and quote are the only characters that
-// need escaping inside `"..."`.
+// A dotted identifier path only: `where.field` is spliced straight into the
+// CEL expression, so anything else is a filter-injection vector.
+const FIELD_PATH_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/
+
 function celEquals(field: string, equals: string): string {
-  const escaped = equals.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-  return `input.${field} == "${escaped}"`
+  if (!FIELD_PATH_PATTERN.test(field)) {
+    throw new KinesinError(`waitFor: where.field "${field}" is not a dotted identifier path`)
+  }
+  return `input.${field} == ${JSON.stringify(equals)}`
 }
 
 interface WaitForConditions {
@@ -49,12 +55,8 @@ interface WaitForConditions {
   sleep: SleepCondition
 }
 
-/**
- * The two conditions raced by `waitFor`. Split from `waitForMessage` so the
- * CEL, scope and lookback math is testable without a running engine — `now`
- * is `DurableContext.now()`'s memoized value, not `Date.now()`, so replaying
- * the same durable run recomputes the same `considerEventsSince`.
- */
+// Split from waitForMessage so the CEL, scope and lookback math is testable
+// without a running engine; `now` is `DurableContext.now()`'s memoized value.
 export function buildWaitForConditions(
   handlerEnvelope: Envelope<MessageDataShape>,
   definition: MessageDefinition<MessageSchema>,
@@ -71,14 +73,14 @@ export function buildWaitForConditions(
   }
 }
 
-/**
- * Races a correlated event against a timeout. The engine's own result shape
- * is `{ CREATE: { <readableDataKey>: [<item>] } }`; a sleep item is
- * `{ sleep_duration }`, a user-event item is the pushed envelope itself
- * (observed, not the `{ id, data }` wrapper the engine's own docstring
- * describes). Untrusted either way: a result with neither key raises rather
- * than silently timing out.
- */
+type WaitForConditionMatches = Record<string, ReadonlyArray<Unparsed>>
+
+interface WaitForRawResult {
+  CREATE?: WaitForConditionMatches
+}
+
+// Races a correlated event against a timeout; a match is the pushed envelope
+// itself, not the `{ id, data }` wrapper the engine's own docstring describes.
 export async function waitForMessage<S extends MessageSchema>(
   hatchetContext: DurableContext<JsonObject>,
   handlerEnvelope: Envelope<MessageDataShape>,
@@ -88,18 +90,27 @@ export async function waitForMessage<S extends MessageSchema>(
   const now = await hatchetContext.now()
   const { userEvent, sleep } = buildWaitForConditions(handlerEnvelope, definition, options, now)
 
-  const raw = await hatchetContext.waitFor(Or(userEvent, sleep))
-  const created = raw['CREATE'] ?? {}
+  const raw: WaitForRawResult = await hatchetContext.waitFor(Or(userEvent, sleep))
+  // Engines before durable eviction return the CREATE map unwrapped.
+  const created = raw.CREATE ?? (raw as WaitForConditionMatches)
+
+  const matches = created['message']
+  if (matches !== undefined && matches.length > 0) {
+    const envelope = await decodeIncomingEnvelope(definition, matches[0])
+    if (options.scope === undefined && envelope.tenantId !== handlerEnvelope.tenantId) {
+      throw new EnvelopeRejectedError(
+        `waitFor matched an envelope from tenant ${String(envelope.tenantId)}, expected the handler envelope's tenant ${String(handlerEnvelope.tenantId)}`,
+        envelope.id,
+      )
+    }
+    return { kind: 'message', envelope }
+  }
+
   if (created['timeout'] !== undefined) {
     return { kind: 'timeout' }
   }
 
-  const matches = created['message']
-  if (matches === undefined || matches.length === 0) {
-    throw new KinesinError(`waitFor: unexpected engine result shape: ${JSON.stringify(raw)}`)
-  }
-  const envelope = await decodeIncomingEnvelope(definition, matches[0])
-  return { kind: 'message', envelope }
+  throw new KinesinError(`waitFor: unexpected engine result shape: ${JSON.stringify(raw)}`)
 }
 
 function buildDurableHandlerContext<TData extends MessageDataShape>(
@@ -140,6 +151,10 @@ export function durable<S extends MessageSchema>(
   }
 
   applySharedTaskOptions(taskOptions, options)
+  // The engine's own default execution timeout is 60s, which cancels any
+  // sleep or wait longer than a minute; the caller must set it above their
+  // longest wait if 24h is not enough.
+  taskOptions.executionTimeout ??= '24h'
 
   const workflow = hatchet.durableTask<JsonObject, void>(taskOptions)
 

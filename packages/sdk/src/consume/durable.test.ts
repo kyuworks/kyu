@@ -2,10 +2,16 @@ import { createEnvelope, defineEvent } from '@kinesin/schemas'
 import type { Envelope, MessageDataShape } from '@kinesin/schemas'
 import { z } from 'zod'
 import { describe, expect, it } from 'vitest'
-import { EnvelopeRejectedError } from '../errors.js'
-import { OrCondition, SleepCondition, UserEventCondition } from '../hatchet.js'
-import type { DurableContext, JsonObject } from '../hatchet.js'
-import { buildWaitForConditions, waitForMessage } from './durable.js'
+import { EnvelopeRejectedError, KinesinError } from '../errors.js'
+import { ConcurrencyLimitStrategy, OrCondition, SleepCondition, UserEventCondition } from '../hatchet.js'
+import type {
+  CreateDurableTaskWorkflowOpts,
+  DurableContext,
+  HatchetClient,
+  JsonObject,
+  TaskWorkflowDeclaration,
+} from '../hatchet.js'
+import { buildWaitForConditions, durable, waitForMessage } from './durable.js'
 
 const orderPlaced = defineEvent({
   name: 'shop.order.placed',
@@ -37,6 +43,45 @@ describe('buildWaitForConditions', () => {
     )
 
     expect(userEvent.expression).toBe('input.data.orderId == "ab\\"cd"')
+  })
+
+  it('escapes a newline in equals into a valid CEL string literal', async () => {
+    const envelope = await handlerEnvelope(null)
+
+    const { userEvent } = buildWaitForConditions(
+      envelope,
+      orderShipped,
+      { where: { field: 'data.orderId', equals: 'line one\nline two' }, timeout: '30s' },
+      now,
+    )
+
+    expect(userEvent.expression).toBe('input.data.orderId == "line one\\nline two"')
+  })
+
+  it('rejects a where.field that is not a dotted identifier path', async () => {
+    const envelope = await handlerEnvelope(null)
+
+    expect(() =>
+      buildWaitForConditions(
+        envelope,
+        orderShipped,
+        { where: { field: 'data.orderId == "x" || true || input.data.y', equals: 'order-1' }, timeout: '30s' },
+        now,
+      ),
+    ).toThrow(KinesinError)
+  })
+
+  it('accepts a multi-segment dotted where.field path', async () => {
+    const envelope = await handlerEnvelope(null)
+
+    expect(() =>
+      buildWaitForConditions(
+        envelope,
+        orderShipped,
+        { where: { field: 'data.order.id', equals: 'order-1' }, timeout: '30s' },
+        now,
+      ),
+    ).not.toThrow()
   })
 
   it('carries the target message name and a fixed readableDataKey pair', async () => {
@@ -199,5 +244,128 @@ describe('waitForMessage', () => {
         timeout: '30s',
       }),
     ).rejects.toBeInstanceOf(EnvelopeRejectedError)
+  })
+
+  it('prefers a matched message over a timeout when a result carries both', async () => {
+    const shipped = await createEnvelope(orderShipped, { orderId: 'order-1' }, { tenantId: null, source: 'sdk.test' })
+    const asIncoming: JsonObject = JSON.parse(JSON.stringify(shipped)) as JsonObject
+    const { context } = fakeDurableContext({
+      CREATE: { message: [asIncoming], timeout: [{ sleep_duration: '30s' }] },
+    })
+    const envelope = await handlerEnvelope(null)
+
+    const result = await waitForMessage(context, envelope, orderShipped, {
+      where: { field: 'data.orderId', equals: 'order-1' },
+      timeout: '30s',
+    })
+
+    expect(result).toEqual({ kind: 'message', envelope: shipped })
+  })
+
+  it('reads matches from an older engine that returns the CREATE map unwrapped', async () => {
+    const shipped = await createEnvelope(orderShipped, { orderId: 'order-1' }, { tenantId: null, source: 'sdk.test' })
+    const asIncoming: JsonObject = JSON.parse(JSON.stringify(shipped)) as JsonObject
+    const { context } = fakeDurableContext({ message: [asIncoming] })
+    const envelope = await handlerEnvelope(null)
+
+    const result = await waitForMessage(context, envelope, orderShipped, {
+      where: { field: 'data.orderId', equals: 'order-1' },
+      timeout: '30s',
+    })
+
+    expect(result).toEqual({ kind: 'message', envelope: shipped })
+  })
+
+  it('rejects a matched envelope from another tenant when scope was not given', async () => {
+    const shipped = await createEnvelope(
+      orderShipped,
+      { orderId: 'order-1' },
+      { tenantId: 'a1f7f3e9-9f3a-4e3e-9f3a-2b1f7f3e9f3a', source: 'sdk.test' },
+    )
+    const asIncoming: JsonObject = JSON.parse(JSON.stringify(shipped)) as JsonObject
+    const { context } = fakeDurableContext({ CREATE: { message: [asIncoming] } })
+    const envelope = await handlerEnvelope('2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f30')
+
+    await expect(
+      waitForMessage(context, envelope, orderShipped, {
+        where: { field: 'data.orderId', equals: 'order-1' },
+        timeout: '30s',
+      }),
+    ).rejects.toBeInstanceOf(EnvelopeRejectedError)
+  })
+
+  it('accepts a matched envelope from another tenant when an explicit scope was given', async () => {
+    const shipped = await createEnvelope(
+      orderShipped,
+      { orderId: 'order-1' },
+      { tenantId: 'a1f7f3e9-9f3a-4e3e-9f3a-2b1f7f3e9f3a', source: 'sdk.test' },
+    )
+    const asIncoming: JsonObject = JSON.parse(JSON.stringify(shipped)) as JsonObject
+    const { context } = fakeDurableContext({ CREATE: { message: [asIncoming] } })
+    const envelope = await handlerEnvelope('2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f30')
+
+    const result = await waitForMessage(context, envelope, orderShipped, {
+      where: { field: 'data.orderId', equals: 'order-1' },
+      scope: 'shared-scope',
+      timeout: '30s',
+    })
+
+    expect(result).toEqual({ kind: 'message', envelope: shipped })
+  })
+})
+
+interface FakeHatchetClient {
+  client: HatchetClient
+  capturedOptions: () => CreateDurableTaskWorkflowOpts<JsonObject, void> | undefined
+}
+
+// The engine's HatchetClient carries private fields, so a stub cannot satisfy
+// it structurally; a Pick of just `durableTask` is comparable to the class
+// type in one direction, the same single, unchained `as` cast as
+// subscribe.test.ts's fakeHatchetClient.
+function fakeHatchetClient(): FakeHatchetClient {
+  let captured: CreateDurableTaskWorkflowOpts<JsonObject, void> | undefined
+  const stub: Pick<HatchetClient, 'durableTask'> = {
+    durableTask: (options: CreateDurableTaskWorkflowOpts<JsonObject, void>) => {
+      captured = options
+      return {} as TaskWorkflowDeclaration
+    },
+  }
+  return { client: stub as HatchetClient, capturedOptions: () => captured }
+}
+
+describe('durable: option wiring', () => {
+  it('carries name, onEvents, shared options and the default executionTimeout to the engine', () => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    durable(client, orderPlaced, {
+      name: 'follow-up',
+      handler: () => undefined,
+      concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'fifo' },
+      retries: 3,
+    })
+
+    const options = capturedOptions()
+    expect(options?.name).toBe('follow-up')
+    expect(options?.onEvents).toEqual(['shop.order.placed'])
+    expect(options?.concurrency).toEqual({
+      expression: 'input.data.orderId',
+      maxRuns: 1,
+      limitStrategy: ConcurrencyLimitStrategy.GROUP_ROUND_ROBIN,
+    })
+    expect(options?.retries).toBe(3)
+    expect(options?.executionTimeout).toBe('24h')
+  })
+
+  it('keeps an explicit executionTimeout instead of applying the default', () => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    durable(client, orderPlaced, {
+      name: 'follow-up',
+      handler: () => undefined,
+      executionTimeout: '10m',
+    })
+
+    expect(capturedOptions()?.executionTimeout).toBe('10m')
   })
 })

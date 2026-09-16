@@ -16,9 +16,6 @@ import type { HandlerContext } from './handlerContext.js'
 import { applySharedTaskOptions } from './taskOptions.js'
 import type { SharedTaskOptions } from './taskOptions.js'
 
-export { toHatchetRateLimit } from './taskOptions.js'
-export type { RateLimitOption } from './taskOptions.js'
-
 export interface SubscribeOptions<TData extends MessageDataShape> extends SharedTaskOptions {
   name: string
   handler: (ctx: HandlerContext<TData>) => Promise<void> | void
