@@ -1,0 +1,7 @@
+node_modules
+dist
+.artifacts
+.worktrees
+planning-gitignored
+pnpm-lock.yaml
+oxlint-rules/anti-slop

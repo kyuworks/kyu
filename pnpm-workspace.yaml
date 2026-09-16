@@ -1,0 +1,17 @@
+packages:
+  - 'packages/*'
+  - 'examples/*'
+# Every install verifies that each lockfile entry is at least this old (minutes).
+# 7 days. Do not zero it and do not pass --trust-lockfile anywhere.
+minimumReleaseAge: 10080
+# Transitive optional binaries published hours inside the window at bootstrap.
+# Pruned automatically once they leave the lockfile.
+minimumReleaseAgeExclude:
+  - '@rolldown/binding-openharmony-arm64@1.2.8'
+minimumReleaseAgeExcludePrune: true
+# Lifecycle scripts run only when true. The Hatchet SDK's postinstall is
+# required; protobufjs only prints a banner.
+allowBuilds:
+  esbuild: true
+  '@hatchet-dev/typescript-sdk': true
+  protobufjs: false

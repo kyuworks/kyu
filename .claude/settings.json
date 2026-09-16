@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm check:changed*)",
+      "Bash(pnpm check)",
+      "Bash(pnpm --filter * test)",
+      "Bash(pnpm --filter * typecheck)",
+      "Bash(pnpm --filter * lint)",
+      "Bash(bash scripts/gates/*)",
+      "Bash(bash scripts/verify-gates.sh*)",
+      "Bash(bash .agents/skills/next/detect-stage.sh*)"
+    ],
+    "deny": []
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/cloud/session-start.sh",
+            "timeout": 600,
+            "statusMessage": "Preparing the session"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/agent-guard.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Loop"
+  short_description: "Review code and plans with a locked findings register and delta re-review protocol"
+  default_prompt: "Review this code or plan using the review-loop protocol. Pair every finding with why it matters, a recommendation, proof needed to close, and watch-outs. If prior findings exist, run a delta review instead of a broad fresh review, and explain why any new findings appear now."

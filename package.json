@@ -1,0 +1,39 @@
+{
+  "name": "kinesin",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=11.24.0"
+  },
+  "packageManager": "pnpm@11.24.0",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "tsc -b --pretty false",
+    "typecheck:tests": "pnpm -r --workspace-concurrency=Infinity run typecheck:tests",
+    "lint": "pnpm -r run lint",
+    "format": "oxfmt --ignore-path .oxfmtignore \"**/*.{ts,tsx,mts,cts,css,json}\"",
+    "format:check": "oxfmt --check --ignore-path .oxfmtignore \"**/*.{ts,tsx,mts,cts,css,json}\"",
+    "test": "pnpm -r run test",
+    "test:integration": "pnpm -r run test:integration",
+    "check": "bash scripts/check.sh",
+    "check:changed": "bash scripts/check-changed.sh",
+    "gates": "bash scripts/verify-gates.sh",
+    "self-tests": "bash scripts/verify-self-tests.sh",
+    "hatchet:up": "docker compose -f infra/hatchet/compose.yaml up -d --wait",
+    "hatchet:down": "docker compose -f infra/hatchet/compose.yaml down",
+    "hatchet:logs": "docker compose -f infra/hatchet/compose.yaml logs -f hatchet-lite",
+    "clean": "pnpm -r run clean",
+    "prepare": "husky || true"
+  },
+  "devDependencies": {
+    "@oxlint/plugins": "^1.82.0",
+    "husky": "^9.1.7",
+    "oxfmt": "^0.67.0",
+    "oxlint": "^1.82.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "tsx": "^4.23.0",
+    "typescript": "^6.0.0"
+  }
+}

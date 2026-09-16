@@ -1,0 +1,63 @@
+# Local Kinesin engine: Hatchet Lite with Postgres as both database and queue.
+#
+#   pnpm hatchet:up        start and wait for healthy
+#   pnpm hatchet:down      stop (data kept in named volumes)
+#   bash infra/hatchet/token.sh   print a worker token for the default tenant
+#
+# Dashboard: http://localhost:8888  (admin@example.com / Admin123!!)
+# gRPC:      localhost:7077          (workers; TLS strategy "none")
+#
+# Ports are overridable so several worktrees can run their own stack:
+#   KINESIN_HATCHET_HTTP_PORT=18888 KINESIN_HATCHET_GRPC_PORT=17077 \
+#   COMPOSE_PROJECT_NAME=kinesin-lane2 pnpm hatchet:up
+name: kinesin-hatchet
+services:
+  postgres:
+    image: postgres:15.6
+    command: postgres -c 'max_connections=200'
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hatchet
+      POSTGRES_PASSWORD: hatchet
+      POSTGRES_DB: hatchet
+    volumes:
+      - hatchet_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -d hatchet -U hatchet']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+  hatchet-lite:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:${KINESIN_HATCHET_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - '${KINESIN_HATCHET_HTTP_PORT:-8888}:8888'
+      - '${KINESIN_HATCHET_GRPC_PORT:-7077}:7077'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # https://docs.hatchet.run/self-hosting/configuration-options
+      DATABASE_URL: 'postgresql://hatchet:hatchet@postgres:5432/hatchet?sslmode=disable'
+      SERVER_AUTH_COOKIE_DOMAIN: localhost
+      SERVER_AUTH_COOKIE_INSECURE: 't'
+      SERVER_GRPC_BIND_ADDRESS: '0.0.0.0'
+      SERVER_GRPC_INSECURE: 't'
+      SERVER_GRPC_BROADCAST_ADDRESS: 'localhost:${KINESIN_HATCHET_GRPC_PORT:-7077}'
+      SERVER_GRPC_PORT: '7077'
+      SERVER_URL: 'http://localhost:${KINESIN_HATCHET_HTTP_PORT:-8888}'
+      SERVER_AUTH_SET_EMAIL_VERIFIED: 't'
+      SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS: 'localhost:7077'
+    volumes:
+      - hatchet_config:/config
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://localhost:8888/api/ready || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+volumes:
+  hatchet_postgres_data:
+  hatchet_config:

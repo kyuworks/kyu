@@ -1,8 +1,41 @@
-node_modules/
+# Dependencies. No trailing slash: a worktree may symlink node_modules.
+node_modules
+.pnpm-store/
+
+# Agent worktrees checked out inside the repo
+.worktrees/
+
+# Build outputs
 dist/
+*.tsbuildinfo
 coverage/
-.DS_Store
-*.log
+
+# Environment files. Secrets come from 1Password at runtime, never files.
 .env
 .env.*
+!.env.example
 !.env.tpl
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Logs
+*.log
+
+# Local config
+.claude/settings.local.json
+.claude/projects/
+.claude/worktrees/
+.mcp.json
+
+# Local verification artifacts (check logs, review registers). Never committed.
+.artifacts/
+
+# Local planning docs. Working notes for one run; the GitHub issue is the record.
+planning-gitignored/
+
+# Untrusted local scratch. Do not read, write, or commit.
+kb/

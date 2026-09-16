@@ -4,10 +4,28 @@ The company message bus: events, commands and durable workflow orchestration for
 
 Kinesin is the motor protein that carries cargo along the microtubule tracks inside every cell. This system does the same for messages.
 
-## Status
+## Start here
 
-Design stage. Read the requirements and design document first:
+- [Design](docs/design/kinesin-requirements-and-design.md): requirements, architecture, the Camba integration plan.
+- [Decisions](docs/architecture/adr/): why it is standalone, why Hatchet, why migrations are immutable.
+- [Contributing](CONTRIBUTING.md): setup, the loop, layout, gates.
+- [Agent notes](AGENTS.md): the rules agents work under. [Glossary](CONTEXT.md).
 
-- [docs/design/kinesin-requirements-and-design.md](docs/design/kinesin-requirements-and-design.md)
+## Quick start
 
-Planned package: `@kinesin/sdk`.
+```bash
+pnpm install
+pnpm hatchet:up
+export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/token.sh)"
+export HATCHET_CLIENT_TLS_STRATEGY=none
+pnpm check
+```
+
+## Packages
+
+| Package | Purpose |
+| --- | --- |
+| `@kinesin/schemas` | The envelope contract, naming rules, schema adapters |
+| `@kinesin/sdk` | Publish through a transactional outbox, subscribe with Hatchet, run durable handlers |
+
+Status: design accepted, SDK in progress. See the issues.

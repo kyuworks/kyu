@@ -1,0 +1,40 @@
+{
+  "name": "@kinesin/sdk",
+  "version": "0.0.0",
+  "description": "Kinesin client SDK: publish through a transactional outbox, subscribe with Hatchet, run durable handlers.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "migrations"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc -b --pretty false",
+    "typecheck:tests": "tsc -b --pretty false tsconfig.test.json",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "lint": "NODE_OPTIONS='--import tsx' oxlint"
+  },
+  "dependencies": {
+    "@hatchet-dev/typescript-sdk": "^1.32.0",
+    "@kinesin/schemas": "workspace:*",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "oxlint": "^1.82.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "typescript": "^6.0.0",
+    "vitest": "^4.1.0"
+  }
+}

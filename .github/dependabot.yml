@@ -1,0 +1,12 @@
+# Dependabot configuration — automated dependency & vulnerability PRs.
+#
+# Policy:
+#   - Auto-CREATE PRs only; a human always merges. No auto-merge for
+#     Dependabot (or feature) PRs. Nothing auto-merges in this repo.
+#   - Patch + minor updates -> auto-PR. Major updates -> ignored (decided by hand).
+#   - Security updates -> auto-PR (may cross a major when that's the only fix).
+#   - 7-day cooldown before opening a PR (anti-malware delay; distinct from the
+#     .npmrc cooldown, which only governs local installs).
+#   - PRs target the default branch (main) automatically — no target-branch
+#     set, so security updates keep their full behavior.
+#

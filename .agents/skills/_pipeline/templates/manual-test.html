@@ -1,0 +1,172 @@
+<title>{{FEATURE}} — Manual test</title>
+<!--
+  Manual test sheet — phase 5.
+  Fill the placeholders, write one <tr> per manual flow, publish with the Artifact tool.
+  Matt edits this file directly over time; keep those changes when you fill it in.
+
+  Placeholders: {{FEATURE}} {{SLUG}} {{ISSUE}} {{BRANCH}} {{DATE}} {{URL}} {{ROWS}}
+-->
+<style>
+  :root {
+    --bg: #fbfbfa; --panel: #fff; --ink: #1a1a19; --muted: #6b6b68;
+    --line: #e4e4e1; --accent: #2f6f4f; --warn: #8a5a1a; --bad: #9b2c2c;
+  }
+  :root:not([data-theme="light"]) { }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161614; --panel: #1e1e1b; --ink: #ecebe6; --muted: #9a9a94;
+      --line: #33332e; --accent: #7fbf9a; --warn: #d9a75a; --bad: #e08585;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161614; --panel: #1e1e1b; --ink: #ecebe6; --muted: #9a9a94;
+    --line: #33332e; --accent: #7fbf9a; --warn: #d9a75a; --bad: #e08585;
+  }
+  body { background: var(--bg); color: var(--ink); margin: 0; padding: 2rem 1.25rem 4rem;
+         font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .wrap { max-width: 60rem; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  .meta { color: var(--muted); font-size: .875rem; margin-bottom: 2rem; }
+  .meta code { background: var(--panel); padding: .1rem .35rem; border-radius: 4px;
+               border: 1px solid var(--line); }
+  h2 { font-size: 1.05rem; margin: 2.25rem 0 .75rem; padding-bottom: .4rem;
+       border-bottom: 1px solid var(--line); }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th { text-align: left; font-weight: 600; color: var(--muted); font-size: .78rem;
+       text-transform: uppercase; letter-spacing: .04em; padding: .5rem .6rem;
+       border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: .7rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr[data-state="pass"] td:first-child { box-shadow: inset 3px 0 var(--accent); }
+  tr[data-state="fail"] td:first-child { box-shadow: inset 3px 0 var(--bad); }
+  tr[data-state="blocked"] td:first-child { box-shadow: inset 3px 0 var(--warn); }
+  .steps { color: var(--muted); font-size: .85rem; margin: .3rem 0 0; padding-left: 1.1rem; }
+  .verdict { display: flex; gap: .3rem; }
+  .verdict button { font: inherit; font-size: .78rem; padding: .2rem .5rem; cursor: pointer;
+                    background: var(--panel); color: var(--muted);
+                    border: 1px solid var(--line); border-radius: 5px; }
+  .verdict button[aria-pressed="true"] { color: var(--ink); border-color: currentColor; font-weight: 600; }
+  .verdict button[data-v="pass"][aria-pressed="true"] { color: var(--accent); }
+  .verdict button[data-v="fail"][aria-pressed="true"] { color: var(--bad); }
+  .verdict button[data-v="blocked"][aria-pressed="true"] { color: var(--warn); }
+  textarea { width: 100%; min-height: 2.4rem; font: inherit; font-size: .85rem; resize: vertical;
+             background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+             border-radius: 5px; padding: .35rem .5rem; }
+  .tally { position: sticky; bottom: 0; background: var(--panel); border: 1px solid var(--line);
+           border-radius: 8px; padding: .7rem 1rem; margin-top: 2rem; font-size: .9rem;
+           display: flex; gap: 1.25rem; flex-wrap: wrap; }
+  .tally b { font-variant-numeric: tabular-nums; }
+  .note { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+          border-radius: 6px; padding: .8rem 1rem; margin: 1rem 0; font-size: .9rem; }
+</style>
+
+<div class="wrap">
+  <h1>{{FEATURE}} — manual test</h1>
+  <div class="meta">
+    Issue #{{ISSUE}} · branch <code>{{BRANCH}}</code> · {{DATE}} · Hatchet dashboard at <code>{{URL}}</code>
+  </div>
+
+  <div class="note">
+    <strong>These flows are not automated.</strong> Everything that could be covered by a
+    unit or integration test already is, and passed. What is left is here
+    because a machine could not judge it — a dashboard check, a third-party webhook that
+    cannot be replayed locally, timing, or something that needs a second human.
+    Your verdicts save to this browser only. Nothing is sent anywhere.
+  </div>
+
+  <h2>Flows</h2>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:2.5rem">#</th>
+          <th>Flow and steps</th>
+          <th style="width:12rem">Expected</th>
+          <th style="width:11rem">Verdict</th>
+          <th style="width:13rem">Notes</th>
+        </tr>
+      </thead>
+      <tbody id="rows">
+        <!-- {{ROWS}} — one per manual flow, in this shape:
+        <tr data-id="f1">
+          <td>1</td>
+          <td><strong>Merge two contacts with conflicting phone numbers</strong>
+              <ol class="steps"><li>Open Contacts</li><li>Select two duplicates</li><li>Click Merge</li></ol></td>
+          <td>The dialog shows both numbers and asks which to keep</td>
+          <td><div class="verdict">
+            <button data-v="pass" aria-pressed="false">Pass</button>
+            <button data-v="fail" aria-pressed="false">Fail</button>
+            <button data-v="blocked" aria-pressed="false">Blocked</button>
+          </div></td>
+          <td><textarea placeholder="what you saw"></textarea></td>
+        </tr>
+        -->
+      </tbody>
+    </table>
+  </div>
+
+  <div class="tally">
+    <span>Pass <b id="t-pass">0</b></span>
+    <span>Fail <b id="t-fail">0</b></span>
+    <span>Blocked <b id="t-blocked">0</b></span>
+    <span>Untested <b id="t-none">0</b></span>
+    <span style="margin-left:auto"><button id="copy">Copy results</button></span>
+  </div>
+</div>
+
+<script>
+(function () {
+  var KEY = 'manual-test:{{SLUG}}';
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { state = {}; }
+
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  function tally() {
+    var rows = document.querySelectorAll('#rows tr'), c = { pass: 0, fail: 0, blocked: 0, none: 0 };
+    rows.forEach(function (r) { c[r.getAttribute('data-state') || 'none']++; });
+    ['pass', 'fail', 'blocked', 'none'].forEach(function (k) {
+      var el = document.getElementById('t-' + k); if (el) el.textContent = c[k];
+    });
+  }
+
+  document.querySelectorAll('#rows tr').forEach(function (row) {
+    var id = row.getAttribute('data-id'), saved = state[id] || {};
+    if (saved.verdict) row.setAttribute('data-state', saved.verdict);
+    row.querySelectorAll('.verdict button').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.v === saved.verdict));
+      b.addEventListener('click', function () {
+        var next = saved.verdict === b.dataset.v ? null : b.dataset.v;
+        saved.verdict = next; state[id] = saved;
+        row.setAttribute('data-state', next || '');
+        row.querySelectorAll('.verdict button').forEach(function (o) {
+          o.setAttribute('aria-pressed', String(o.dataset.v === next));
+        });
+        save(); tally();
+      });
+    });
+    var ta = row.querySelector('textarea');
+    if (ta) {
+      ta.value = saved.note || '';
+      ta.addEventListener('input', function () { saved.note = ta.value; state[id] = saved; save(); });
+    }
+  });
+
+  var copy = document.getElementById('copy');
+  if (copy) copy.addEventListener('click', function () {
+    var lines = ['Manual test — {{FEATURE}} (#{{ISSUE}})'];
+    document.querySelectorAll('#rows tr').forEach(function (r) {
+      var name = (r.querySelector('strong') || {}).textContent || r.getAttribute('data-id');
+      var v = r.getAttribute('data-state') || 'untested';
+      var n = (r.querySelector('textarea') || {}).value || '';
+      lines.push('- [' + v + '] ' + name + (n ? ' — ' + n : ''));
+    });
+    var text = lines.join('\n');
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () {
+      copy.textContent = 'Copied'; setTimeout(function () { copy.textContent = 'Copy results'; }, 1500);
+    });
+  });
+
+  tally();
+})();
+</script>
