@@ -52,7 +52,7 @@ async function backdateClaimedAt(id: string, millisecondsAgo: number): Promise<v
   ])
 }
 
-describe('claimPendingRows (flow 24: an invalid envelope is skipped, not returned)', () => {
+describe('claimPendingRows: an invalid envelope is skipped, not returned', () => {
   it('returns the good rows, skips the bad one, and marks it with an error', async () => {
     const goodIdA = await insertGoodRow(1)
     const goodIdB = await insertGoodRow(2)
@@ -86,7 +86,7 @@ describe('claimPendingRows (flow 24: an invalid envelope is skipped, not returne
   })
 })
 
-describe('prunePublished (flow 22)', () => {
+describe('prunePublished', () => {
   it('deletes only rows published before the cutoff', async () => {
     const oldId = await insertGoodRow(1)
     const newId = await insertGoodRow(2)
@@ -187,6 +187,57 @@ describe('claim semantics', () => {
 
     const afterCurrentOwner = await client.query('SELECT published_at FROM kinesin_outbox WHERE id = $1', [id])
     expect(afterCurrentOwner.rows[0]?.published_at).not.toBeNull()
+  })
+
+  it('recordPublishFailure only takes effect for the claim owner; a worker whose claim was taken over cannot touch the new owner’s row', async () => {
+    const id = await insertGoodRow(1)
+    await claimPendingRows(client, { limit: 10, workerId: 'worker-a', staleAfterMs: 60_000 })
+    await backdateClaimedAt(id, 1000)
+    const reclaimed = await claimPendingRows(client, { limit: 10, workerId: 'worker-b', staleAfterMs: 500 })
+    expect(reclaimed.rows.map((row) => row.id)).toEqual([id])
+
+    await recordPublishFailure(client, 'worker-a', [id], 'stale owner failure')
+
+    const afterStaleOwner = await client.query(
+      'SELECT attempts, last_error, claimed_by FROM kinesin_outbox WHERE id = $1',
+      [id],
+    )
+    expect(afterStaleOwner.rows[0]?.attempts).toBe(0)
+    expect(afterStaleOwner.rows[0]?.last_error).toBeNull()
+    expect(afterStaleOwner.rows[0]?.claimed_by).toBe('worker-b')
+
+    await recordPublishFailure(client, 'worker-b', [id], 'current owner failure')
+
+    const afterCurrentOwner = await client.query(
+      'SELECT attempts, last_error, claimed_at, claimed_by FROM kinesin_outbox WHERE id = $1',
+      [id],
+    )
+    expect(afterCurrentOwner.rows[0]?.attempts).toBe(1)
+    expect(afterCurrentOwner.rows[0]?.last_error).toBe('current owner failure')
+    expect(afterCurrentOwner.rows[0]?.claimed_at).toBeNull()
+    expect(afterCurrentOwner.rows[0]?.claimed_by).toBeNull()
+  })
+
+  it('releaseClaims only takes effect for the claim owner; a worker whose claim was taken over cannot release the new owner’s row', async () => {
+    const id = await insertGoodRow(1)
+    await claimPendingRows(client, { limit: 10, workerId: 'worker-a', staleAfterMs: 60_000 })
+    await backdateClaimedAt(id, 1000)
+    const reclaimed = await claimPendingRows(client, { limit: 10, workerId: 'worker-b', staleAfterMs: 500 })
+    expect(reclaimed.rows.map((row) => row.id)).toEqual([id])
+
+    await releaseClaims(client, 'worker-a', [id])
+
+    const afterStaleOwner = await client.query('SELECT claimed_at, claimed_by FROM kinesin_outbox WHERE id = $1', [id])
+    expect(afterStaleOwner.rows[0]?.claimed_at).not.toBeNull()
+    expect(afterStaleOwner.rows[0]?.claimed_by).toBe('worker-b')
+
+    await releaseClaims(client, 'worker-b', [id])
+
+    const afterCurrentOwner = await client.query('SELECT claimed_at, claimed_by FROM kinesin_outbox WHERE id = $1', [
+      id,
+    ])
+    expect(afterCurrentOwner.rows[0]?.claimed_at).toBeNull()
+    expect(afterCurrentOwner.rows[0]?.claimed_by).toBeNull()
   })
 
   it('rows come back in created_at order', async () => {

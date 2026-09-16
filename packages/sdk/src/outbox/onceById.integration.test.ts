@@ -3,8 +3,8 @@ import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { onceById } from './onceById.js'
 
-// Flow 4, mandatory must-hold: at-least-once redelivery of the same envelope
-// id is idempotent (redelivery-idempotent), and a body that throws inside a
+// Mandatory must-holds: at-least-once redelivery of the same envelope id is
+// idempotent (redelivery-idempotent), and a body that throws inside a
 // rolled-back transaction is retried (rollback-never-delivers, applied to
 // the processed row rather than the outbox row).
 
@@ -23,7 +23,7 @@ afterEach(async () => {
   await client.query('TRUNCATE kinesin_processed')
 })
 
-describe('onceById (flow 4)', () => {
+describe('onceById', () => {
   it('runs the body once across repeated calls for the same envelope id and handler', async () => {
     const envelopeId = randomUUID()
     let calls = 0

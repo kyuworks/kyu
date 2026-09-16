@@ -13,6 +13,8 @@ import type { Queryable } from '../db/queryable.js'
 import { insertOutboxRow } from './outboxRepository.js'
 
 // Interior: takes the already-validated envelope. publish() never talks to the engine.
+// No ON CONFLICT: publishing the same envelope id twice raises the primary-key
+// violation and aborts the caller's transaction, on purpose.
 export async function publishEnvelope<TData extends MessageDataShape = EnvelopeData>(
   tx: Queryable,
   envelope: Envelope<TData>,

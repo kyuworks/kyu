@@ -12,4 +12,5 @@ export interface QueryRows {
 // here imports `pg`. Rows are unparsed until a repository function decodes them.
 export interface Queryable {
   query(text: string, params: readonly QueryParam[]): Promise<QueryRows>
+  readonly totalCount?: never // a pool is not a transaction
 }

@@ -6,14 +6,21 @@ import { outboxRowSchema } from './rows.js'
 
 const outboxRowIdSchema = z.object({ id: z.uuid() })
 
-// Postgres array literal for `= ANY($n::uuid[])`; readonly string[] is not a
-// QueryParam, and this is the smaller change over widening QueryParam for one caller.
+function assertNonEmptyWorkerId(workerId: string): void {
+  if (workerId === '') throw new RangeError('workerId must not be empty')
+}
+
+function assertValidStaleAfterMs(staleAfterMs: number): void {
+  if (!Number.isFinite(staleAfterMs) || staleAfterMs < 0) {
+    throw new RangeError(`staleAfterMs must be a non-negative finite number, got ${staleAfterMs}`)
+  }
+}
+
+// Postgres array literal for `= ANY($n::uuid[])`; readonly string[] is not a QueryParam.
 function uuidArrayLiteral(ids: readonly string[]): string {
   return `{${ids.map((id) => JSON.stringify(id)).join(',')}}`
 }
 
-// Generic over TData so a caller holding a definition-narrowed Envelope<TData>
-// (e.g. from createPublisher) can pass it without widening the data shape first.
 export async function insertOutboxRow<TData extends MessageDataShape = EnvelopeData>(
   db: Queryable,
   envelope: Envelope<TData>,
@@ -29,8 +36,7 @@ export async function insertOutboxRow<TData extends MessageDataShape = EnvelopeD
 export interface ClaimPendingRowsOptions {
   limit: number
   workerId: string
-  // Must be a non-negative finite number of milliseconds; passed to Postgres
-  // unvalidated as text concatenated into an interval literal.
+  // Non-negative finite milliseconds, checked before it reaches the interval literal.
   staleAfterMs: number
 }
 
@@ -39,15 +45,13 @@ export interface ClaimedRows {
   skipped: readonly string[]
 }
 
-// Flow 24 trust edge: a row whose envelope fails outboxRowSchema is never
-// returned to a caller. It is marked with an error and left claimed, so it
-// waits out the same staleAfterMs backoff as any other claimed row instead
-// of being re-claimed on the very next poll.
-//
-// The claim and the bad-row mark below are two statements, not one
-// transaction: a crash between them leaves the row claimed (not yet marked)
-// until the claim goes stale on its own.
+// A crash between the claim and the bad-row mark below leaves the row
+// claimed until it goes stale under the same staleAfterMs backoff every claimed row gets.
+// workerId must be unique per running process; the SDK cannot check that.
 export async function claimPendingRows(db: Queryable, options: ClaimPendingRowsOptions): Promise<ClaimedRows> {
+  assertNonEmptyWorkerId(options.workerId)
+  assertValidStaleAfterMs(options.staleAfterMs)
+
   const claimed = await db.query(
     `UPDATE kinesin_outbox
      SET claimed_at = now(), claimed_by = $1
@@ -92,6 +96,7 @@ export async function claimPendingRows(db: Queryable, options: ClaimPendingRowsO
 // the original worker's ids; the claimed_by check keeps that worker's
 // follow-up write from landing on the new owner's row.
 export async function markPublished(db: Queryable, workerId: string, ids: readonly string[]): Promise<void> {
+  assertNonEmptyWorkerId(workerId)
   await db.query('UPDATE kinesin_outbox SET published_at = now() WHERE id = ANY($1::uuid[]) AND claimed_by = $2', [
     uuidArrayLiteral(ids),
     workerId,
@@ -104,6 +109,7 @@ export async function recordPublishFailure(
   ids: readonly string[],
   error: string,
 ): Promise<void> {
+  assertNonEmptyWorkerId(workerId)
   await db.query(
     `UPDATE kinesin_outbox
      SET attempts = attempts + 1, last_error = $1, claimed_at = NULL, claimed_by = NULL
@@ -113,6 +119,7 @@ export async function recordPublishFailure(
 }
 
 export async function releaseClaims(db: Queryable, workerId: string, ids: readonly string[]): Promise<void> {
+  assertNonEmptyWorkerId(workerId)
   await db.query(
     'UPDATE kinesin_outbox SET claimed_at = NULL, claimed_by = NULL WHERE id = ANY($1::uuid[]) AND claimed_by = $2',
     [uuidArrayLiteral(ids), workerId],

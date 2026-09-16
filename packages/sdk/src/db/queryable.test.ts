@@ -1,4 +1,4 @@
-import { Client } from 'pg'
+import { Client, Pool } from 'pg'
 import type { PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
 import type { Queryable } from './queryable.js'
@@ -17,5 +17,11 @@ describe('Queryable', () => {
   it('is structurally satisfied by pg.PoolClient with no cast', () => {
     const accept = (client: PoolClient): Queryable => acceptsQueryable(client)
     expect(accept).toBeInstanceOf(Function)
+  })
+
+  it('is not satisfied by pg.Pool: a pool hands each query to a different connection', () => {
+    // @ts-expect-error Pool.totalCount is a number; Queryable requires it to be never.
+    const q: Queryable = new Pool()
+    expect(q).toBeDefined()
   })
 })

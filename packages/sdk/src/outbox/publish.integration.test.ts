@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { defineEvent, envelopeSchema } from '@kinesin/schemas'
-import { Client } from 'pg'
+import { Client, DatabaseError } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { createPublisher } from './publish.js'
+import { createPublisher, publishEnvelope } from './publish.js'
 
-// Flow 2, mandatory must-hold: a message published inside a transaction that
-// rolls back is never delivered (rollback-never-delivers).
+// Mandatory must-hold: a message published inside a transaction that rolls
+// back is never delivered (rollback-never-delivers).
 
 const thingHappened = defineEvent({
   name: 'kinesin.outbox_test.happened',
@@ -29,7 +29,7 @@ afterEach(async () => {
   await client.query('TRUNCATE kinesin_outbox')
 })
 
-describe('publish via the outbox (flow 2)', () => {
+describe('publish via the outbox', () => {
   it('a rolled-back transaction leaves no outbox row', async () => {
     const publisher = createPublisher({ source: 'outbox-test' })
 
@@ -65,5 +65,24 @@ describe('publish via the outbox (flow 2)', () => {
     expect(row?.name).toBe(envelope.name)
     expect(row?.tenant_id).toBe(envelope.tenantId)
     expect(envelopeSchema.parse(row?.envelope)).toEqual(envelope)
+  })
+
+  it('publishing the same envelope twice in one transaction rejects with the unique-violation error', async () => {
+    const publisher = createPublisher({ source: 'outbox-test' })
+
+    await client.query('BEGIN')
+    const envelope = await publisher.publish(client, thingHappened, { n: 3 }, { tenantId: null })
+
+    let caught: unknown
+    try {
+      await publishEnvelope(client, envelope)
+    } catch (error) {
+      caught = error
+    }
+
+    if (!(caught instanceof DatabaseError)) throw new Error('expected a pg DatabaseError')
+    expect(caught.code).toBe('23505')
+
+    await client.query('ROLLBACK')
   })
 })
