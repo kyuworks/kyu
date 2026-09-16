@@ -3,32 +3,37 @@ export interface MessageDataIssue {
   message: string
 }
 
-/** A message's `data` failed its Standard Schema at the publish boundary. */
-export class MessageDataError extends Error {
+export type EnvelopeOptionIssue = MessageDataIssue
+
+abstract class IssueError extends Error {
   readonly issues: ReadonlyArray<MessageDataIssue>
 
-  constructor(issues: ReadonlyArray<MessageDataIssue>) {
+  constructor(kind: string, issues: ReadonlyArray<MessageDataIssue>, options?: { cause: Error }) {
     const summary = issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')
-    super(`message data failed validation: ${summary}`)
-    this.name = 'MessageDataError'
+    super(`${kind} failed validation: ${summary}`, options)
+    this.name = new.target.name
     this.issues = issues
   }
 }
 
-export interface EnvelopeOptionIssue {
-  path: string
-  message: string
+/** A message's `data` failed its Standard Schema at the publish boundary. */
+export class MessageDataError extends IssueError {
+  constructor(issues: ReadonlyArray<MessageDataIssue>) {
+    super('message data', issues)
+  }
 }
 
 /** `createEnvelope`'s options, combined with the already-validated `data`, failed `envelopeSchema`. */
-export class EnvelopeOptionsError extends Error {
-  readonly issues: ReadonlyArray<EnvelopeOptionIssue>
-
+export class EnvelopeOptionsError extends IssueError {
   constructor(issues: ReadonlyArray<EnvelopeOptionIssue>) {
-    const summary = issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')
-    super(`envelope options failed validation: ${summary}`)
-    this.name = 'EnvelopeOptionsError'
-    this.issues = issues
+    super('envelope options', issues)
+  }
+}
+
+/** `fromEnvelopeMetadata` was given a record that fails `envelopeMetadataSchema`. */
+export class EnvelopeMetadataError extends IssueError {
+  constructor(issues: ReadonlyArray<EnvelopeOptionIssue>, cause: Error) {
+    super('envelope metadata', issues, { cause })
   }
 }
 
