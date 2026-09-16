@@ -244,12 +244,12 @@ describe('claim semantics', () => {
     const idA = await insertGoodRow(1)
     const idB = await insertGoodRow(2)
     const idC = await insertGoodRow(3)
-    await backdateCreatedAt(idA, 3000)
+    await backdateCreatedAt(idA, 1000)
     await backdateCreatedAt(idB, 2000)
-    await backdateCreatedAt(idC, 1000)
+    await backdateCreatedAt(idC, 3000)
 
     const claimed = await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 60_000 })
 
-    expect(claimed.rows.map((row) => row.id)).toEqual([idA, idB, idC])
+    expect(claimed.rows.map((row) => row.id)).toEqual([idC, idB, idA])
   })
 })

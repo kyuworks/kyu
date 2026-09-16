@@ -3,10 +3,8 @@ import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { onceById } from './onceById.js'
 
-// Mandatory must-holds: at-least-once redelivery of the same envelope id is
-// idempotent (redelivery-idempotent), and a body that throws inside a
-// rolled-back transaction is retried (rollback-never-delivers, applied to
-// the processed row rather than the outbox row).
+// Mandatory must-holds: redelivery of the same envelope id is idempotent,
+// and a body that throws inside a rolled-back transaction is retried.
 
 let client: Client
 

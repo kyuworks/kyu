@@ -80,9 +80,9 @@ describe('publish via the outbox', () => {
       caught = error
     }
 
+    await client.query('ROLLBACK')
+
     if (!(caught instanceof DatabaseError)) throw new Error('expected a pg DatabaseError')
     expect(caught.code).toBe('23505')
-
-    await client.query('ROLLBACK')
   })
 })

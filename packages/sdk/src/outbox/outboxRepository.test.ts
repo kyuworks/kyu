@@ -64,6 +64,51 @@ describe('claimPendingRows validation', () => {
     await expect(claimPendingRows(db, { limit: 10, workerId: '', staleAfterMs: 1000 })).rejects.toThrow(RangeError)
     expect(db.calls).toBe(0)
   })
+
+  it('rejects a whitespace-only workerId before querying', async () => {
+    const db = recordingQueryable()
+    await expect(claimPendingRows(db, { limit: 10, workerId: '   ', staleAfterMs: 1000 })).rejects.toThrow(RangeError)
+    expect(db.calls).toBe(0)
+  })
+
+  it('rejects a negative limit before querying', async () => {
+    const db = recordingQueryable()
+    await expect(claimPendingRows(db, { limit: -1, workerId: 'worker-1', staleAfterMs: 1000 })).rejects.toThrow(
+      RangeError,
+    )
+    expect(db.calls).toBe(0)
+  })
+
+  it('rejects a zero limit before querying', async () => {
+    const db = recordingQueryable()
+    await expect(claimPendingRows(db, { limit: 0, workerId: 'worker-1', staleAfterMs: 1000 })).rejects.toThrow(
+      RangeError,
+    )
+    expect(db.calls).toBe(0)
+  })
+
+  it('rejects a fractional limit before querying', async () => {
+    const db = recordingQueryable()
+    await expect(claimPendingRows(db, { limit: 2.5, workerId: 'worker-1', staleAfterMs: 1000 })).rejects.toThrow(
+      RangeError,
+    )
+    expect(db.calls).toBe(0)
+  })
+
+  it('rejects a NaN limit before querying', async () => {
+    const db = recordingQueryable()
+    await expect(claimPendingRows(db, { limit: Number.NaN, workerId: 'worker-1', staleAfterMs: 1000 })).rejects.toThrow(
+      RangeError,
+    )
+    expect(db.calls).toBe(0)
+  })
+
+  it('accepts a limit of 1', async () => {
+    const db = recordingQueryable()
+    const result = await claimPendingRows(db, { limit: 1, workerId: 'worker-1', staleAfterMs: 1000 })
+    expect(result).toEqual({ rows: [], skipped: [] })
+    expect(db.calls).toBe(1)
+  })
 })
 
 describe('ownership functions reject an empty workerId before querying', () => {

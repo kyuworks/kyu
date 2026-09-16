@@ -7,12 +7,18 @@ import { outboxRowSchema } from './rows.js'
 const outboxRowIdSchema = z.object({ id: z.uuid() })
 
 function assertNonEmptyWorkerId(workerId: string): void {
-  if (workerId === '') throw new RangeError('workerId must not be empty')
+  if (workerId.trim() === '') throw new RangeError('workerId must not be empty')
 }
 
 function assertValidStaleAfterMs(staleAfterMs: number): void {
   if (!Number.isFinite(staleAfterMs) || staleAfterMs < 0) {
     throw new RangeError(`staleAfterMs must be a non-negative finite number, got ${staleAfterMs}`)
+  }
+}
+
+function assertValidLimit(limit: number): void {
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new RangeError(`limit must be an integer >= 1, got ${limit}`)
   }
 }
 
@@ -41,14 +47,14 @@ export interface ClaimPendingRowsOptions {
 }
 
 export interface ClaimedRows {
-  rows: OutboxRow[]
+  rows: readonly OutboxRow[]
   skipped: readonly string[]
 }
 
 // A crash between the claim and the bad-row mark below leaves the row
-// claimed until it goes stale under the same staleAfterMs backoff every claimed row gets.
-// workerId must be unique per running process; the SDK cannot check that.
+// claimed until it goes stale; workerId must be unique per running process.
 export async function claimPendingRows(db: Queryable, options: ClaimPendingRowsOptions): Promise<ClaimedRows> {
+  assertValidLimit(options.limit)
   assertNonEmptyWorkerId(options.workerId)
   assertValidStaleAfterMs(options.staleAfterMs)
 
@@ -92,9 +98,8 @@ export async function claimPendingRows(db: Queryable, options: ClaimPendingRowsO
   return { rows, skipped }
 }
 
-// A claim that went stale and was taken over by another worker still holds
-// the original worker's ids; the claimed_by check keeps that worker's
-// follow-up write from landing on the new owner's row.
+// A claim taken over by another worker still holds the original worker's
+// ids; the claimed_by check keeps its follow-up write off the new owner's row.
 export async function markPublished(db: Queryable, workerId: string, ids: readonly string[]): Promise<void> {
   assertNonEmptyWorkerId(workerId)
   await db.query('UPDATE kinesin_outbox SET published_at = now() WHERE id = ANY($1::uuid[]) AND claimed_by = $2', [
