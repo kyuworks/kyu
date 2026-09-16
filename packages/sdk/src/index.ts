@@ -10,6 +10,7 @@ export {
 } from '@kinesin/schemas'
 export type {
   Envelope,
+  EnvelopeMetadataFields,
   JsonObject,
   MessageData,
   MessageDefinition,

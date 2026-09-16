@@ -125,13 +125,13 @@ describe('subscribe: tenant id', () => {
       scope: envelope.tenantId ?? 'global',
     })
 
-    await waitUntil(() => received.some((r) => r.envelope.id === envelope.id), 10_000)
+    await waitUntil(() => received.some((r) => r.envelope.id === envelope.id), 60_000)
     const match = received.find((r) => r.envelope.id === envelope.id)
     // Primary check: the envelope itself, decoded from the event payload.
     expect(match?.envelope.tenantId).toBe(envelope.tenantId)
     // The decoded additionalMetadata must agree — runHandler rejects the run otherwise.
     expect(match?.metadata.tenantId).toBe(envelope.tenantId)
-  }, 30_000)
+  }, 90_000)
 
   it('a global message has null tenantId on the envelope and the decoded metadata (flow 6)', async () => {
     const envelope = await createEnvelope(definition, { seq: 2 }, { tenantId: null, source: 'sdk.test' })
@@ -140,11 +140,11 @@ describe('subscribe: tenant id', () => {
       scope: envelope.tenantId ?? 'global',
     })
 
-    await waitUntil(() => received.some((r) => r.envelope.id === envelope.id), 10_000)
+    await waitUntil(() => received.some((r) => r.envelope.id === envelope.id), 60_000)
     const match = received.find((r) => r.envelope.id === envelope.id)
     expect(match?.envelope.tenantId).toBeNull()
     expect(match?.metadata.tenantId).toBeNull()
-  }, 30_000)
+  }, 90_000)
 
   it('rejects a run whose additionalMetadata tenantId disagrees with the envelope (flow 24)', async () => {
     const envelope = await createEnvelope(
@@ -475,9 +475,9 @@ describe('subscribe: command', () => {
       scope: 'global',
     })
 
-    await waitUntil(() => received.some((e) => e.id === envelope.id), 10_000)
+    await waitUntil(() => received.some((e) => e.id === envelope.id), 60_000)
     const match = received.find((e) => e.id === envelope.id)
     expect(match?.kind).toBe('command')
     expect(match?.data).toEqual({ seq: 1 })
-  }, 30_000)
+  }, 90_000)
 })

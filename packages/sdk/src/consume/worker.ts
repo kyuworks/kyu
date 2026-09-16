@@ -30,13 +30,9 @@ export function assertSingleCommandSubscriber(subscriptions: readonly Subscripti
   }
 }
 
-/**
- * `assertSingleCommandSubscriber` only sees the subscriptions passed to this
- * call, i.e. one worker in one process. Two workers in separate processes
- * that both subscribe to the same command are not detected by the SDK —
- * keep one process per command. If it happens anyway, the engine's own
- * dashboard shows both registrations.
- */
+// The command check sees one worker's own subscriptions only: two processes
+// subscribing to the same command are not detected. Keep one process per
+// command (design § 10).
 export async function createWorker(
   hatchet: HatchetClient,
   name: string,
@@ -53,9 +49,8 @@ export async function createWorker(
 
   const worker = await hatchet.worker(name, workerOptions)
 
-  // Rejects the moment start() fails, independent of call order: a caller
-  // may await waitUntilReady() before start() is ever invoked, and must
-  // still learn about a start failure instead of hanging on a dead probe.
+  // Rejects the moment start() fails, in either call order: waitUntilReady()
+  // may be awaited before start() and must not hang on a dead probe.
   let rejectStartFailure: (error: Error) => void = () => undefined
   const startFailure = new Promise<never>((_resolve, reject) => {
     rejectStartFailure = reject

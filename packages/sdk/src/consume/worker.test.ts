@@ -111,24 +111,35 @@ describe('createWorker', () => {
 
 describe('KinesinWorker.waitUntilReady', () => {
   it('rejects with the start error, and never leaves an unhandled rejection', async () => {
-    const startError = new Error('engine unreachable')
-    const { client } = fakeHatchetClient(() =>
-      Promise.resolve(
-        fakeWorker({
-          start: () => Promise.reject(startError),
-          waitUntilReady: () => new Promise<void>(() => undefined),
-        }),
-      ),
-    )
-    const subscription = stubSubscription('send-invoice', 'command', 'shop.invoice.send')
-    const worker = await createWorker(client, 'worker', { subscriptions: [subscription] })
+    const unhandled: unknown[] = []
+    const onUnhandledRejection: NodeJS.UnhandledRejectionListener = (reason) => {
+      unhandled.push(reason)
+    }
+    process.on('unhandledRejection', onUnhandledRejection)
 
-    const started = worker.start()
-    // Attached so this test's own rejection tracking does not flag the same
-    // promise a second time; production code already attached its own catch.
-    void started.catch(() => undefined)
+    try {
+      const startError = new Error('engine unreachable')
+      const { client } = fakeHatchetClient(() =>
+        Promise.resolve(
+          fakeWorker({
+            start: () => Promise.reject(startError),
+            waitUntilReady: () => new Promise<void>(() => undefined),
+          }),
+        ),
+      )
+      const subscription = stubSubscription('send-invoice', 'command', 'shop.invoice.send')
+      const worker = await createWorker(client, 'worker', { subscriptions: [subscription] })
 
-    await expect(worker.waitUntilReady()).rejects.toBe(startError)
+      const started = worker.start()
+      // Attached so this test's own rejection tracking does not flag the same
+      // promise a second time; production code already attached its own catch.
+      void started.catch(() => undefined)
+
+      await expect(worker.waitUntilReady()).rejects.toBe(startError)
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection)
+    }
   })
 
   it('surfaces a later start() failure even when waitUntilReady() was called first', async () => {
