@@ -11,7 +11,7 @@ Kinesin's delivery, retries, ordering, rate limits, timers, durable waits and ru
 
 ## Context
 
-The requirements (design document § 4) need fan-out to many subscribers, single-subscriber commands, retries with backoff, dead-lettering, delayed and cron delivery, per-key ordering, coalescing, durable waits correlated to future events, priority, rate limits, inbound webhooks, and a run history with replay. Camba runs on Fly with Postgres and has no Redis. The company wants to self-host and to avoid per-message fees.
+The requirements (design document § 4) need fan-out to many subscribers, single-subscriber commands, retries with backoff, dead-lettering, delayed and cron delivery, per-key ordering, coalescing, durable waits correlated to future events, priority, rate limits, inbound webhooks, and a run history with replay. The company runs on Fly with Postgres and has no Redis. The company wants to self-host and to avoid per-message fees.
 
 ---
 
