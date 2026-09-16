@@ -1,8 +1,9 @@
 import { NonRetryableError } from './hatchet.js'
 
-export { MessageDataError } from '@kinesin/schemas'
+export { EnvelopeOptionsError, MessageDataError, MessageDefinitionError } from '@kinesin/schemas'
+export type { MessageDataIssue } from '@kinesin/schemas'
 
-/** Base for every SDK-raised error not already covered by the engine's own. */
+/** Base for SDK-raised errors that are not envelope- or message-definition errors from `@kinesin/schemas`. */
 export class KinesinError extends Error {
   constructor(message: string) {
     super(message)
@@ -37,7 +38,7 @@ export class EnvelopeRejectedError extends NonRetryableError {
   constructor(reason: string, envelopeId?: string) {
     let message = `envelope rejected: ${reason}`
     if (envelopeId !== undefined) {
-      message = `envelope rejected: ${reason} (envelope ${envelopeId})`
+      message += ` (envelope ${envelopeId})`
     }
     super(message)
     this.name = 'EnvelopeRejectedError'

@@ -11,4 +11,12 @@ export { SDK_VERSION } from './version.js'
 export { ConcurrencyLimitStrategy, NonRetryableError, Or, Priority, createHatchetClient } from './hatchet.js'
 export type { HatchetClient, HatchetClientConfig, HatchetClientOptions, Worker } from './hatchet.js'
 
-export { CommandHasTwoSubscribersError, EnvelopeRejectedError, KinesinError, MessageDataError } from './errors.js'
+export {
+  CommandHasTwoSubscribersError,
+  EnvelopeOptionsError,
+  EnvelopeRejectedError,
+  KinesinError,
+  MessageDataError,
+  MessageDefinitionError,
+} from './errors.js'
+export type { MessageDataIssue } from './errors.js'

@@ -17,24 +17,21 @@ export type { HatchetClient, Worker }
 export interface HatchetClientOptions {
   token?: string
   tls?: 'tls' | 'mtls' | 'none'
+  tlsCertFile?: string
+  tlsKeyFile?: string
+  tlsRootCaFile?: string
+  tlsServerName?: string
   hostPort?: string
   apiUrl?: string
   namespace?: string
   logLevel?: 'OFF' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
 }
 
-interface HatchetTlsConfig {
-  tls_strategy: 'tls' | 'mtls' | 'none'
-}
-
-export interface HatchetClientConfig {
-  token?: string
-  tls_config?: HatchetTlsConfig
-  host_port?: string
-  api_url?: string
-  namespace?: string
-  log_level?: 'OFF' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
-}
+/**
+ * The engine's own config shape, read off `HatchetClient.init` itself so a
+ * misspelt field here is a compile error rather than a silently dropped option.
+ */
+export type HatchetClientConfig = NonNullable<Parameters<typeof HatchetClient.init>[0]>
 
 /** Maps Kinesin's own option names to the engine SDK's `ClientConfig` shape. */
 export function toHatchetClientConfig(options: HatchetClientOptions): HatchetClientConfig {
@@ -42,8 +39,29 @@ export function toHatchetClientConfig(options: HatchetClientOptions): HatchetCli
   if (options.token !== undefined) {
     config.token = options.token
   }
-  if (options.tls !== undefined) {
-    config.tls_config = { tls_strategy: options.tls }
+  const hasTlsOption =
+    options.tls !== undefined ||
+    options.tlsCertFile !== undefined ||
+    options.tlsKeyFile !== undefined ||
+    options.tlsRootCaFile !== undefined ||
+    options.tlsServerName !== undefined
+  if (hasTlsOption) {
+    config.tls_config = {}
+    if (options.tls !== undefined) {
+      config.tls_config.tls_strategy = options.tls
+    }
+    if (options.tlsCertFile !== undefined) {
+      config.tls_config.cert_file = options.tlsCertFile
+    }
+    if (options.tlsKeyFile !== undefined) {
+      config.tls_config.key_file = options.tlsKeyFile
+    }
+    if (options.tlsRootCaFile !== undefined) {
+      config.tls_config.ca_file = options.tlsRootCaFile
+    }
+    if (options.tlsServerName !== undefined) {
+      config.tls_config.server_name = options.tlsServerName
+    }
   }
   if (options.hostPort !== undefined) {
     config.host_port = options.hostPort
