@@ -13,6 +13,8 @@ export interface HandlerContext<TData extends MessageDataShape> {
   metadata: Record<string, string>
   retryCount: number
   runId: string
+  /** Aborts when the engine cancels this run (coalescing, timeout, manual cancel). */
+  signal: AbortSignal
   logger: HandlerLogger
 }
 
@@ -28,6 +30,7 @@ export function buildHandlerContext<TData extends MessageDataShape>(
     metadata: hatchetContext.additionalMetadata(),
     retryCount: hatchetContext.retryCount(),
     runId: hatchetContext.workflowRunId(),
+    signal: hatchetContext.abortController.signal,
     logger: {
       info: (message) => {
         void hatchetContext.logger.info(message)

@@ -1,12 +1,20 @@
-import { envelopeSchema, validateStandard } from '@kinesin/schemas'
-import type { Envelope, MessageDataShape, MessageDefinition, MessageKind, MessageSchema } from '@kinesin/schemas'
+import { parseEnvelopeSafe, validateStandard } from '@kinesin/schemas'
+import type {
+  Envelope,
+  MessageDataShape,
+  MessageDefinition,
+  MessageKind,
+  MessageSchema,
+  Unparsed,
+} from '@kinesin/schemas'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { EnvelopeRejectedError } from '../errors.js'
-import { Priority } from '../hatchet.js'
+import { Priority, RateLimitDuration } from '../hatchet.js'
 import type {
   Concurrency,
   Context,
   CreateTaskWorkflowOpts,
+  Duration,
   HatchetClient,
   JsonObject,
   TaskWorkflowDeclaration,
@@ -32,7 +40,7 @@ export interface SubscribeOptions<TData extends MessageDataShape> {
   retries?: number
   backoff?: { factor?: number; maxSeconds?: number }
   rateLimits?: RateLimitOption[]
-  executionTimeout?: string
+  executionTimeout?: Extract<Duration, string>
   priority?: 'low' | 'medium' | 'high'
 }
 
@@ -43,19 +51,15 @@ export interface Subscription {
   workflow: TaskWorkflowDeclaration
 }
 
-// The v1 SDK's own protobuf-generated RateLimitDuration enum is not
-// re-exported from its approved import site (`v1/index.js`); TypeScript
-// accepts a plain number for a numeric-enum-typed field, so the ordinal is
-// pinned here instead of reaching past that import site for the enum.
-const RATE_LIMIT_DURATION_CODE = {
-  SECOND: 0,
-  MINUTE: 1,
-  HOUR: 2,
-  DAY: 3,
-  WEEK: 4,
-  MONTH: 5,
-  YEAR: 6,
-} as const
+const RATE_LIMIT_DURATION = {
+  SECOND: RateLimitDuration.SECOND,
+  MINUTE: RateLimitDuration.MINUTE,
+  HOUR: RateLimitDuration.HOUR,
+  DAY: RateLimitDuration.DAY,
+  WEEK: RateLimitDuration.WEEK,
+  MONTH: RateLimitDuration.MONTH,
+  YEAR: RateLimitDuration.YEAR,
+} satisfies Record<Extract<RateLimitOption, { dynamicKey: string }>['duration'], RateLimitDuration>
 
 const PRIORITY_CODE = { low: Priority.LOW, medium: Priority.MEDIUM, high: Priority.HIGH } as const
 
@@ -64,10 +68,10 @@ interface HatchetRateLimitInput {
   staticKey?: string
   dynamicKey?: string
   limit?: number
-  duration?: number
+  duration?: RateLimitDuration
 }
 
-function toHatchetRateLimit(option: RateLimitOption): HatchetRateLimitInput {
+export function toHatchetRateLimit(option: RateLimitOption): HatchetRateLimitInput {
   if ('staticKey' in option) {
     return { staticKey: option.staticKey, units: option.units ?? 1 }
   }
@@ -75,7 +79,7 @@ function toHatchetRateLimit(option: RateLimitOption): HatchetRateLimitInput {
     dynamicKey: option.dynamicKey,
     units: option.units ?? 1,
     limit: option.limit,
-    duration: RATE_LIMIT_DURATION_CODE[option.duration],
+    duration: RATE_LIMIT_DURATION[option.duration],
   }
 }
 
@@ -94,15 +98,15 @@ function toConcurrencyList(
  */
 export async function decodeIncomingEnvelope<S extends MessageSchema>(
   definition: MessageDefinition<S>,
-  input: JsonObject,
+  input: Unparsed,
 ): Promise<Envelope<StandardSchemaV1.InferOutput<S>>> {
-  const parsed = envelopeSchema.safeParse(input)
-  if (!parsed.success) {
-    const summary = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')
+  const parsed = parseEnvelopeSafe(input)
+  if (!parsed.ok) {
+    const summary = parsed.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')
     throw new EnvelopeRejectedError(`payload does not match the envelope schema: ${summary}`)
   }
 
-  const envelope = parsed.data
+  const envelope = parsed.envelope
   if (envelope.name !== definition.name || envelope.version !== definition.version) {
     throw new EnvelopeRejectedError(
       `expected ${definition.name} v${definition.version}, got ${envelope.name} v${envelope.version}`,
@@ -147,12 +151,7 @@ export function subscribe<S extends MessageSchema>(
   if (options.retries !== undefined) taskOptions.retries = options.retries
   if (options.backoff !== undefined) taskOptions.backoff = options.backoff
   if (options.rateLimits !== undefined) taskOptions.rateLimits = options.rateLimits.map(toHatchetRateLimit)
-  // Hatchet's Duration type is a narrower template-literal shape than the
-  // human-readable go-duration string this API accepts; the engine validates
-  // the format at run time.
-  if (options.executionTimeout !== undefined) {
-    taskOptions.executionTimeout = options.executionTimeout as NonNullable<CreateTaskWorkflowOpts['executionTimeout']>
-  }
+  if (options.executionTimeout !== undefined) taskOptions.executionTimeout = options.executionTimeout
   if (options.priority !== undefined) taskOptions.defaultPriority = PRIORITY_CODE[options.priority]
 
   const workflow = hatchet.task<JsonObject, void>(taskOptions)

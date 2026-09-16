@@ -7,6 +7,7 @@ import { NonRetryableError, createHatchetClient } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
 import type { HandlerContext } from './handlerContext.js'
 import { subscribe } from './subscribe.js'
+import type { Subscription } from './subscribe.js'
 import { createWorker } from './worker.js'
 import type { KinesinWorker } from './worker.js'
 
@@ -32,6 +33,61 @@ function sleep(ms: number): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
+// Resolves early when `signal` aborts, so a coalesced (cancelled) run's
+// handler can stop before recording anything, instead of running to
+// completion in Node while the engine's own record shows it cancelled.
+function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (signal.aborted) {
+      resolve()
+      return
+    }
+    const timer = setTimeout(resolve, ms)
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        resolve()
+      },
+      { once: true },
+    )
+  })
+}
+
+// The engine namespaces a worker's own workflows at registration time
+// (`applyNamespace`); `Subscription.name` is exactly the pre-namespace name
+// it namespaces, so this mirrors that without reaching into engine internals.
+function namespacedWorkflowName(subscriptionName: string): string {
+  return `${namespace}${subscriptionName}`
+}
+
+async function waitForFailedRun(
+  filter: { workflowNames?: string[]; additionalMetadata?: Record<string, string> },
+  timeoutMs: number,
+): Promise<{ retryCount?: number; attempt?: number } | undefined> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const result = await hatchet.runs.list({ ...filter, onlyTasks: true })
+    const failed = result.rows.find((row) => row.status === 'FAILED')
+    if (failed !== undefined) return failed
+    if (Date.now() >= deadline) return undefined
+    await sleep(200)
+  }
+}
+
+// Polls instead of a fixed sleep: under load the engine's own status update
+// can lag well past a run's local completion.
+async function waitForTerminalStatus(envelopeId: string, timeoutMs: number): Promise<string | undefined> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const result = await hatchet.runs.list({ additionalMetadata: { envelopeId } })
+    const status = result.rows[0]?.status
+    const isTerminal = status === 'COMPLETED' || status === 'CANCELLED' || status === 'FAILED'
+    if (isTerminal || Date.now() >= deadline) return status
+    await sleep(200)
+  }
+}
+
 describe('subscribe: tenant id', () => {
   const definition = defineEvent({
     name: 'kinesin.subscribe.tenanted',
@@ -40,7 +96,7 @@ describe('subscribe: tenant id', () => {
   })
 
   const received: Array<{ envelope: Envelope<{ seq: number }>; metadata: Record<string, string> }> = []
-  let worker: KinesinWorker
+  let worker: KinesinWorker | undefined
 
   beforeAll(async () => {
     const subscription = subscribe(hatchet, definition, {
@@ -50,12 +106,12 @@ describe('subscribe: tenant id', () => {
       },
     })
     worker = await createWorker(hatchet, 'kinesin-subscribe-tenant', { subscriptions: [subscription] })
-    worker.start()
+    void worker.start()
     await worker.waitUntilReady()
   }, 60_000)
 
   afterAll(async () => {
-    await worker.stop()
+    await worker?.stop()
   })
 
   it('reaches the handler and the metadata unchanged (flow 5)', async () => {
@@ -97,24 +153,26 @@ describe('subscribe: fifo concurrency', () => {
   })
 
   const seen: number[] = []
-  let worker: KinesinWorker
+  let worker: KinesinWorker | undefined
 
   beforeAll(async () => {
     const subscription = subscribe(hatchet, definition, {
       name: 'order-recorder',
       concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'fifo' },
+      // Inverse to seq: an unserialised run would let later, shorter sleeps
+      // finish first and reverse the recorded order.
       handler: async (ctx: HandlerContext<{ orderId: string; seq: number }>) => {
-        await sleep(100)
+        await sleep(300 - ctx.envelope.data.seq * 50)
         seen.push(ctx.envelope.data.seq)
       },
     })
     worker = await createWorker(hatchet, 'kinesin-subscribe-fifo', { subscriptions: [subscription], slots: 5 })
-    worker.start()
+    void worker.start()
     await worker.waitUntilReady()
   }, 60_000)
 
   afterAll(async () => {
-    await worker.stop()
+    await worker?.stop()
   })
 
   it('preserves publish order per key (flow 7)', async () => {
@@ -127,9 +185,9 @@ describe('subscribe: fifo concurrency', () => {
       })
     }
 
-    await waitUntil(() => seen.length >= 5, 15_000)
+    await waitUntil(() => seen.length >= 5, 60_000)
     expect(seen).toEqual([1, 2, 3, 4, 5])
-  }, 30_000)
+  }, 90_000)
 })
 
 describe('subscribe: coalescing', () => {
@@ -140,7 +198,7 @@ describe('subscribe: coalescing', () => {
   })
 
   const completed: number[] = []
-  let worker: KinesinWorker
+  let worker: KinesinWorker | undefined
 
   beforeAll(async () => {
     // A constant CEL string literal groups every run together regardless of
@@ -148,18 +206,23 @@ describe('subscribe: coalescing', () => {
     const subscription = subscribe(hatchet, definition, {
       name: 'coalesce-recorder',
       concurrency: { key: "'coalesce-group'", maxRuns: 1, strategy: 'cancel_in_progress' },
+      // The coalesced run's signal aborts when the engine cancels it, so it
+      // stops before recording — no reliance on Node force-killing user code.
+      // Long enough that the cancellation (which itself needs a dispatch
+      // round trip) reaches the run before its own sleep would finish it.
       handler: async (ctx: HandlerContext<{ seq: number }>) => {
-        await sleep(1_500)
+        await sleepAbortable(12_000, ctx.signal)
+        if (ctx.signal.aborted) return
         completed.push(ctx.envelope.data.seq)
       },
     })
     worker = await createWorker(hatchet, 'kinesin-subscribe-coalesce', { subscriptions: [subscription], slots: 5 })
-    worker.start()
+    void worker.start()
     await worker.waitUntilReady()
   }, 60_000)
 
   afterAll(async () => {
-    await worker.stop()
+    await worker?.stop()
   })
 
   it('lets only the newest complete (flow 8)', async () => {
@@ -168,29 +231,23 @@ describe('subscribe: coalescing', () => {
       additionalMetadata: toEnvelopeMetadata(first),
       scope: 'global',
     })
-    await sleep(100)
+    // Long enough that `first` has entered RUNNING before `second` arrives —
+    // cancel_in_progress cancels a running run, not a merely queued one.
+    await sleep(300)
     const second = await createEnvelope(definition, { seq: 2 }, { tenantId: null, source: 'sdk.test' })
     await hatchet.events.push(definition.name, second, {
       additionalMetadata: toEnvelopeMetadata(second),
       scope: 'global',
     })
 
-    // Node cannot force-kill the superseded run's own code (Hatchet's SDK
-    // logs this explicitly: "JavaScript cannot force-kill user code"), so
-    // `completed` alone cannot show coalescing — both handler bodies run to
-    // completion locally. The engine's own run status is the authoritative
-    // record of which run was cancelled.
-    await sleep(4_000)
-    expect(completed.length).toBeGreaterThanOrEqual(1)
-
-    const [firstRuns, secondRuns] = await Promise.all([
-      hatchet.runs.list({ additionalMetadata: { envelopeId: first.id } }),
-      hatchet.runs.list({ additionalMetadata: { envelopeId: second.id } }),
+    const [firstStatus, secondStatus] = await Promise.all([
+      waitForTerminalStatus(first.id, 30_000),
+      waitForTerminalStatus(second.id, 30_000),
     ])
-    const statuses = [firstRuns.rows[0]?.status, secondRuns.rows[0]?.status]
-    expect(statuses.filter((status) => status === 'CANCELLED').length).toBeGreaterThanOrEqual(1)
-    expect(statuses.filter((status) => status === 'COMPLETED').length).toBeLessThanOrEqual(1)
-  }, 30_000)
+    expect(firstStatus).toBe('CANCELLED')
+    expect(secondStatus).toBe('COMPLETED')
+    expect(completed).toEqual([2])
+  }, 60_000)
 })
 
 describe('subscribe: malformed payload and version mismatch', () => {
@@ -212,17 +269,23 @@ describe('subscribe: malformed payload and version mismatch', () => {
 
   const malformedCalls: unknown[] = []
   const versionedCalls: unknown[] = []
-  let worker: KinesinWorker
+  let worker: KinesinWorker | undefined
+  let malformedSubscription: Subscription
+  let versionedSubscription: Subscription
 
   beforeAll(async () => {
-    const malformedSubscription = subscribe(hatchet, malformed, {
+    // retries: 2 on both — flow 10 and flow 23 prove a rejected envelope
+    // fails at once instead of being retried.
+    malformedSubscription = subscribe(hatchet, malformed, {
       name: 'malformed-recorder',
+      retries: 2,
       handler: (ctx: HandlerContext<{ seq: number }>) => {
         malformedCalls.push(ctx.envelope.id)
       },
     })
-    const versionedSubscription = subscribe(hatchet, versionedV1, {
+    versionedSubscription = subscribe(hatchet, versionedV1, {
       name: 'versioned-recorder',
+      retries: 2,
       handler: (ctx: HandlerContext<{ seq: number }>) => {
         versionedCalls.push(ctx.envelope.id)
       },
@@ -230,12 +293,12 @@ describe('subscribe: malformed payload and version mismatch', () => {
     worker = await createWorker(hatchet, 'kinesin-subscribe-rejects', {
       subscriptions: [malformedSubscription, versionedSubscription],
     })
-    worker.start()
+    void worker.start()
     await worker.waitUntilReady()
   }, 60_000)
 
   afterAll(async () => {
-    await worker.stop()
+    await worker?.stop()
   })
 
   it('a non-envelope payload fails without retry (flow 10)', async () => {
@@ -243,7 +306,15 @@ describe('subscribe: malformed payload and version mismatch', () => {
 
     const called = await waitUntil(() => malformedCalls.length > 0, 3_000)
     expect(called).toBe(false)
-  }, 30_000)
+
+    // No envelope id exists for a rejected non-envelope payload, so the run
+    // is found by workflow name instead of by envelope metadata.
+    const failed = await waitForFailedRun(
+      { workflowNames: [namespacedWorkflowName(malformedSubscription.name)] },
+      30_000,
+    )
+    expect(failed?.retryCount).toBe(0)
+  }, 45_000)
 
   it('a v2 envelope at a v1 subscriber fails without retry (flow 23)', async () => {
     const envelope = await createEnvelope(versionedV2, { seq: 1 }, { tenantId: null, source: 'sdk.test' })
@@ -254,7 +325,10 @@ describe('subscribe: malformed payload and version mismatch', () => {
 
     const called = await waitUntil(() => versionedCalls.length > 0, 3_000)
     expect(called).toBe(false)
-  }, 30_000)
+
+    const failed = await waitForFailedRun({ additionalMetadata: { envelopeId: envelope.id } }, 30_000)
+    expect(failed?.retryCount).toBe(0)
+  }, 45_000)
 })
 
 describe('subscribe: retries', () => {
@@ -265,7 +339,7 @@ describe('subscribe: retries', () => {
   })
 
   const retryCounts: number[] = []
-  let worker: KinesinWorker
+  let worker: KinesinWorker | undefined
 
   beforeAll(async () => {
     const subscription = subscribe(hatchet, definition, {
@@ -277,12 +351,12 @@ describe('subscribe: retries', () => {
       },
     })
     worker = await createWorker(hatchet, 'kinesin-subscribe-retries', { subscriptions: [subscription] })
-    worker.start()
+    void worker.start()
     await worker.waitUntilReady()
   }, 60_000)
 
   afterAll(async () => {
-    await worker.stop()
+    await worker?.stop()
   })
 
   it('a thrown error is retried up to retries times (flow 11)', async () => {
@@ -305,7 +379,7 @@ describe('subscribe: non-retryable errors', () => {
   })
 
   const calls: number[] = []
-  let worker: KinesinWorker
+  let worker: KinesinWorker | undefined
 
   beforeAll(async () => {
     const subscription = subscribe(hatchet, definition, {
@@ -317,12 +391,12 @@ describe('subscribe: non-retryable errors', () => {
       },
     })
     worker = await createWorker(hatchet, 'kinesin-subscribe-nonretryable', { subscriptions: [subscription] })
-    worker.start()
+    void worker.start()
     await worker.waitUntilReady()
   }, 60_000)
 
   afterAll(async () => {
-    await worker.stop()
+    await worker?.stop()
   })
 
   it('fails the run at once (flow 12)', async () => {
@@ -347,7 +421,7 @@ describe('subscribe: command', () => {
   })
 
   const received: Array<Envelope<{ seq: number }>> = []
-  let worker: KinesinWorker
+  let worker: KinesinWorker | undefined
 
   beforeAll(async () => {
     const subscription = subscribe(hatchet, definition, {
@@ -357,12 +431,12 @@ describe('subscribe: command', () => {
       },
     })
     worker = await createWorker(hatchet, 'kinesin-subscribe-command', { subscriptions: [subscription] })
-    worker.start()
+    void worker.start()
     await worker.waitUntilReady()
   }, 60_000)
 
   afterAll(async () => {
-    await worker.stop()
+    await worker?.stop()
   })
 
   it('reaches its single handler (flow 14)', async () => {
