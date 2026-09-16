@@ -9,7 +9,9 @@
 #
 # Ports are overridable so several worktrees can run their own stack:
 #   KINESIN_HATCHET_HTTP_PORT=18888 KINESIN_HATCHET_GRPC_PORT=17077 \
-#   COMPOSE_PROJECT_NAME=kinesin-lane2 pnpm hatchet:up
+#   KINESIN_POSTGRES_PORT=25432 COMPOSE_PROJECT_NAME=kinesin-lane2 pnpm hatchet:up
+# A second lane also points its integration tests at its own database name,
+# e.g. KINESIN_TEST_DATABASE_URL=postgresql://hatchet:hatchet@localhost:25432/kinesin_test_lane2
 name: kinesin-hatchet
 services:
   postgres:
@@ -20,6 +22,13 @@ services:
       POSTGRES_USER: hatchet
       POSTGRES_PASSWORD: hatchet
       POSTGRES_DB: hatchet
+    # Exposed so the SDK's integration tests can reach this Postgres directly
+    # (a separate `kinesin_test` database, alongside the engine's own `hatchet`).
+    # Default 15432, not Postgres's own 5432, so the stack doesn't collide
+    # with a Postgres a developer already has running locally.
+    # Bound to loopback only: superuser credentials must not be reachable from the network.
+    ports:
+      - '127.0.0.1:${KINESIN_POSTGRES_PORT:-15432}:5432'
     volumes:
       - hatchet_postgres_data:/var/lib/postgresql/data
     healthcheck:
