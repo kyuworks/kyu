@@ -4,6 +4,7 @@ import { createEnvelope } from './createEnvelope.js'
 import { defineEvent } from './define.js'
 import { envelopeSchema, toEnvelopeMetadata } from './envelope.js'
 import { EnvelopeOptionsError, MessageDataError } from './errors.js'
+import type { JsonObject } from './json.js'
 
 const orderPlaced = defineEvent({
   name: 'shop.order.placed',
@@ -161,6 +162,39 @@ describe('createEnvelope', () => {
   it('fills a defaulted field that was omitted at the call site', async () => {
     const envelope = await createEnvelope(orderChanneled, { orderId }, { tenantId, source: 'shop.api' })
     expect(envelope.data).toEqual({ orderId, channel: 'web' })
+  })
+
+  it('rejects with MessageDataError, not a silent null, when a transform yields a non-finite number', async () => {
+    const ratioed = defineEvent({
+      name: 'shop.thing.ratioed',
+      version: 1,
+      data: z.object({ n: z.number(), d: z.number() }).transform(({ n, d }) => ({ ratio: n / d })),
+    })
+    await expect(createEnvelope(ratioed, { n: 1, d: 0 }, { tenantId, source: 'shop.api' })).rejects.toThrow(
+      MessageDataError,
+    )
+    try {
+      await createEnvelope(ratioed, { n: 1, d: 0 }, { tenantId, source: 'shop.api' })
+      expect.unreachable('createEnvelope should have thrown')
+    } catch (error) {
+      if (!(error instanceof MessageDataError)) throw error
+      expect(error.issues).toEqual([{ path: 'ratio', message: 'not JSON-safe: a non-finite number' }])
+    }
+  })
+
+  it('rejects with MessageDataError, not a bare TypeError, when a transform yields a circular object', async () => {
+    const circular = defineEvent({
+      name: 'shop.thing.circled',
+      version: 1,
+      data: z.object({ label: z.string() }).transform((value): JsonObject => {
+        const output: JsonObject = { label: value.label }
+        output['self'] = output
+        return output
+      }),
+    })
+    await expect(createEnvelope(circular, { label: 'x' }, { tenantId, source: 'shop.api' })).rejects.toThrow(
+      MessageDataError,
+    )
   })
 
   it('compiles a createEnvelope result straight through toEnvelopeMetadata', async () => {

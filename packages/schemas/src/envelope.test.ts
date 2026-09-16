@@ -8,6 +8,7 @@ import {
   toEnvelopeMetadata,
 } from './envelope.js'
 import type { Envelope } from './envelope.js'
+import { EnvelopeMetadataError } from './errors.js'
 
 const validEnvelope = {
   id: '01923e4a-7b1c-7f3e-8a2d-3c4b5a6d7e8f',
@@ -158,5 +159,16 @@ describe('fromEnvelopeMetadata', () => {
   it('accepts envelopeMetadataSchema for a minimal envelope round-tripped through toEnvelopeMetadata', () => {
     const envelope: Envelope = envelopeSchema.parse({ ...validEnvelope, tenantId: null })
     expect(() => envelopeMetadataSchema.parse(toEnvelopeMetadata(envelope))).not.toThrow()
+  })
+
+  it('rejects an invalid record with EnvelopeMetadataError instead of a raw ZodError', () => {
+    expect(() => fromEnvelopeMetadata({ envelopeId: 'nope' })).toThrow(EnvelopeMetadataError)
+    try {
+      fromEnvelopeMetadata({ envelopeId: 'nope' })
+      expect.unreachable('fromEnvelopeMetadata should have thrown')
+    } catch (error) {
+      if (!(error instanceof EnvelopeMetadataError)) throw error
+      expect(error.issues.some((issue) => issue.path === 'envelopeId')).toBe(true)
+    }
   })
 })

@@ -1,8 +1,8 @@
 import { z } from 'zod'
+import { EnvelopeMetadataError } from './errors.js'
 import type { MessageDataShape } from './json.js'
 
-// <project>.<aggregate>.<verb>, lower case, dots only. Events are past tense,
-// commands imperative. Enforced at publish and at subscribe.
+// <project>.<aggregate>.<verb>, lower case, dots only. Events past tense, commands imperative.
 export const MESSAGE_NAME_PATTERN = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){2}$/
 
 export const messageNameSchema = z.string().regex(MESSAGE_NAME_PATTERN, {
@@ -40,9 +40,8 @@ export type Envelope<TData extends MessageDataShape = EnvelopeData> = Omit<z.inf
   data: TData
 }
 
-// The string map Hatchet carries beside the payload; CEL expressions read
-// these keys. `kinesin_`-prefixed keys avoid colliding with a producer's own
-// metadata; the unprefixed keys mirror the envelope fields they carry.
+// The string map Hatchet carries beside the payload; CEL reads these keys. `kinesin_`-prefixed
+// keys avoid colliding with a producer's own metadata.
 export const envelopeMetadataSchema = z.object({
   envelopeId: z.uuidv7(),
   kinesin_name: messageNameSchema,
@@ -58,9 +57,7 @@ export const envelopeMetadataSchema = z.object({
 
 export type EnvelopeMetadata = z.infer<typeof envelopeMetadataSchema>
 
-// No explicit Record<string, string> return annotation: the local `metadata`
-// binding already carries that type, and annotating the function too trips
-// anti-slop/no-known-value-widening on the return statement.
+// No Record<string, string> return annotation: it would trip anti-slop/no-known-value-widening.
 export function toEnvelopeMetadata<TData extends MessageDataShape>(envelope: Envelope<TData>) {
   const metadata: Record<string, string> = {}
   metadata['envelopeId'] = envelope.id
@@ -76,22 +73,16 @@ export function toEnvelopeMetadata<TData extends MessageDataShape>(envelope: Env
   return metadata
 }
 
-export interface EnvelopeMetadataFields {
-  envelopeId: string
-  name: string
-  version: number
-  kind: MessageKind
-  tenantId: string | null
-  orgUnitId?: string
-  actorUserId?: string
-  correlationId: string
-  causationId?: string
-  source: string
-}
+/** `EnvelopeMetadata`'s fields, restored to the envelope's own names (`id` becomes `envelopeId`). */
+export type EnvelopeMetadataFields = Omit<Envelope, 'data' | 'occurredAt' | 'id'> & { envelopeId: string }
 
 export function fromEnvelopeMetadata(record: Record<string, string>): EnvelopeMetadataFields {
-  const parsed = envelopeMetadataSchema.parse(record)
-
+  const result = envelopeMetadataSchema.safeParse(record)
+  if (!result.success) {
+    const issues = result.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message }))
+    throw new EnvelopeMetadataError(issues, result.error)
+  }
+  const parsed = result.data
   const fields: EnvelopeMetadataFields = {
     envelopeId: parsed.envelopeId,
     name: parsed.kinesin_name,

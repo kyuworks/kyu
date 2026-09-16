@@ -6,9 +6,8 @@ import type { MessageDataShape } from './json.js'
 
 export type { JsonObject, JsonPrimitive, JsonValue, MessageDataShape } from './json.js'
 
-// The Input slot is fixed to `unknown` by the Standard Schema spec itself
-// (`validate` always takes `unknown`; `Input` only feeds `InferInput`), so it
-// is not a Kinesin-chosen parameter — only the Output is constrained here.
+// Input is fixed to `unknown` by the Standard Schema spec (`validate` always takes `unknown`);
+// only Output is a Kinesin-chosen constraint here.
 export type MessageSchema = StandardSchemaV1<unknown, MessageDataShape>
 
 export interface MessageDefinition<S extends MessageSchema = MessageSchema> {
