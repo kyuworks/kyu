@@ -9,4 +9,4 @@ Naming: `<YYYYMMDDHHMMSS>_<slug>.sql`.
 
 ## Rules
 
-- A migration file must not contain `BEGIN`, `COMMIT`, `ROLLBACK` or `SAVEPOINT`; the applier wraps each file in its own transaction.
+- A migration file must not contain `BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, `START TRANSACTION` or `END`; the applier wraps each file in its own transaction (`scripts/gates/check-migration-no-transactions.sh`).

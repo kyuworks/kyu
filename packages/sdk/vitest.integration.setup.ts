@@ -33,10 +33,10 @@ export default async function setup(): Promise<void> {
   // on, so its name is decoded straight from the URL, not hardcoded — the
   // admin statements run against Postgres's own `postgres` database instead.
   const databaseName = decodeURIComponent(new URL(testDatabaseUrl).pathname.replace(/^\//, ''))
-  if (!/^[a-z_][a-z0-9_]*$/.test(databaseName)) {
+  if (!/^kinesin_test[a-z0-9_]*$/.test(databaseName)) {
     throw new Error(
-      `KINESIN_TEST_DATABASE_URL's database name ${JSON.stringify(databaseName)} is not a plain identifier ` +
-        '(expected /^[a-z_][a-z0-9_]*$/). Refusing to run DROP/CREATE DATABASE against it.',
+      `Refusing to touch database ${databaseName}: the integration harness only drops databases named ` +
+        'kinesin_test or kinesin_test_<lane>.',
     )
   }
 
@@ -63,7 +63,19 @@ export default async function setup(): Promise<void> {
           '(no `hatchet` database). Point KINESIN_TEST_DATABASE_URL at the stack from infra/hatchet/compose.yaml.',
       )
     }
-    await admin.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`)
+    try {
+      await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.includes('being accessed by other users')) {
+        throw new Error(
+          `Database ${databaseName} is in use by another session (another worktree's run, or an open psql). ` +
+            `Give this lane its own database: KINESIN_TEST_DATABASE_URL=postgresql://…/kinesin_test_<lane>.`,
+          { cause: error },
+        )
+      }
+      throw error
+    }
     await admin.query(`CREATE DATABASE "${databaseName}"`)
   } finally {
     await admin.end()
@@ -81,7 +93,12 @@ export default async function setup(): Promise<void> {
         await db.query(sql)
         await db.query('COMMIT')
       } catch (error) {
-        await db.query('ROLLBACK')
+        try {
+          await db.query('ROLLBACK')
+        } catch {
+          // The connection may already be broken (e.g. the failure above
+          // killed it); the original error below is what matters.
+        }
         const message = error instanceof Error ? error.message : String(error)
         throw new Error(`migration ${file} failed: ${message}`, { cause: error })
       }
