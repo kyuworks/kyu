@@ -28,6 +28,8 @@ export interface TickResult {
 }
 
 export interface Relay {
+  // Rejects after `stop()`. While a tick is already in flight, returns that
+  // tick's promise, so the result may predate a `publish()` the caller just made.
   tick(): Promise<TickResult>
   stop(): Promise<void>
 }

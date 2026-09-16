@@ -288,12 +288,10 @@ describe('relay against the local engine', () => {
 
       const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
 
-      // `waitUntilReady()` can resolve before the engine has committed this
-      // test's freshly namespaced trigger, so the first publish can match
-      // nothing; retry with a fresh envelope every 2 s until the 20 s budget
-      // expires, and match the delivered payload back by id.
-      const retryIntervalMs = 2_000
-      const budgetMs = 20_000
+      // A fresh workflow's first delivery can lag by a minute on a cold
+      // engine; retry with a fresh envelope until one arrives.
+      const retryIntervalMs = 5_000
+      const budgetMs = 120_000
       const deadline = Date.now() + budgetMs
       const published: Published[] = []
       let result: Received | null = null
@@ -322,7 +320,7 @@ describe('relay against the local engine', () => {
       await worker?.stop()
     }
     if (workerStartError !== undefined) throw workerStartError
-  })
+  }, 180_000)
 
   it('a bad envelope in a batch is skipped; the good rows in the same batch still publish', async () => {
     const goodA = await publisher.publish(client, orderPlaced, { n: 1 }, { tenantId: null })
