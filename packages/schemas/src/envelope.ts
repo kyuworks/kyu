@@ -40,10 +40,6 @@ export type Envelope<TData extends MessageDataShape = EnvelopeData> = Omit<z.inf
   data: TData
 }
 
-export function parseEnvelope(input: z.input<typeof envelopeSchema>): Envelope {
-  return envelopeSchema.parse(input)
-}
-
 // The string map Hatchet carries beside the payload; CEL expressions read
 // these keys. `kinesin_`-prefixed keys avoid colliding with a producer's own
 // metadata; the unprefixed keys mirror the envelope fields they carry.

@@ -41,8 +41,8 @@ function formatUuid(bytes: Uint8Array): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-export function uuidv7(now = Date.now()): string {
-  const { timestampMs, counter: randA } = nextTick(now)
+export function uuidv7(): string {
+  const { timestampMs, counter: randA } = nextTick(Math.floor(Date.now()))
   const ts = BigInt(timestampMs)
   const randB = randomRandB()
 
