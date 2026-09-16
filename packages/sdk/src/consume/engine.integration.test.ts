@@ -1,18 +1,19 @@
 import { randomBytes } from 'node:crypto'
-import { Hatchet } from '@hatchet-dev/typescript-sdk'
-import type { Worker } from '@hatchet-dev/typescript-sdk'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { createHatchetClient } from '../hatchet.js'
+import type { Worker } from '../hatchet.js'
 
 // Smoke test against the local engine: a task subscribed to an event key
 // receives an event pushed with that key. Everything is namespaced per run so
 // parallel worktrees sharing one engine do not see each other's events.
+// Token and TLS strategy come from HATCHET_CLIENT_TOKEN / HATCHET_CLIENT_TLS_STRATEGY.
 
 type SmokeInput = { envelopeId: string }
 
 const namespace = `kit${randomBytes(3).toString('hex')}_`
 const eventKey = 'kinesin.smoke.pushed'
 
-const hatchet = Hatchet.init({ namespace })
+const hatchet = createHatchetClient({ namespace })
 
 type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void }
 
@@ -55,6 +56,7 @@ describe('hatchet engine smoke', () => {
   beforeAll(async () => {
     worker = await hatchet.worker('kinesin-sdk-integration', { workflows: [smoke], slots: 2 })
     void worker.start()
+    await worker.waitUntilReady()
   })
 
   afterAll(async () => {
@@ -63,13 +65,8 @@ describe('hatchet engine smoke', () => {
 
   it('delivers a pushed event to the subscribed task', async () => {
     const envelopeId = `01923e4a-7b1c-7f3e-8a2d-${randomBytes(6).toString('hex')}`
-    // The worker registers asynchronously; an event pushed before that is not
-    // queued for it. Push again until the task sees one, within the budget.
-    let delivered: SmokeInput | null = null
-    for (let attempt = 0; attempt < 5 && delivered === null; attempt += 1) {
-      await hatchet.events.push(eventKey, { envelopeId }, { additionalMetadata: { tenantId: 'none' } })
-      delivered = await withTimeout(firstDelivery.promise, 4_000)
-    }
+    await hatchet.events.push(eventKey, { envelopeId }, { additionalMetadata: { tenantId: 'none' } })
+    const delivered = await withTimeout(firstDelivery.promise, 10_000)
     expect(delivered).not.toBeNull()
     expect(received).toEqual({ envelopeId })
   })
