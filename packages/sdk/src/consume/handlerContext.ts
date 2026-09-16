@@ -12,9 +12,14 @@ export interface HandlerContext<TData extends MessageDataShape> {
   envelope: Envelope<TData>
   /** Decoded from the engine's `additionalMetadata`; `runHandler` has already checked its `envelopeId` and `tenantId` agree with `envelope`. */
   metadata: EnvelopeMetadataFields
+  /** Counts engine reassignments (durable eviction/replay) as well as application-level retries. */
   retryCount: number
   runId: string
-  /** Aborts when the engine cancels this run (coalescing, timeout, manual cancel). */
+  /**
+   * Aborts when the engine cancels this run (coalescing, timeout, manual cancel).
+   * A durable handler's eviction — the normal park before a sleep or wait — aborts
+   * the same controller; do not treat that abort as a cancellation to compensate for.
+   */
   signal: AbortSignal
   logger: HandlerLogger
 }

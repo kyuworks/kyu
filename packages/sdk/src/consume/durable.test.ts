@@ -42,7 +42,7 @@ describe('buildWaitForConditions', () => {
       now,
     )
 
-    expect(userEvent.expression).toBe('input.data.orderId == "ab\\"cd"')
+    expect(userEvent.expression).toBe('input.data.orderId == "ab\\"cd" && input.version == 1')
   })
 
   it('escapes a newline in equals into a valid CEL string literal', async () => {
@@ -55,7 +55,7 @@ describe('buildWaitForConditions', () => {
       now,
     )
 
-    expect(userEvent.expression).toBe('input.data.orderId == "line one\\nline two"')
+    expect(userEvent.expression).toBe('input.data.orderId == "line one\\nline two" && input.version == 1')
   })
 
   it('rejects a where.field that is not a dotted identifier path', async () => {
@@ -69,6 +69,37 @@ describe('buildWaitForConditions', () => {
         now,
       ),
     ).toThrow(KinesinError)
+  })
+
+  it('rejects a where.field with a leading "input." segment', async () => {
+    const envelope = await handlerEnvelope(null)
+
+    expect(() =>
+      buildWaitForConditions(
+        envelope,
+        orderShipped,
+        { where: { field: 'input.data.orderId', equals: 'order-1' }, timeout: '30s' },
+        now,
+      ),
+    ).toThrow(KinesinError)
+  })
+
+  it('appends the target definition version to the CEL expression', async () => {
+    const envelope = await handlerEnvelope(null)
+    const orderShippedV3 = defineEvent({
+      name: 'shop.order.shipped',
+      version: 3,
+      data: z.object({ orderId: z.string() }),
+    })
+
+    const { userEvent } = buildWaitForConditions(
+      envelope,
+      orderShippedV3,
+      { where: { field: 'data.orderId', equals: 'order-1' }, timeout: '30s' },
+      now,
+    )
+
+    expect(userEvent.expression).toBe('input.data.orderId == "order-1" && input.version == 3')
   })
 
   it('accepts a multi-segment dotted where.field path', async () => {
@@ -171,10 +202,8 @@ interface FakeDurableContext {
   capturedConditions: () => Parameters<DurableContext<JsonObject>['waitFor']>[0] | undefined
 }
 
-// The engine's own DurableContext carries private fields, so a stub cannot
-// satisfy it structurally; a Pick of the two members waitForMessage calls is
-// comparable to the class type in one direction, enough for a single,
-// unchained `as` cast (the same pattern subscribe.test.ts uses for HatchetClient).
+// DurableContext carries private fields, so a Pick of the two members
+// waitForMessage calls needs a single, unchained `as` cast to stand in for it.
 function fakeDurableContext(
   waitForResult: Awaited<ReturnType<DurableContext<JsonObject>['waitFor']>>,
 ): FakeDurableContext {
@@ -319,10 +348,8 @@ interface FakeHatchetClient {
   capturedOptions: () => CreateDurableTaskWorkflowOpts<JsonObject, void> | undefined
 }
 
-// The engine's HatchetClient carries private fields, so a stub cannot satisfy
-// it structurally; a Pick of just `durableTask` is comparable to the class
-// type in one direction, the same single, unchained `as` cast as
-// subscribe.test.ts's fakeHatchetClient.
+// HatchetClient carries private fields, so a Pick of just `durableTask` needs
+// the same single, unchained `as` cast as subscribe.test.ts's fakeHatchetClient.
 function fakeHatchetClient(): FakeHatchetClient {
   let captured: CreateDurableTaskWorkflowOpts<JsonObject, void> | undefined
   const stub: Pick<HatchetClient, 'durableTask'> = {

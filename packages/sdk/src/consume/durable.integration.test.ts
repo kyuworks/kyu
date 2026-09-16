@@ -10,10 +10,8 @@ import { durable } from './durable.js'
 import { createWorker } from './worker.js'
 import type { KinesinWorker } from './worker.js'
 
-// Every flow here pushes hand-built envelopes straight at `hatchet.events.push`,
-// the same pattern subscribe.integration.test.ts uses — no relay or outbox in
-// this chain. Namespaced per run so parallel worktrees sharing one engine do
-// not see each other's events.
+// Envelopes go straight to `hatchet.events.push` — no relay or outbox — the
+// same pattern as subscribe.integration.test.ts. Namespaced per run.
 
 const namespace = `kit${randomBytes(3).toString('hex')}_`
 const hatchet: HatchetClient = createHatchetClient({ namespace })
@@ -53,18 +51,19 @@ describe('durable: sleepFor', () => {
     data: z.object({ marker: z.string() }),
   })
 
-  const gaps = new Map<string, number>()
+  // Only the completion instant is read from the handler: a reassignment
+  // re-runs its body, so an in-handler start point would understate the gap.
+  const completedAt = new Map<string, number>()
   let worker: KinesinWorker | undefined
 
   beforeAll(async () => {
     const subscription = durable(hatchet, trigger, {
       name: 'sleep-then-continue',
       handler: async (ctx: DurableHandlerContext<{ marker: string }>) => {
-        const before = Date.now()
         // Longer than the engine's 60s default execution timeout: proves
         // durable()'s own 24h default keeps the wait alive past that point.
         await ctx.sleepFor('75s')
-        gaps.set(ctx.envelope.id, Date.now() - before)
+        completedAt.set(ctx.envelope.id, Date.now())
       },
     })
     worker = await createWorker(hatchet, 'kinesin-durable-sleep', { subscriptions: [subscription], durableSlots: 5 })
@@ -78,15 +77,16 @@ describe('durable: sleepFor', () => {
 
   it('resumes after at least the requested duration', async () => {
     const envelope = await createEnvelope(trigger, { marker: 'go' }, { tenantId: null, source: 'sdk.test' })
+    const pushedAt = Date.now()
     await hatchet.events.push(trigger.name, envelope, {
       additionalMetadata: toEnvelopeMetadata(envelope),
       scope: 'global',
     })
 
-    await waitUntil(() => gaps.has(envelope.id), 150_000)
-    const gap = gaps.get(envelope.id)
-    expect(gap).toBeDefined()
-    expect(gap ?? 0).toBeGreaterThanOrEqual(75_000)
+    await waitUntil(() => completedAt.has(envelope.id), 150_000)
+    const completedInstant = completedAt.get(envelope.id)
+    expect(completedInstant).toBeDefined()
+    expect((completedInstant ?? 0) - pushedAt).toBeGreaterThanOrEqual(75_000)
   }, 180_000)
 })
 
@@ -99,6 +99,7 @@ describe('durable: correlated waitFor', () => {
   type TriggerData = { orderId: string; timeout: '3s' | '5s' | '30s' }
 
   const results = new Map<string, WaitForResult<typeof orderShipped.data>>()
+  const entered = new Set<string>()
   let worker: KinesinWorker | undefined
 
   async function triggerWait(
@@ -118,6 +119,7 @@ describe('durable: correlated waitFor', () => {
     const subscription = durable(hatchet, trigger, {
       name: 'correlated-wait',
       handler: async (ctx: DurableHandlerContext<TriggerData>) => {
+        entered.add(ctx.envelope.id)
         // A plain (non-durable) delay: proves a message published before the
         // wait is registered is still caught by the default lookback window.
         await sleep(500)
@@ -155,9 +157,12 @@ describe('durable: correlated waitFor', () => {
 
     const trigerEnvelope = await triggerWait(tenantId, orderId, '5s')
 
+    // Wait for pickup before starting the timeout clock: a starved worker
+    // delays entry, and that delay is not part of the 5s wait under test.
+    await waitUntil(() => entered.has(trigerEnvelope.id), 90_000)
     await waitUntil(() => results.has(trigerEnvelope.id), 90_000)
     expect(results.get(trigerEnvelope.id)).toEqual({ kind: 'timeout' })
-  }, 120_000)
+  }, 180_000)
 
   it('never matches a message published under another tenant scope', async () => {
     const tenantId = '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f32'

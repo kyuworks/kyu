@@ -137,6 +137,13 @@ describe('toHatchetRateLimit', () => {
     })
   })
 
+  it('defaults units to 1 for a static rate limit when the caller gives none', () => {
+    expect(toHatchetRateLimit({ staticKey: 'shop-api' })).toEqual({
+      staticKey: 'shop-api',
+      units: 1,
+    })
+  })
+
   it('maps a dynamic rate limit, translating the duration to the engine enum', () => {
     expect(toHatchetRateLimit({ dynamicKey: 'input.data.tenantId', limit: 10, duration: 'MINUTE' })).toEqual({
       dynamicKey: 'input.data.tenantId',
@@ -201,6 +208,16 @@ describe('subscribe: option wiring', () => {
     ])
     expect(options?.executionTimeout).toBe('30s')
     expect(options?.defaultPriority).toBe(Priority.HIGH)
+  })
+
+  // Pins the boundary of durable()'s 24h default: it lives in durable(), not
+  // in applySharedTaskOptions, so subscribe() must never see it appear here.
+  it('sets no executionTimeout when the caller gives none', () => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined })
+
+    expect(capturedOptions()?.executionTimeout).toBeUndefined()
   })
 })
 

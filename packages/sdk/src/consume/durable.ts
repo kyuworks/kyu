@@ -18,13 +18,21 @@ import { applySharedTaskOptions } from './taskOptions.js'
 import type { SharedTaskOptions } from './taskOptions.js'
 
 export interface WaitForOptions {
-  where: { field: string; equals: string }
+  where: {
+    /** Dotted path relative to the payload — no `input.` prefix, no array index, e.g. `data.orderId`. */
+    field: string
+    /** Compared to `where.field` as a string literal. */
+    equals: string
+  }
+  /** Defaults to the handler envelope's tenant, or `'global'` for a null tenant; an explicit value disables the tenant cross-check on the match. */
   scope?: string
+  /** Defaults to `'5m'`. */
   lookback?: Extract<Duration, string>
+  /** Must be below the task's `executionTimeout`, or the engine cancels the run mid-wait and the result never arrives. */
   timeout: Extract<Duration, string>
 }
 
-// When several events match the filter, the first in the engine's own order wins.
+/** When several events match the filter, the first in the engine's own order wins. */
 export type WaitForResult<S extends MessageSchema> =
   | { kind: 'message'; envelope: Envelope<MessageData<MessageDefinition<S>>> }
   | { kind: 'timeout' }
@@ -47,6 +55,11 @@ function celEquals(field: string, equals: string): string {
   if (!FIELD_PATH_PATTERN.test(field)) {
     throw new KinesinError(`waitFor: where.field "${field}" is not a dotted identifier path`)
   }
+  // `where.field` is relative to the payload already; a leading "input." would
+  // splice into `input.input....`, a silent never-match.
+  if (field === 'input' || field.startsWith('input.')) {
+    throw new KinesinError(`waitFor: where.field "${field}" is relative to the payload; drop the leading "input."`)
+  }
   return `input.${field} == ${JSON.stringify(equals)}`
 }
 
@@ -66,17 +79,22 @@ export function buildWaitForConditions(
   const lookback = options.lookback ?? '5m'
   const scope = options.scope ?? handlerEnvelope.tenantId ?? 'global'
   const considerEventsSince = new Date(now.getTime() - durationToMs(lookback)).toISOString()
-  const expression = celEquals(options.where.field, options.where.equals)
+  // Pinned to the awaited definition's version: a same-name event on another
+  // version would otherwise match here and fail decoding non-retryably.
+  const expression = `${celEquals(options.where.field, options.where.equals)} && input.version == ${definition.version}`
   return {
     userEvent: new UserEventCondition(definition.name, expression, 'message', undefined, scope, considerEventsSince),
     sleep: new SleepCondition(options.timeout, 'timeout'),
   }
 }
 
-type WaitForConditionMatches = Record<string, ReadonlyArray<Unparsed>>
+interface WaitForMatches {
+  message?: ReadonlyArray<Unparsed>
+  timeout?: ReadonlyArray<Unparsed>
+}
 
-interface WaitForRawResult {
-  CREATE?: WaitForConditionMatches
+interface WaitForRawResult extends WaitForMatches {
+  CREATE?: WaitForMatches
 }
 
 // Races a correlated event against a timeout; a match is the pushed envelope
@@ -92,9 +110,9 @@ export async function waitForMessage<S extends MessageSchema>(
 
   const raw: WaitForRawResult = await hatchetContext.waitFor(Or(userEvent, sleep))
   // Engines before durable eviction return the CREATE map unwrapped.
-  const created = raw.CREATE ?? (raw as WaitForConditionMatches)
+  const created: WaitForMatches = raw.CREATE ?? raw
 
-  const matches = created['message']
+  const matches = created.message
   if (matches !== undefined && matches.length > 0) {
     const envelope = await decodeIncomingEnvelope(definition, matches[0])
     if (options.scope === undefined && envelope.tenantId !== handlerEnvelope.tenantId) {
@@ -106,7 +124,7 @@ export async function waitForMessage<S extends MessageSchema>(
     return { kind: 'message', envelope }
   }
 
-  if (created['timeout'] !== undefined) {
+  if (created.timeout !== undefined) {
     return { kind: 'timeout' }
   }
 
@@ -138,6 +156,11 @@ async function runDurableHandler<S extends MessageSchema>(
   await handler(buildDurableHandlerContext(envelope, metadata, hatchetContext))
 }
 
+/**
+ * The handler body re-runs from the top on engine reassignment or replay; only
+ * `sleepFor`, `waitFor` and the engine's `now()` replay from the durable log.
+ * Side effects before a wait must be idempotent — that is what `onceById()` is for.
+ */
 export function durable<S extends MessageSchema>(
   hatchet: HatchetClient,
   definition: MessageDefinition<S>,
@@ -151,9 +174,8 @@ export function durable<S extends MessageSchema>(
   }
 
   applySharedTaskOptions(taskOptions, options)
-  // The engine's own default execution timeout is 60s, which cancels any
-  // sleep or wait longer than a minute; the caller must set it above their
-  // longest wait if 24h is not enough.
+  // The engine's own default execution timeout is 60s; without an explicit
+  // value here, a wait past a minute would be cancelled.
   taskOptions.executionTimeout ??= '24h'
 
   const workflow = hatchet.durableTask<JsonObject, void>(taskOptions)

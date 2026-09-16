@@ -12,9 +12,8 @@ export type RateLimitOption =
       duration: 'SECOND' | 'MINUTE' | 'HOUR' | 'DAY' | 'WEEK' | 'MONTH' | 'YEAR'
     }
 
-// subscribe() and durable() both build one of these; the field types are
-// identical between CreateTaskWorkflowOpts and CreateDurableTaskWorkflowOpts
-// (neither depends on the handler's fn signature), so this Omit works for both.
+// subscribe() and durable() both build one of these; the Omit works for both
+// because neither field type depends on the handler's fn signature.
 export type SharedTaskFields = Omit<CreateTaskWorkflowOpts<JsonObject, void>, 'name' | 'fn' | 'onEvents'>
 
 type HatchetRateLimitInput = NonNullable<SharedTaskFields['rateLimits']>[number]
