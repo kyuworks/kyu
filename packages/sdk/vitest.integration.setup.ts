@@ -29,16 +29,24 @@ export default async function setup(): Promise<void> {
     )
   }
 
-  // `kinesin_test` cannot be dropped or created while connected to it, so the
-  // admin statements run against the engine's own `hatchet` database on the
-  // same server.
+  // The database being recreated can never be the one the admin connection is
+  // on, so its name is decoded straight from the URL, not hardcoded — the
+  // admin statements run against Postgres's own `postgres` database instead.
+  const databaseName = decodeURIComponent(new URL(testDatabaseUrl).pathname.replace(/^\//, ''))
+  if (!/^[a-z_][a-z0-9_]*$/.test(databaseName)) {
+    throw new Error(
+      `KINESIN_TEST_DATABASE_URL's database name ${JSON.stringify(databaseName)} is not a plain identifier ` +
+        '(expected /^[a-z_][a-z0-9_]*$/). Refusing to run DROP/CREATE DATABASE against it.',
+    )
+  }
+
   const adminUrl = new URL(testDatabaseUrl)
-  adminUrl.pathname = '/hatchet'
+  adminUrl.pathname = '/postgres'
   const admin = new Client({ connectionString: adminUrl.toString() })
   await admin.connect()
   try {
-    await admin.query('DROP DATABASE IF EXISTS kinesin_test')
-    await admin.query('CREATE DATABASE kinesin_test')
+    await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`)
+    await admin.query(`CREATE DATABASE "${databaseName}"`)
   } finally {
     await admin.end()
   }

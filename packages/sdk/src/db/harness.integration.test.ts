@@ -16,14 +16,19 @@ afterAll(async () => {
   await client.end()
 })
 
+const databaseName = decodeURIComponent(
+  new URL(process.env['KINESIN_TEST_DATABASE_URL'] ?? '').pathname.replace(/^\//, ''),
+)
+
 describe('integration test harness', () => {
-  it('connects to the kinesin_test database', async () => {
+  it('connects to the configured test database', async () => {
     const result = await client.query<{ current_database: string }>('SELECT current_database()')
-    expect(result.rows[0]?.current_database).toBe('kinesin_test')
+    expect(result.rows[0]?.current_database).toBe(databaseName)
   })
 
-  it('reports a table count for the public schema', async () => {
+  it('recreated the database with no tables yet', async () => {
+    // No `.sql` migration files exist yet; PR-2's migration raises this to 2.
     const result = await client.query<{ count: string }>("SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")
-    expect(Number(result.rows[0]?.count)).toBeGreaterThanOrEqual(0)
+    expect(Number(result.rows[0]?.count)).toBe(0)
   })
 })

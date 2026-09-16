@@ -9,7 +9,9 @@
 #
 # Ports are overridable so several worktrees can run their own stack:
 #   KINESIN_HATCHET_HTTP_PORT=18888 KINESIN_HATCHET_GRPC_PORT=17077 \
-#   COMPOSE_PROJECT_NAME=kinesin-lane2 pnpm hatchet:up
+#   KINESIN_POSTGRES_PORT=15432 COMPOSE_PROJECT_NAME=kinesin-lane2 pnpm hatchet:up
+# A second lane also points its integration tests at its own database name,
+# e.g. KINESIN_TEST_DATABASE_URL=postgresql://hatchet:hatchet@localhost:15432/kinesin_test_lane2
 name: kinesin-hatchet
 services:
   postgres:
