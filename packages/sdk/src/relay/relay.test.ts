@@ -1,9 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Mock } from 'vitest'
 import type { QueryParam, Queryable, QueryRows } from '../db/queryable.js'
 import type { HatchetClient } from '../hatchet.js'
 import { outboxRowSchema } from '../outbox/rows.js'
 import type { OutboxRow } from '../outbox/rows.js'
 import { startRelay } from './relay.js'
+import type { PushItem } from './toEvents.js'
+
+interface FakeBulkPushResponse {
+  events: object[]
+}
+
+// `HatchetClient['events']['bulkPush']`'s own signature is generic over `T`; a
+// concrete procedure type keeps every mock's `mockImplementation*` call checked.
+type BulkPushProcedure = (name: string, items: PushItem[]) => Promise<FakeBulkPushResponse>
 
 function makeRow(id: string, name: string): OutboxRow {
   return outboxRowSchema.parse({
@@ -61,17 +71,18 @@ function createFakeDb(claimBatches: readonly OutboxRow[][]): FakeDb {
 
 // `HatchetClient`/`EventClient` are engine classes with fields no fake can populate;
 // each mock's own call signature (not vitest's richer `Mock` type) is what gets asserted.
-function fakeEvents(bulkPush: ReturnType<typeof vi.fn>): HatchetClient['events'] {
+function fakeEvents(bulkPush: Mock<BulkPushProcedure>): HatchetClient['events'] {
   return { bulkPush: bulkPush as HatchetClient['events']['bulkPush'] } as HatchetClient['events']
 }
 
 interface FakeHatchet {
   hatchet: HatchetClient
-  bulkPush: ReturnType<typeof vi.fn>
+  bulkPush: Mock<BulkPushProcedure>
 }
 
+// Echoes one event per input by default, matching the real `bulkPush` response shape.
 function createFakeHatchet(): FakeHatchet {
-  const bulkPush = vi.fn().mockResolvedValue(undefined)
+  const bulkPush = vi.fn<BulkPushProcedure>(async (_name, items) => ({ events: items.map(() => ({})) }))
   const hatchet = { events: fakeEvents(bulkPush) } as HatchetClient
   return { hatchet, bulkPush }
 }
@@ -92,7 +103,7 @@ describe('startRelay: tick()', () => {
     await relay.stop()
 
     expect(bulkPush).toHaveBeenCalledTimes(2)
-    expect(result).toEqual({ claimed: 2, pushed: 2, failed: 0, skipped: [] })
+    expect(result).toEqual({ claimed: 2, pushed: 2, failed: 0, skipped: [], failedIds: [] })
     expect(calls.filter((call) => call.text.includes('SET published_at = now()'))).toHaveLength(2)
   })
 
@@ -102,13 +113,15 @@ describe('startRelay: tick()', () => {
     const { db, calls } = createFakeDb([[rowA, rowB]])
     const { hatchet, bulkPush } = createFakeHatchet()
     // groupEnvelopesForPush pushes names in first-seen order: shop.order.placed, then shop.invoice.sent.
-    bulkPush.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('engine unreachable'))
+    bulkPush
+      .mockImplementationOnce(async (_name, items) => ({ events: items.map(() => ({})) }))
+      .mockRejectedValueOnce(new Error('engine unreachable'))
 
     const relay = startRelay({ db, hatchet, workerId: 'worker-1' })
     const result = await relay.tick()
     await relay.stop()
 
-    expect(result).toEqual({ claimed: 2, pushed: 1, failed: 1, skipped: [] })
+    expect(result).toEqual({ claimed: 2, pushed: 1, failed: 1, skipped: [], failedIds: [rowB.id] })
     expect(calls.some((call) => call.text.includes('attempts = attempts + 1'))).toBe(true)
   })
 
@@ -119,10 +132,10 @@ describe('startRelay: tick()', () => {
     const pending = new Promise<void>((resolve) => {
       resolveBulkPush = resolve
     })
-    const bulkPush = vi.fn()
-    bulkPush.mockImplementation(async () => {
+    const bulkPush = vi.fn<BulkPushProcedure>()
+    bulkPush.mockImplementation(async (_name, items) => {
       await pending
-      return undefined
+      return { events: items.map(() => ({})) }
     })
     const hatchet = { events: fakeEvents(bulkPush) } as HatchetClient
 
@@ -181,5 +194,163 @@ describe('startRelay: poll loop backoff', () => {
     expect(onTick).toHaveBeenCalledTimes(2)
 
     await relay.stop()
+  })
+})
+
+describe('startRelay: poll loop scheduling', () => {
+  it('re-ticks at 0 ms only after a full, fully-pushed batch', async () => {
+    vi.useFakeTimers()
+    // Only one batch is provided; every claim after it returns no rows (partial).
+    const rowA = makeRow('018f0000-0000-7000-8000-00000000000a', 'shop.relay.a')
+    const { db } = createFakeDb([[rowA]])
+    const { hatchet } = createFakeHatchet()
+    const onTick = vi.fn()
+    const pollIntervalMs = 1000
+
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1', batchSize: 1, pollIntervalMs, onTick })
+
+    // tick1 claims a full batch (1 row, batchSize 1) and pushes it fully.
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onTick).toHaveBeenCalledTimes(1)
+
+    // It re-ticks immediately (0 ms), not after pollIntervalMs: tick2 (an
+    // empty, partial claim) is already reachable well before the interval.
+    await vi.advanceTimersByTimeAsync(1)
+    expect(onTick).toHaveBeenCalledTimes(2)
+
+    // tick2 was partial, so tick3 waits for the full poll interval, not 0 ms.
+    await vi.advanceTimersByTimeAsync(pollIntervalMs - 1)
+    expect(onTick).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(onTick).toHaveBeenCalledTimes(3)
+
+    await relay.stop()
+  })
+
+  it('waits a full pollIntervalMs after a partial batch', async () => {
+    vi.useFakeTimers()
+    const rowA = makeRow('018f0000-0000-7000-8000-00000000000a', 'shop.relay.a')
+    const { db } = createFakeDb([[rowA]])
+    const { hatchet } = createFakeHatchet()
+    const onTick = vi.fn()
+    const pollIntervalMs = 1000
+
+    // batchSize 5 makes the one-row claim partial.
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1', batchSize: 5, pollIntervalMs, onTick })
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onTick).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(pollIntervalMs - 1)
+    expect(onTick).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(onTick).toHaveBeenCalledTimes(2)
+
+    await relay.stop()
+  })
+
+  it('a tick with failed > 0 backs off and calls onError instead of re-ticking immediately', async () => {
+    vi.useFakeTimers()
+    const rowA = makeRow('018f0000-0000-7000-8000-00000000000a', 'shop.relay.a')
+    const { db } = createFakeDb([[rowA], [rowA]])
+    const bulkPush = vi
+      .fn<BulkPushProcedure>()
+      .mockRejectedValueOnce(new Error('engine unreachable'))
+      .mockImplementation(async (_name, items) => ({ events: items.map(() => ({})) }))
+    const hatchet = { events: fakeEvents(bulkPush) } as HatchetClient
+    const onError = vi.fn()
+    const onTick = vi.fn()
+    const pollIntervalMs = 1000
+
+    // batchSize 1 makes every claim here full, so the pre-fix loop would
+    // re-tick at 0 ms regardless of the push failure.
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1', batchSize: 1, pollIntervalMs, onError, onTick })
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(bulkPush).toHaveBeenCalledTimes(1)
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(Error)
+    // A failed tick is not a "success", so onTick does not fire for it.
+    expect(onTick).toHaveBeenCalledTimes(0)
+
+    await vi.advanceTimersByTimeAsync(pollIntervalMs * 4 - 1)
+    expect(bulkPush).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(bulkPush).toHaveBeenCalledTimes(2)
+
+    await relay.stop()
+  })
+
+  it('doubles the backoff on consecutive failed ticks up to the 30 s cap, and a success resets it', async () => {
+    vi.useFakeTimers()
+    const rowA = makeRow('018f0000-0000-7000-8000-00000000000a', 'shop.relay.a')
+    const { db } = createFakeDb([[rowA], [rowA], [rowA], [rowA], []])
+    const bulkPush = vi
+      .fn<BulkPushProcedure>()
+      .mockRejectedValueOnce(new Error('e1'))
+      .mockRejectedValueOnce(new Error('e2'))
+      .mockRejectedValueOnce(new Error('e3'))
+      .mockRejectedValueOnce(new Error('e4'))
+    const hatchet = { events: fakeEvents(bulkPush) } as HatchetClient
+    const onError = vi.fn()
+    const onTick = vi.fn()
+    const pollIntervalMs = 1000
+
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1', batchSize: 1, pollIntervalMs, onError, onTick })
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onError).toHaveBeenCalledTimes(1) // backoff now 4000 (pollIntervalMs * 4)
+
+    await vi.advanceTimersByTimeAsync(pollIntervalMs * 4)
+    expect(onError).toHaveBeenCalledTimes(2) // backoff now 8000
+
+    await vi.advanceTimersByTimeAsync(pollIntervalMs * 8)
+    expect(onError).toHaveBeenCalledTimes(3) // backoff now 16000
+
+    await vi.advanceTimersByTimeAsync(pollIntervalMs * 16)
+    expect(onError).toHaveBeenCalledTimes(4) // 16000 * 2 = 32000, capped at 30000
+
+    // The 5th claim is empty (a fully-successful, if partial, tick): it resets the backoff.
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(onTick).toHaveBeenCalledTimes(1)
+    expect(onTick.mock.calls[0]?.[0]).toMatchObject({ failed: 0 })
+
+    await relay.stop()
+  })
+})
+
+describe('startRelay: claim release on a mid-batch mark failure', () => {
+  it('releases the unprocessed groups’ claims when markPublished throws, and the tick still rejects', async () => {
+    const rowA = makeRow('018f0000-0000-7000-8000-00000000000a', 'shop.relay.a')
+    const rowB = makeRow('018f0000-0000-7000-8000-00000000000b', 'shop.relay.b')
+    const calls: RecordedQuery[] = []
+    let markAttempts = 0
+    const db: Queryable = {
+      async query(text, params): Promise<QueryRows> {
+        calls.push({ text, params })
+        if (text.includes('RETURNING *')) return { rows: [rowA, rowB], rowCount: 2 }
+        if (text.includes('SET published_at = now()')) {
+          markAttempts += 1
+          if (markAttempts === 1) throw new Error('simulated crash before mark')
+          return { rows: [], rowCount: 0 }
+        }
+        return { rows: [], rowCount: 0 }
+      },
+    }
+    const { hatchet } = createFakeHatchet()
+
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1', pollIntervalMs: 60_000 })
+    await expect(relay.tick()).rejects.toThrow('simulated crash before mark')
+    await relay.stop()
+
+    // releaseClaims's own UPDATE: single-line, `$1` holds the id array — distinct
+    // from recordPublishFailure's multi-line UPDATE, which places the ids at `$2`.
+    const releaseCall = calls.find((call) =>
+      call.text.includes('claimed_at = NULL, claimed_by = NULL WHERE id = ANY($1::uuid[])'),
+    )
+    expect(releaseCall).toBeDefined()
+    const releasedIds = String(releaseCall?.params[0])
+    expect(releasedIds).toContain(rowA.id)
+    expect(releasedIds).toContain(rowB.id)
   })
 })
