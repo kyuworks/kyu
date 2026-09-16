@@ -1,12 +1,62 @@
 # Dependabot configuration — automated dependency & vulnerability PRs.
 #
 # Policy:
-#   - Auto-CREATE PRs only; a human always merges. No auto-merge for
-#     Dependabot (or feature) PRs. Nothing auto-merges in this repo.
+#   - Auto-CREATE PRs only; a human always merges. Nothing auto-merges in
+#     this repo.
 #   - Patch + minor updates -> auto-PR. Major updates -> ignored (decided by hand).
 #   - Security updates -> auto-PR (may cross a major when that's the only fix).
-#   - 7-day cooldown before opening a PR (anti-malware delay; distinct from the
-#     .npmrc cooldown, which only governs local installs).
-#   - PRs target the default branch (main) automatically — no target-branch
-#     set, so security updates keep their full behavior.
-#
+#   - 7-day cooldown before opening a PR, matching minimumReleaseAge in
+#     pnpm-workspace.yaml, which governs installs.
+#   - PRs target the default branch (main) automatically.
+version: 2
+updates:
+  # --- npm / pnpm workspace: root + every workspace package ---
+  - package-ecosystem: "npm"
+    # Globs mirror pnpm-workspace.yaml (packages/*, examples/*) so every
+    # current and future workspace package is covered without editing this list.
+    directories:
+      - "/"
+      - "/packages/*"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    # Majors are decided by hand. Security updates may still cross a major
+    # when that is the only patched version.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    # One grouped PR for patch+minor. Security updates stay individual.
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+
+  # --- GitHub Actions used by the workflow files ---
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      github-actions:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
