@@ -1,0 +1,27 @@
+{
+  // Shared anti-slop plugin load + severities. First-party packages extend
+  // this file. Do not copy these keys into a package `.oxlintrc.json`.
+  // Why each off-rule stays off: docs/lint/anti-slop.md
+  "jsPlugins": ["./anti-slop/index.ts", "./anti-slop/effect/index.ts"],
+  "rules": {
+    // At zero across the workspace — error, so they cannot regress.
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-reflect-get": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-widen-then-assert": "error",
+    "anti-slop/no-unknown-returns": "error",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-unknown-parameters": "error",
+    "anti-slop/no-known-value-widening": "error",
+    "anti-slop/no-chained-type-assertions": "error",
+    "anti-slop/no-runtime-typeof": "error",
+    "anti-slop/no-unsafe-dictionary-type": "error",
+    // Off by decision, not by volume — do not enable without re-reading
+    // docs/lint/anti-slop.md, which records why each was rejected.
+    "anti-slop/require-safety-comment-for-type-assertion": "off",
+    "anti-slop/no-shape-in-symbol-names": "off",
+    "anti-slop/no-module-mocking": "off",
+    "anti-slop-effect/no-service-constructor-imports": "off"
+  }
+}

@@ -1,0 +1,9 @@
+# Required GitHub status-check names. Each must be a job `name:` in ci.yml.
+# scripts/gates/check-required-ci-jobs.sh fails a PR when this list drifts.
+# GitHub treats a skipped required check as passing, so nothing here may be
+# path-filtered or conditional on a pull request.
+Lint
+Type Check
+Unit Tests
+Integration Tests
+Gate Self Tests

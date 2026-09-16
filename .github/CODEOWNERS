@@ -1,0 +1,21 @@
+# Paths where a mistake is hard to undo, or where a run could relax the rules
+# it runs under. Everything else keeps the normal review rule.
+#
+# This file only blocks a merge once the main ruleset adds "Require review
+# from Code Owners". Until then GitHub only requests the review.
+
+# The outbox SQL consumers apply to their own databases. Immutable once merged.
+/packages/sdk/migrations/ @matt-camba
+
+# The envelope is the public contract every project codes against.
+/packages/schemas/src/envelope.ts @matt-camba
+
+# The gates, the script that runs them, the guard that wraps an agent run,
+# and the list of checks a pull request must pass.
+/scripts/gates/ @matt-camba
+/scripts/verify-gates.sh @matt-camba
+/scripts/hooks/ @matt-camba
+/.claude/settings.json @matt-camba
+/.github/workflows/ci.yml @matt-camba
+/.github/workflows/required-checks.txt @matt-camba
+/.github/CODEOWNERS @matt-camba

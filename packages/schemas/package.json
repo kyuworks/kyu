@@ -1,0 +1,38 @@
+{
+  "name": "@kinesin/schemas",
+  "version": "0.0.0",
+  "description": "Kinesin message envelope, naming rules and schema adapters. Runtime-light; depends on Zod only.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc -b --pretty false",
+    "typecheck:tests": "tsc -b --pretty false tsconfig.test.json",
+    "test": "vitest run",
+    "test:integration": "true",
+    "lint": "NODE_OPTIONS='--import tsx' oxlint"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "^1.1.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "oxlint": "^1.82.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "typescript": "^6.0.0",
+    "vitest": "^4.1.0"
+  }
+}

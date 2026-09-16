@@ -1,0 +1,33 @@
+{
+  // TypeScript hygiene shared by every first-party package. Every rule is
+  // error. Packages extend this file; do not copy these keys into a package.
+  "rules": {
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-empty": "error",
+    "no-empty-function": "error",
+    "typescript/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "typescript/no-explicit-any": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/switch-exhaustiveness-check": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/consistent-type-imports": ["error", { "disallowTypeAnnotations": false }],
+    "typescript/no-import-type-side-effects": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/restrict-template-expressions": [
+      "error",
+      {
+        "allowNumber": true,
+        "allowBoolean": true,
+        "allowNullish": true,
+        "allowAny": false,
+        "allowArray": false,
+        "allowNever": false,
+        "allowRegExp": false
+      }
+    ],
+    "typescript/no-unnecessary-condition": "error",
+    "typescript/no-unnecessary-type-assertion": "error"
+  }
+}

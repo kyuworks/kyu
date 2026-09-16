@@ -1,0 +1,7 @@
+#!/bin/sh
+export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
+
+# The commit is the verification checkpoint. scripts/check-changed.sh reads the
+# staged index and selects format, lint, typecheck, the affected tests and the
+# owning gates. Silent on success. Never --no-verify: fix the code.
+bash scripts/check-changed.sh --staged

@@ -1,0 +1,47 @@
+name: Setup Node and pnpm
+description: Install Node 24, pnpm, install deps, optionally build the workspace
+inputs:
+  install:
+    description: Run pnpm install --frozen-lockfile
+    default: 'true'
+  build:
+    description: Run pnpm build after install
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - name: Install pnpm
+      uses: pnpm/action-setup@v6
+      with:
+        version: 11.24.0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: '24'
+
+    # Exact key only — a stale lockfile tree is not reused. Install still
+    # runs after a hit so workspace links and native postinstall stay valid.
+    # No pnpm store cache: setup-node keys it on the same lockfile hash, so
+    # it can only hit when this key hits, and then nothing reads it.
+    - name: Cache node_modules
+      if: inputs.install == 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          node_modules
+          packages/*/node_modules
+          examples/*/node_modules
+        key: ${{ runner.os }}-node24-pnpm11.24-nm-${{ hashFiles('pnpm-lock.yaml') }}
+
+    # Every install verifies the lockfile against minimumReleaseAge. No job
+    # opts out — scripts/gates/check-supply-chain-verify.sh enforces that.
+    - name: Install dependencies
+      if: inputs.install == 'true'
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Build workspace
+      if: inputs.build == 'true'
+      shell: bash
+      run: pnpm build
