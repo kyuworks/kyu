@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { envelopeSchema, fromEnvelopeMetadata, messageNameSchema, toEnvelopeMetadata } from './envelope.js'
+import {
+  envelopeMetadataSchema,
+  envelopeSchema,
+  fromEnvelopeMetadata,
+  messageNameSchema,
+  toEnvelopeMetadata,
+} from './envelope.js'
 import type { Envelope } from './envelope.js'
 
 const validEnvelope = {
@@ -117,5 +123,26 @@ describe('fromEnvelopeMetadata', () => {
     const envelope: Envelope = envelopeSchema.parse({ ...validEnvelope, tenantId: null })
     const fields = fromEnvelopeMetadata(toEnvelopeMetadata(envelope))
     expect(fields.tenantId).toBeNull()
+  })
+
+  it.each(['0', 'abc', '01'])('rejects a kinesin_version of %s', (kinesin_version) => {
+    const envelope: Envelope = envelopeSchema.parse(validEnvelope)
+    const metadata = { ...toEnvelopeMetadata(envelope), kinesin_version }
+    expect(() => fromEnvelopeMetadata(metadata)).toThrow()
+  })
+
+  it('accepts envelopeMetadataSchema for a full envelope round-tripped through toEnvelopeMetadata', () => {
+    const envelope: Envelope = envelopeSchema.parse({
+      ...validEnvelope,
+      orgUnitId: '3f2504e0-4f89-41d3-9a0c-0305e82c3303',
+      actorUserId: '3f2504e0-4f89-41d3-9a0c-0305e82c3304',
+      causationId: '01923e4a-7b1c-7f3e-8a2d-3c4b5a6d7e91',
+    })
+    expect(() => envelopeMetadataSchema.parse(toEnvelopeMetadata(envelope))).not.toThrow()
+  })
+
+  it('accepts envelopeMetadataSchema for a minimal envelope round-tripped through toEnvelopeMetadata', () => {
+    const envelope: Envelope = envelopeSchema.parse({ ...validEnvelope, tenantId: null })
+    expect(() => envelopeMetadataSchema.parse(toEnvelopeMetadata(envelope))).not.toThrow()
   })
 })
