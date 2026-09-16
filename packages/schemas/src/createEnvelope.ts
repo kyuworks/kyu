@@ -5,6 +5,7 @@ import type { Envelope, EnvelopeData } from './envelope.js'
 import { envelopeSchema } from './envelope.js'
 import { EnvelopeOptionsError, MessageDataError } from './errors.js'
 import type { MessageDataShape } from './json.js'
+import { normalizeEnvelopeData } from './normalizeData.js'
 import { validateStandard } from './standard.js'
 import { uuidv7 } from './uuidv7.js'
 
@@ -20,8 +21,7 @@ export interface CreateEnvelopeOptions {
 
 type RawEnvelope = Omit<z.input<typeof envelopeSchema>, 'data'> & { data: EnvelopeData }
 
-// envelopeSchema.safeParse proves `data` is plain JSON; the caller's own
-// definition already proved its shape, so one assertion bridges the two.
+// envelopeSchema.safeParse proves `data` is plain JSON; one assertion bridges to the caller's shape.
 function asDefinitionData<TOutput extends MessageDataShape>(data: EnvelopeData): TOutput {
   return data as TOutput
 }
@@ -32,13 +32,12 @@ export async function createEnvelope<S extends MessageSchema>(
   options: CreateEnvelopeOptions,
 ): Promise<Envelope<StandardSchemaV1.InferOutput<S>>> {
   const validatedData = await validateStandard(definition.data, data)
-  // JSON.stringify drops `undefined` values; normalise to what the wire carries.
-  const normalisedData: EnvelopeData = JSON.parse(JSON.stringify(validatedData))
+  // normalizeEnvelopeData proves no `undefined` remains; one assertion bridges to the wire type.
+  const normalisedData: EnvelopeData = normalizeEnvelopeData(validatedData) as EnvelopeData
   const id = uuidv7()
   const occurredAtDate = options.occurredAt ?? new Date()
-  if (Number.isNaN(occurredAtDate.getTime())) {
+  if (Number.isNaN(occurredAtDate.getTime()))
     throw new EnvelopeOptionsError([{ path: 'occurredAt', message: 'Invalid Date' }])
-  }
 
   const raw: RawEnvelope = {
     id,
@@ -55,8 +54,7 @@ export async function createEnvelope<S extends MessageSchema>(
   if (options.actorUserId !== undefined) raw.actorUserId = options.actorUserId
   if (options.causationId !== undefined) raw.causationId = options.causationId
 
-  // `data` is normalised and pre-validated above; a `data`-path issue here
-  // means envelopeSchema itself rejected it, so route it to MessageDataError.
+  // `data` is normalised above; a `data`-path issue here routes to MessageDataError.
   const result = envelopeSchema.safeParse(raw)
   if (!result.success) {
     const issues = result.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message }))

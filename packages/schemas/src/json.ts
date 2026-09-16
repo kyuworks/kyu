@@ -1,5 +1,4 @@
-// Shared by define.ts (message data shape) and envelope.ts (the generic
-// envelope's default). Kept separate so neither imports the other.
+// Shared by define.ts and envelope.ts, kept separate so neither imports the other.
 export type JsonPrimitive = string | number | boolean | null
 
 export type JsonValue = JsonPrimitive | JsonValue[] | JsonObject
