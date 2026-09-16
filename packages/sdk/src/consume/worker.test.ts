@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CommandHasTwoSubscribersError } from '../errors.js'
-import type { HatchetClient, Worker } from '../hatchet.js'
+import type { CreateWorkerOpts, HatchetClient, Worker } from '../hatchet.js'
 import { assertSingleCommandSubscriber, createWorker } from './worker.js'
 import type { Subscription } from './subscribe.js'
 
@@ -20,17 +20,28 @@ function fakeWorker(overrides: Partial<Pick<Worker, 'start' | 'stop' | 'waitUnti
 interface FakeHatchetClient {
   client: HatchetClient
   workerCallCount: () => number
+  capturedWorkerOptions: () => CreateWorkerOpts | undefined
 }
 
+// createWorker always calls hatchet.worker(name, opts) with an options
+// object, never the engine's bare-number slots shorthand — narrowing the
+// stub's own parameter to CreateWorkerOpts keeps the capture typed instead
+// of re-widening to the client method's full union.
 function fakeHatchetClient(worker: (name: string) => Promise<Worker>): FakeHatchetClient {
   const calls = { count: 0 }
+  let options: CreateWorkerOpts | undefined
   const stub: Pick<HatchetClient, 'worker'> = {
-    worker: (name) => {
+    worker: (name: string, workerOptions?: CreateWorkerOpts) => {
       calls.count += 1
+      options = workerOptions
       return worker(name)
     },
   }
-  return { client: stub as HatchetClient, workerCallCount: () => calls.count }
+  return {
+    client: stub as HatchetClient,
+    workerCallCount: () => calls.count,
+    capturedWorkerOptions: () => options,
+  }
 }
 
 function stubSubscription(name: string, kind: Subscription['kind'], messageName: string): Subscription {
@@ -78,6 +89,24 @@ describe('createWorker', () => {
     )
     expect(workerCallCount()).toBe(0)
   })
+
+  it('defaults handleKill to false so the engine never installs its own SIGTERM/SIGINT handlers', async () => {
+    const { client, capturedWorkerOptions } = fakeHatchetClient(() => Promise.resolve(fakeWorker({})))
+    const subscription = stubSubscription('notify-ops', 'event', 'shop.order.placed')
+
+    await createWorker(client, 'worker', { subscriptions: [subscription] })
+
+    expect(capturedWorkerOptions()?.handleKill).toBe(false)
+  })
+
+  it('passes handleKill through when the caller opts in', async () => {
+    const { client, capturedWorkerOptions } = fakeHatchetClient(() => Promise.resolve(fakeWorker({})))
+    const subscription = stubSubscription('notify-ops', 'event', 'shop.order.placed')
+
+    await createWorker(client, 'worker', { subscriptions: [subscription], handleKill: true })
+
+    expect(capturedWorkerOptions()?.handleKill).toBe(true)
+  })
 })
 
 describe('KinesinWorker.waitUntilReady', () => {
@@ -100,5 +129,32 @@ describe('KinesinWorker.waitUntilReady', () => {
     void started.catch(() => undefined)
 
     await expect(worker.waitUntilReady()).rejects.toBe(startError)
+  })
+
+  it('surfaces a later start() failure even when waitUntilReady() was called first', async () => {
+    const startError = new Error('engine unreachable')
+    let rejectStart: (error: Error) => void = () => undefined
+    const startPromise = new Promise<void>((_resolve, reject) => {
+      rejectStart = reject
+    })
+    const { client } = fakeHatchetClient(() =>
+      Promise.resolve(
+        fakeWorker({
+          start: () => startPromise,
+          // Hangs forever: the engine probe this stands in for never
+          // resolves once start() has already failed.
+          waitUntilReady: () => new Promise<void>(() => undefined),
+        }),
+      ),
+    )
+    const subscription = stubSubscription('send-invoice', 'command', 'shop.invoice.send')
+    const worker = await createWorker(client, 'worker', { subscriptions: [subscription] })
+
+    const ready = worker.waitUntilReady()
+    const started = worker.start()
+    void started.catch(() => undefined)
+    rejectStart(startError)
+
+    await expect(ready).rejects.toBe(startError)
   })
 })

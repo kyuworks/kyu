@@ -13,6 +13,8 @@ export interface CreateWorkerOptions {
   subscriptions: Subscription[]
   slots?: number
   durableSlots?: number
+  /** The engine's own SIGTERM/SIGINT handlers, which call `process.exit(0)`. Defaults to false: `stop()` is the shutdown path; set true only to opt into the engine's handlers. */
+  handleKill?: boolean
 }
 
 /** A command name delivered to two subscriptions on the same worker would race for it; refused before start. */
@@ -28,6 +30,13 @@ export function assertSingleCommandSubscriber(subscriptions: readonly Subscripti
   }
 }
 
+/**
+ * `assertSingleCommandSubscriber` only sees the subscriptions passed to this
+ * call, i.e. one worker in one process. Two workers in separate processes
+ * that both subscribe to the same command are not detected by the SDK —
+ * keep one process per command. If it happens anyway, the engine's own
+ * dashboard shows both registrations.
+ */
 export async function createWorker(
   hatchet: HatchetClient,
   name: string,
@@ -37,38 +46,34 @@ export async function createWorker(
 
   const workerOptions: CreateWorkerOpts = {
     workflows: options.subscriptions.map((subscription) => subscription.workflow),
+    handleKill: options.handleKill ?? false,
   }
   if (options.slots !== undefined) workerOptions.slots = options.slots
   if (options.durableSlots !== undefined) workerOptions.durableSlots = options.durableSlots
 
   const worker = await hatchet.worker(name, workerOptions)
 
-  let startPromise: Promise<void> | undefined
-  let startError: Error | undefined
+  // Rejects the moment start() fails, independent of call order: a caller
+  // may await waitUntilReady() before start() is ever invoked, and must
+  // still learn about a start failure instead of hanging on a dead probe.
+  let rejectStartFailure: (error: Error) => void = () => undefined
+  const startFailure = new Promise<never>((_resolve, reject) => {
+    rejectStartFailure = reject
+  })
+  // Attached immediately so a rejection reaching here before anyone calls
+  // waitUntilReady never surfaces as an unhandled rejection.
+  startFailure.catch(() => undefined)
 
   return {
     start: (): Promise<void> => {
       const started = worker.start()
-      startPromise = started
-      // Attached immediately: a rejection reaching here before anyone calls
-      // waitUntilReady must never surface as an unhandled rejection.
       started.catch((cause) => {
-        startError = cause instanceof Error ? cause : new Error(String(cause))
+        rejectStartFailure(cause instanceof Error ? cause : new Error(String(cause)))
       })
       return started
     },
     stop: () => worker.stop(),
-    waitUntilReady: async (timeoutMs?: number): Promise<void> => {
-      if (startError !== undefined) throw startError
-      if (startPromise === undefined) return worker.waitUntilReady(timeoutMs)
-      // start() resolves only when the worker stops, so its resolution here
-      // means the worker stopped before becoming ready.
-      return Promise.race([
-        worker.waitUntilReady(timeoutMs),
-        startPromise.then((): void => {
-          throw startError ?? new Error('worker stopped before becoming ready')
-        }),
-      ])
-    },
+    waitUntilReady: (timeoutMs?: number): Promise<void> =>
+      Promise.race([worker.waitUntilReady(timeoutMs), startFailure]),
   }
 }
