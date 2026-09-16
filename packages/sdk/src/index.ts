@@ -41,3 +41,6 @@ export {
   MessageDefinitionError,
 } from './errors.js'
 export type { EnvelopeOptionIssue, MessageDataIssue } from './errors.js'
+
+export { groupEnvelopesForPush, startRelay } from './relay/index.js'
+export type { PushItem, Relay, RelayOptions, TickResult } from './relay/index.js'
