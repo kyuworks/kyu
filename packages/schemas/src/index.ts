@@ -5,19 +5,27 @@ export {
   fromEnvelopeMetadata,
   messageKindSchema,
   messageNameSchema,
+  messageVersionSchema,
   parseEnvelope,
   toEnvelopeMetadata,
 } from './envelope.js'
-export type { Envelope, EnvelopeMetadata, EnvelopeMetadataFields, MessageKind } from './envelope.js'
+export type {
+  Envelope,
+  EnvelopeData,
+  EnvelopeMetadata,
+  EnvelopeMetadataFields,
+  MessageKind,
+  MessageName,
+} from './envelope.js'
 
 export { createEnvelope } from './createEnvelope.js'
 export type { CreateEnvelopeOptions } from './createEnvelope.js'
 
 export { defineCommand, defineEvent } from './define.js'
-export type { MessageData, MessageDefinition } from './define.js'
+export type { JsonValue, MessageData, MessageDataShape, MessageDefinition } from './define.js'
 
-export { MessageDataError } from './errors.js'
-export type { MessageDataIssue } from './errors.js'
+export { EnvelopeOptionsError, MessageDataError, MessageDefinitionError } from './errors.js'
+export type { EnvelopeOptionIssue, MessageDataIssue } from './errors.js'
 
 export { validateStandard } from './standard.js'
 

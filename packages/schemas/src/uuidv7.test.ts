@@ -44,4 +44,22 @@ describe('uuidv7', () => {
     expect(new Set(ids).size).toBe(ids.length)
     expect(ids).toEqual([...ids].sort())
   })
+
+  it('is strictly increasing pairwise across 10,000 ids', async () => {
+    const uuidv7 = await freshUuidv7()
+    const now = Date.UTC(2026, 8, 16, 10, 0, 0, 4)
+    const ids = Array.from({ length: 10_000 }, () => uuidv7(now))
+    let previous: string | undefined
+    for (const id of ids) {
+      if (previous !== undefined) expect(id > previous).toBe(true)
+      previous = id
+    }
+  })
+
+  it('keeps generating increasing ids when the clock goes backwards', async () => {
+    const uuidv7 = await freshUuidv7()
+    const first = uuidv7(2e12)
+    const second = uuidv7(1e12)
+    expect(second > first).toBe(true)
+  })
 })
