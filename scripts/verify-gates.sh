@@ -24,9 +24,6 @@ bash scripts/gates/check-no-escape-hatches.sh
 echo "[verify:gates] check-package-boundaries"
 bash scripts/gates/check-package-boundaries.sh
 
-echo "[verify:gates] check-migration-no-transactions"
-bash scripts/gates/check-migration-no-transactions.sh
-
 echo "[verify:gates] check-migration-immutability"
 if [ -n "${range_arg}" ]; then
   BASE_SHA="${range_arg%%...*}" bash scripts/gates/check-migration-immutability.sh

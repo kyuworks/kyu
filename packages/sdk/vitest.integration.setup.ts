@@ -1,6 +1,6 @@
-import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Client } from 'pg'
+import { applyMigrations } from './src/db/applyMigrations.js'
 
 // Global setup for the integration suite. A missing engine or database is a
 // failure, not a skip: a suite that silently skips reports green for code it
@@ -85,24 +85,7 @@ export default async function setup(): Promise<void> {
   await db.connect()
   try {
     const migrationsDir = path.resolve(import.meta.dirname, 'migrations')
-    const files = (await readdir(migrationsDir)).filter((name) => name.endsWith('.sql')).sort()
-    for (const file of files) {
-      const sql = await readFile(path.join(migrationsDir, file), 'utf8')
-      await db.query('BEGIN')
-      try {
-        await db.query(sql)
-        await db.query('COMMIT')
-      } catch (error) {
-        try {
-          await db.query('ROLLBACK')
-        } catch {
-          // The connection may already be broken (e.g. the failure above
-          // killed it); the original error below is what matters.
-        }
-        const message = error instanceof Error ? error.message : String(error)
-        throw new Error(`migration ${file} failed: ${message}`, { cause: error })
-      }
-    }
+    await applyMigrations(db, migrationsDir)
   } finally {
     await db.end()
   }
