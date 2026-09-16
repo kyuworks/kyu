@@ -12,3 +12,15 @@ export { ConcurrencyLimitStrategy, NonRetryableError, Or, Priority, createHatche
 export type { HatchetClient, HatchetClientConfig, HatchetClientOptions, Worker } from './hatchet.js'
 
 export { CommandHasTwoSubscribersError, EnvelopeRejectedError, KinesinError, MessageDataError } from './errors.js'
+
+export { toHatchetConcurrency } from './consume/concurrency.js'
+export type { ConcurrencyOption } from './consume/concurrency.js'
+
+export { buildHandlerContext } from './consume/handlerContext.js'
+export type { HandlerContext, HandlerLogger } from './consume/handlerContext.js'
+
+export { decodeIncomingEnvelope, subscribe } from './consume/subscribe.js'
+export type { RateLimitOption, SubscribeOptions, Subscription } from './consume/subscribe.js'
+
+export { assertSingleCommandSubscriber, createWorker } from './consume/worker.js'
+export type { CreateWorkerOptions, KinesinWorker } from './consume/worker.js'

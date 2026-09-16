@@ -9,10 +9,27 @@ import {
   Or,
   Priority,
 } from '@hatchet-dev/typescript-sdk/v1/index.js'
-import type { Worker } from '@hatchet-dev/typescript-sdk/v1/index.js'
+import type {
+  Concurrency,
+  Context,
+  CreateTaskWorkflowOpts,
+  CreateWorkerOpts,
+  JsonObject,
+  TaskWorkflowDeclaration,
+  Worker,
+} from '@hatchet-dev/typescript-sdk/v1/index.js'
 
 export { ConcurrencyLimitStrategy, NonRetryableError, Or, Priority }
-export type { HatchetClient, Worker }
+export type {
+  Concurrency,
+  Context,
+  CreateTaskWorkflowOpts,
+  CreateWorkerOpts,
+  HatchetClient,
+  JsonObject,
+  TaskWorkflowDeclaration,
+  Worker,
+}
 
 export interface HatchetClientOptions {
   token?: string
