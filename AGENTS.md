@@ -1,12 +1,12 @@
 # Agent notes — Kinesin
 
-This repository is **Kinesin** (`Camba-nz/kinesin`): the company message bus, built on self-hosted Hatchet. It is a TypeScript library plus deployment config, consumed by Camba and by other company projects. It is not Camba. Do not open issues, PRs or automation against `the consuming project's repository` or any other repository from here.
+This repository is **Kinesin** (`Camba-nz/kinesin`): the company message bus, built on self-hosted Hatchet. It is a TypeScript library plus deployment config, consumed by every company project through its SDK. Do not open issues, PRs or automation against any other repository from here.
 
 Read this file in full before any task. It applies to every harness, not only Claude Code. Shared words: [`CONTEXT.md`](CONTEXT.md). The design: [`docs/design/kinesin-requirements-and-design.md`](docs/design/kinesin-requirements-and-design.md). Decisions: [`docs/architecture/adr/`](docs/architecture/adr/).
 
 ## Current mission
 
-Get the first consumer onto the bus. In order: the SDK's envelope and outbox (`packages/schemas`, `packages/sdk`), the relay, the subscribe helpers, then Camba publishing `camba.listing.updated`. The design document's phases are the roadmap; GitHub issues are the queue.
+Ship the SDK, then prove it with a test application. In order: the envelope and message definitions (`packages/schemas`), the outbox and `publish()`, the relay, the subscribe and durable helpers (`packages/sdk`), then a test application under `examples/` that exercises events, commands and durable handlers end to end. The design document's phases are the roadmap; GitHub issues are the queue.
 
 **Non-goals until explicitly scheduled:** a dashboard of our own, non-TypeScript SDKs, a Hatchet fork, multi-region, synchronous request/response over the bus.
 
@@ -79,6 +79,7 @@ Before writing code, stop at the first rung that holds:
 - `packages/sdk` (`@kinesin/sdk`): `publish()` and the outbox, the relay, `subscribe()` / `durable()` over the Hatchet SDK, `onceById()`, the worker. Ships `migrations/` SQL for consumers.
 - `infra/hatchet`: the local engine stack and, later, the Fly deployment.
 - Consumers never call the Hatchet SDK directly for bus work. If the SDK lacks something, add it to the SDK.
+- `examples/*`: test applications that consume the SDK the way a real project would. They are the proof, not the product.
 
 **Delivery rules**
 

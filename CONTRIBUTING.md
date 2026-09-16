@@ -2,8 +2,6 @@
 
 Kinesin is the company message bus ([`Camba-nz/kinesin`](https://github.com/Camba-nz/kinesin)). Rules for agents and people are in [`AGENTS.md`](AGENTS.md); shared words in [`CONTEXT.md`](CONTEXT.md); the design in [`docs/design/kinesin-requirements-and-design.md`](docs/design/kinesin-requirements-and-design.md); decisions in [`docs/architecture/adr/`](docs/architecture/adr/).
 
-**This is not Camba.** Do not file issues or PRs against the consuming project's repository from here.
-
 ## People
 
 | Person | Role |

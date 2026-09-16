@@ -9,8 +9,8 @@
 | Kinesin | This system: the company message bus. Named for the motor protein that carries cargo along tracks inside a cell. |
 | engine | Hatchet, self-hosted. Kinesin's control plane. Never exposed to consumer code directly; the SDK wraps it. |
 | message | One envelope on the bus. Either an event or a command. |
-| event | A fact that happened in a producer, fanned out to every subscriber. Named in past tense: `camba.listing.updated`. |
-| command | Work for exactly one handler, retried until it succeeds or is parked. Named in imperative: `camba.platform.push`. |
+| event | A fact that happened in a producer, fanned out to every subscriber. Named in past tense: `shop.order.placed`. |
+| command | Work for exactly one handler, retried until it succeeds or is parked. Named in imperative: `shop.invoice.send`. |
 | envelope | The company-standard wrapper around every message: id, name, version, kind, occurredAt, tenantId, correlationId, causationId, source, data. Defined once in `@kinesin/schemas`. |
 | name | `<project>.<aggregate>.<verb>`, lower case, dots only. |
 | producer | A project that publishes messages. |
