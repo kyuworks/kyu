@@ -160,6 +160,84 @@ describe('startRelay: tick()', () => {
     expect(bulkPush).toHaveBeenCalledTimes(1)
     expect(first).toEqual(second)
   })
+
+  it('rejects tick() called after stop()', async () => {
+    const { db } = createFakeDb([[]])
+    const { hatchet } = createFakeHatchet()
+
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1' })
+    await relay.stop()
+
+    await expect(relay.tick()).rejects.toThrow('relay is stopped')
+  })
+})
+
+describe('startRelay: callback safety', () => {
+  it('keeps polling and leaks no unhandled rejection when onError itself throws', async () => {
+    vi.useFakeTimers()
+    // Every claim query rejects, so every tick fails and onError fires each time.
+    const db: Queryable = {
+      async query(text): Promise<QueryRows> {
+        if (!text.includes('RETURNING *')) return { rows: [], rowCount: 0 }
+        throw new Error('driver down')
+      },
+    }
+    const { hatchet } = createFakeHatchet()
+    const onError = vi.fn(() => {
+      throw new Error('onError itself throws')
+    })
+    const pollIntervalMs = 1000
+
+    const unhandled: unknown[] = []
+    const recordUnhandled: NodeJS.UnhandledRejectionListener = (reason) => {
+      unhandled.push(reason)
+    }
+    process.on('unhandledRejection', recordUnhandled)
+
+    try {
+      const relay = startRelay({ db, hatchet, workerId: 'worker-1', pollIntervalMs, onError })
+
+      await vi.advanceTimersByTimeAsync(0)
+      expect(onError).toHaveBeenCalledTimes(1) // backoff now 4000
+
+      await vi.advanceTimersByTimeAsync(pollIntervalMs * 4)
+      expect(onError).toHaveBeenCalledTimes(2) // backoff now 8000
+
+      await vi.advanceTimersByTimeAsync(pollIntervalMs * 8)
+      expect(onError).toHaveBeenCalledTimes(3) // backoff now 16000
+
+      await relay.stop()
+      await vi.advanceTimersByTimeAsync(0)
+    } finally {
+      process.off('unhandledRejection', recordUnhandled)
+    }
+
+    expect(unhandled).toEqual([])
+  })
+
+  it('does not report a throwing onTick to onError as a push failure, and keeps polling', async () => {
+    vi.useFakeTimers()
+    const { db } = createFakeDb([[], []])
+    const { hatchet } = createFakeHatchet()
+    const onError = vi.fn()
+    const onTick = vi.fn(() => {
+      throw new Error('onTick blew up')
+    })
+    const pollIntervalMs = 1000
+
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1', pollIntervalMs, onTick, onError })
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onTick).toHaveBeenCalledTimes(1)
+    expect(onError).not.toHaveBeenCalled()
+
+    // The loop still schedules the next tick despite onTick's throw.
+    await vi.advanceTimersByTimeAsync(pollIntervalMs)
+    expect(onTick).toHaveBeenCalledTimes(2)
+    expect(onError).not.toHaveBeenCalled()
+
+    await relay.stop()
+  })
 })
 
 describe('startRelay: poll loop backoff', () => {
@@ -352,5 +430,103 @@ describe('startRelay: claim release on a mid-batch mark failure', () => {
     const releasedIds = String(releaseCall?.params[0])
     expect(releasedIds).toContain(rowA.id)
     expect(releasedIds).toContain(rowB.id)
+  })
+})
+
+describe('startRelay: tick() mutation guards', () => {
+  it('fails the whole group on a short bulkPush response: no publish, both ids marked failed', async () => {
+    const rowA = makeRow('018f0000-0000-7000-8000-00000000000a', 'shop.order.placed')
+    const rowB = makeRow('018f0000-0000-7000-8000-00000000000b', 'shop.order.placed')
+    const { db, calls } = createFakeDb([[rowA, rowB]])
+    // Echoes one event instead of the two sent — the engine's own partial-accept shape.
+    const bulkPush = vi.fn<BulkPushProcedure>(async (_name, items) => ({ events: items.slice(0, 1).map(() => ({})) }))
+    const hatchet = { events: fakeEvents(bulkPush) } as HatchetClient
+
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1' })
+    const result = await relay.tick()
+    await relay.stop()
+
+    expect(result.pushed).toBe(0)
+    expect(result.failed).toBe(2)
+    expect([...result.failedIds].sort()).toEqual([rowA.id, rowB.id].sort())
+    expect(calls.some((call) => call.text.includes('SET published_at = now()'))).toBe(false)
+  })
+
+  it('truncates a long failure message to 1000 characters before storing it', async () => {
+    const rowA = makeRow('018f0000-0000-7000-8000-00000000000a', 'shop.order.placed')
+    const { db, calls } = createFakeDb([[rowA]])
+    const bulkPush = vi.fn<BulkPushProcedure>().mockRejectedValueOnce(new Error('x'.repeat(50_000)))
+    const hatchet = { events: fakeEvents(bulkPush) } as HatchetClient
+
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1' })
+    await relay.tick()
+    await relay.stop()
+
+    const failureCall = calls.find((call) => call.text.includes('attempts = attempts + 1'))
+    const storedMessage = String(failureCall?.params[0])
+    expect(storedMessage).toHaveLength(1000)
+  })
+
+  it('passes a custom staleClaimMs through to the claim query', async () => {
+    const { db, calls } = createFakeDb([[]])
+    const { hatchet } = createFakeHatchet()
+
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1', staleClaimMs: 1234 })
+    await relay.tick()
+    await relay.stop()
+
+    const claimCall = calls.find((call) => call.text.includes('RETURNING *'))
+    expect(claimCall?.params).toContain(1234)
+  })
+
+  it('stores a non-Error rejection as its rendered JSON, not the bare value', async () => {
+    const rowA = makeRow('018f0000-0000-7000-8000-00000000000a', 'shop.order.placed')
+    const { db, calls } = createFakeDb([[rowA]])
+    const bulkPush = vi.fn<BulkPushProcedure>().mockRejectedValueOnce('boom')
+    const hatchet = { events: fakeEvents(bulkPush) } as HatchetClient
+
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1' })
+    await relay.tick()
+    await relay.stop()
+
+    const failureCall = calls.find((call) => call.text.includes('attempts = attempts + 1'))
+    expect(failureCall?.params[0]).toBe('"boom"')
+  })
+
+  it('resets the backoff after a successful tick, so the next failure backs off at the base delay again', async () => {
+    vi.useFakeTimers()
+    const rowA = makeRow('018f0000-0000-7000-8000-00000000000a', 'shop.relay.a')
+    const { db } = createFakeDb([[rowA], [], [rowA]])
+    const bulkPush = vi
+      .fn<BulkPushProcedure>()
+      .mockRejectedValueOnce(new Error('e1'))
+      .mockRejectedValueOnce(new Error('e2'))
+    const hatchet = { events: fakeEvents(bulkPush) } as HatchetClient
+    const onError = vi.fn()
+    const onTick = vi.fn()
+    const pollIntervalMs = 1000
+
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1', pollIntervalMs, onError, onTick })
+
+    // tick1 fails at t=0: backoff becomes the base 4x (4000).
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onError).toHaveBeenCalledTimes(1)
+
+    // tick2, after the base backoff, claims nothing and succeeds: resets backoff to 0.
+    await vi.advanceTimersByTimeAsync(pollIntervalMs * 4)
+    expect(onTick).toHaveBeenCalledTimes(1)
+
+    // tick3, after the plain poll interval, fails again.
+    await vi.advanceTimersByTimeAsync(pollIntervalMs)
+    expect(onError).toHaveBeenCalledTimes(2)
+
+    // Without the reset, this failure would double the old 4000 backoff to
+    // 8000; confirm the next tick fires at the base 4000 instead.
+    await vi.advanceTimersByTimeAsync(pollIntervalMs * 4 - 1)
+    expect(onTick).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(onTick).toHaveBeenCalledTimes(2)
+
+    await relay.stop()
   })
 })

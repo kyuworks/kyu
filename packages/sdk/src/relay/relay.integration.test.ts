@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { defineEvent, envelopeSchema, uuidv7 } from '@kinesin/schemas'
+import type { Envelope } from '@kinesin/schemas'
 import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
@@ -217,14 +218,56 @@ describe('relay against the local engine', () => {
     expect(seenIds.filter((id) => id === envelope.id)).toHaveLength(2)
   })
 
+  it('a dead worker’s claim is invisible until stale, then a short staleClaimMs reclaims and pushes it', async () => {
+    const envelope = await publisher.publish(client, orderPlaced, { n: 1 }, { tenantId: null })
+    // A killed process runs no `finally`, so its claim is never released by hand.
+    await client.query("UPDATE kinesin_outbox SET claimed_at = now(), claimed_by = 'dead-worker' WHERE id = $1", [
+      envelope.id,
+    ])
+
+    const freshRelay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
+    const freshResult = await freshRelay.tick()
+    await freshRelay.stop()
+    expect(freshResult.claimed).toBe(0)
+
+    await client.query("UPDATE kinesin_outbox SET claimed_at = now() - interval '10 seconds' WHERE id = $1", [
+      envelope.id,
+    ])
+
+    const bulkPush = vi.spyOn(hatchet.events, 'bulkPush')
+    const staleRelay = startRelay({
+      db: client,
+      hatchet,
+      workerId: `worker-${randomUUID()}`,
+      pollIntervalMs: 60_000,
+      staleClaimMs: 1000,
+    })
+    const staleResult = await staleRelay.tick()
+    await staleRelay.stop()
+
+    expect(staleResult.pushed).toBe(1)
+    expect(bulkPush).toHaveBeenCalledTimes(1)
+    const afterReclaim = await client.query('SELECT published_at FROM kinesin_outbox WHERE id = $1', [envelope.id])
+    expect(afterReclaim.rows[0]?.['published_at']).not.toBeNull()
+  })
+
   it('delivers a published envelope to a subscribed engine task with metadata intact', async () => {
+    interface Received {
+      payload: unknown
+      additionalMetadata: Record<string, string>
+    }
+    interface Published {
+      envelope: Envelope<{ n: number }>
+      tenantId: string
+    }
+
     const delivered = defineEvent({
       name: 'kinesin.relay_test.delivered',
       version: 1,
       data: z.object({ n: z.number() }),
     })
 
-    const received = deferred<{ payload: unknown; additionalMetadata: Record<string, string> }>()
+    const received = deferred<Received>()
     const task = hatchet.task({
       name: 'kinesin-relay-test-delivery',
       onEvents: [delivered.name],
@@ -243,20 +286,38 @@ describe('relay against the local engine', () => {
       })
       await worker.waitUntilReady()
 
-      const tenantId = randomUUID()
-      const envelope = await publisher.publish(client, delivered, { n: 7 }, { tenantId })
       const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
-      await relay.tick()
-      await relay.stop()
 
-      const result = await withTimeout(received.promise, 20_000)
+      // `waitUntilReady()` can resolve before the engine has committed this
+      // test's freshly namespaced trigger, so the first publish can match
+      // nothing; retry with a fresh envelope every 2 s until the 20 s budget
+      // expires, and match the delivered payload back by id.
+      const retryIntervalMs = 2_000
+      const budgetMs = 20_000
+      const deadline = Date.now() + budgetMs
+      const published: Published[] = []
+      let result: Received | null = null
+
+      try {
+        while (result === null && Date.now() < deadline) {
+          const tenantId = randomUUID()
+          const envelope = await publisher.publish(client, delivered, { n: 7 }, { tenantId })
+          published.push({ envelope, tenantId })
+          await relay.tick()
+          result = await withTimeout(received.promise, retryIntervalMs)
+        }
+      } finally {
+        await relay.stop()
+      }
       if (result === null) throw new Error('the task never received the pushed envelope')
 
       const receivedEnvelope = envelopeSchema.parse(result.payload)
-      expect(receivedEnvelope).toEqual(envelope)
-      expect(receivedEnvelope.tenantId).toBe(tenantId)
-      expect(result.additionalMetadata['envelopeId']).toBe(envelope.id)
-      expect(result.additionalMetadata['tenantId']).toBe(tenantId)
+      const match = published.find((entry) => entry.envelope.id === receivedEnvelope.id)
+      if (match === undefined) throw new Error('received an envelope that was never published by this test')
+
+      expect(receivedEnvelope).toEqual(match.envelope)
+      expect(result.additionalMetadata['envelopeId']).toBe(match.envelope.id)
+      expect(result.additionalMetadata['tenantId']).toBe(match.tenantId)
     } finally {
       await worker?.stop()
     }
