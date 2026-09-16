@@ -28,3 +28,16 @@ export type { OnceResult } from './outbox/onceById.js'
 
 export { outboxRowSchema, processedRowSchema } from './outbox/rows.js'
 export type { OutboxRow, ProcessedRow } from './outbox/rows.js'
+
+export { ConcurrencyLimitStrategy, NonRetryableError, Or, Priority, createHatchetClient } from './hatchet.js'
+export type { HatchetClient, HatchetClientConfig, HatchetClientOptions, Worker } from './hatchet.js'
+
+export {
+  CommandHasTwoSubscribersError,
+  EnvelopeOptionsError,
+  EnvelopeRejectedError,
+  KinesinError,
+  MessageDataError,
+  MessageDefinitionError,
+} from './errors.js'
+export type { EnvelopeOptionIssue, MessageDataIssue } from './errors.js'
