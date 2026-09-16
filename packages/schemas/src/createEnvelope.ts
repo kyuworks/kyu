@@ -32,7 +32,8 @@ export async function createEnvelope<S extends MessageSchema>(
   options: CreateEnvelopeOptions,
 ): Promise<Envelope<StandardSchemaV1.InferOutput<S>>> {
   const validatedData = await validateStandard(definition.data, data)
-  // normalizeEnvelopeData proves no `undefined` remains; one assertion bridges to the wire type.
+  // normalizeEnvelopeData rejects `undefined` inside arrays and drops `undefined` properties;
+  // envelopeSchema.safeParse below is the backstop for anything it does not catch.
   const normalisedData: EnvelopeData = normalizeEnvelopeData(validatedData) as EnvelopeData
   const id = uuidv7()
   const occurredAtDate = options.occurredAt ?? new Date()
