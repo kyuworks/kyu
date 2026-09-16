@@ -1,8 +1,8 @@
 import type { z } from 'zod'
 import type { MessageDefinition } from './define.js'
-import type { Envelope } from './envelope.js'
+import type { Envelope, EnvelopeData } from './envelope.js'
 import { envelopeSchema } from './envelope.js'
-import { EnvelopeOptionsError } from './errors.js'
+import { EnvelopeOptionsError, MessageDataError } from './errors.js'
 import type { MessageDataShape } from './json.js'
 import { validateStandard } from './standard.js'
 import { uuidv7 } from './uuidv7.js'
@@ -17,7 +17,13 @@ export interface CreateEnvelopeOptions {
   occurredAt?: Date
 }
 
-type RawEnvelope<TData extends MessageDataShape> = Omit<z.input<typeof envelopeSchema>, 'data'> & { data: TData }
+type RawEnvelope = Omit<z.input<typeof envelopeSchema>, 'data'> & { data: EnvelopeData }
+
+// envelopeSchema.safeParse proves `data` is plain JSON; the caller's own
+// definition already proved its shape, so one assertion bridges the two.
+function asDefinitionData<TData extends MessageDataShape>(data: EnvelopeData): TData {
+  return data as TData
+}
 
 export async function createEnvelope<TData extends MessageDataShape>(
   definition: MessageDefinition<TData>,
@@ -25,31 +31,36 @@ export async function createEnvelope<TData extends MessageDataShape>(
   options: CreateEnvelopeOptions,
 ): Promise<Envelope<TData>> {
   const validatedData = await validateStandard(definition.data, data)
+  // JSON.stringify drops `undefined` values; normalise to what the wire carries.
+  const normalisedData: EnvelopeData = JSON.parse(JSON.stringify(validatedData))
   const id = uuidv7()
-  const occurredAt = (options.occurredAt ?? new Date()).toISOString()
+  const occurredAtDate = options.occurredAt ?? new Date()
+  if (Number.isNaN(occurredAtDate.getTime())) {
+    throw new EnvelopeOptionsError([{ path: 'occurredAt', message: 'Invalid Date' }])
+  }
 
-  const raw: RawEnvelope<TData> = {
+  const raw: RawEnvelope = {
     id,
     name: definition.name,
     version: definition.version,
     kind: definition.kind,
-    occurredAt,
+    occurredAt: occurredAtDate.toISOString(),
     tenantId: options.tenantId,
     correlationId: options.correlationId ?? id,
     source: options.source,
-    data: validatedData,
+    data: normalisedData,
   }
   if (options.orgUnitId !== undefined) raw.orgUnitId = options.orgUnitId
   if (options.actorUserId !== undefined) raw.actorUserId = options.actorUserId
   if (options.causationId !== undefined) raw.causationId = options.causationId
 
-  // `data` was already validated against the definition's schema above, so a
-  // failure here is always an option field (e.g. tenantId, source).
+  // `data` is normalised and pre-validated above; a `data`-path issue here
+  // means envelopeSchema itself rejected it, so route it to MessageDataError.
   const result = envelopeSchema.safeParse(raw)
   if (!result.success) {
-    throw new EnvelopeOptionsError(
-      result.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })),
-    )
+    const issues = result.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message }))
+    if (result.error.issues.some((issue) => issue.path[0] === 'data')) throw new MessageDataError(issues)
+    throw new EnvelopeOptionsError(issues)
   }
-  return { ...result.data, data: validatedData }
+  return { ...result.data, data: asDefinitionData<TData>(result.data.data) }
 }
