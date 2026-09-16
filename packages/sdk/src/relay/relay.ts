@@ -8,11 +8,12 @@ import type { PushItem } from './toEvents.js'
 export interface RelayOptions {
   db: Queryable
   hatchet: HatchetClient
+  // Unique per running process; two relays sharing one id can mark and release each other's rows.
   workerId: string
   batchSize?: number
   pollIntervalMs?: number
   // Bounds a stale claim, not a push: the engine client can still be
-  // retrying past this window, so a reclaimed row is pushed at most twice.
+  // retrying past this window.
   staleClaimMs?: number
   onTick?: (result: TickResult) => void
   onError?: (error: Error) => void
@@ -37,16 +38,12 @@ const DEFAULT_STALE_CLAIM_MS = 300_000
 const MAX_BACKOFF_MS = 30_000
 const MAX_LAST_ERROR_LENGTH = 1000
 
-// `JSON.stringify` is typed to always return `string`, but returns `undefined`
-// at runtime for `undefined`, a function, or a symbol — the declared return
-// type here keeps that real case visible to callers.
 function stringifyCause(cause: unknown): string | undefined {
   return JSON.stringify(cause)
 }
 
-// Never `[object Object]`: a non-Error rejection is rendered as JSON, falling
-// back to String() for a value JSON.stringify cannot render (e.g. circular,
-// or a bare `undefined`/function/symbol, which it renders as `undefined`).
+// Never `[object Object]` for a non-Error rejection: rendered as JSON, or
+// String() when JSON.stringify can't (circular, undefined, a function).
 function describeCause(cause: unknown): string {
   if (cause instanceof Error) return cause.message
   try {
@@ -60,9 +57,8 @@ function truncateLastError(message: string): string {
   return message.length > MAX_LAST_ERROR_LENGTH ? message.slice(0, MAX_LAST_ERROR_LENGTH) : message
 }
 
-// Pushes one name's group and reports why it failed, if it did. `bulkPush`
-// echoes one event per input; a short response is treated as a failure too,
-// since a row marked published on a partial accept would never be retried.
+// Pushes one name's group; a short bulkPush response (fewer events than
+// sent) is treated as a failure too, so a partial accept is retried, not marked.
 async function pushGroup(hatchet: HatchetClient, name: MessageName, items: PushItem[]): Promise<string | undefined> {
   try {
     const response = await hatchet.events.bulkPush(name, items)
@@ -94,10 +90,8 @@ async function runTick(
   let failed = 0
   const failedIds: string[] = []
   let lastErrorMessage: string | undefined
-  // Ids marked published or recorded as failed; anything claimed but left
-  // out of this set (the group that failed to mark, or one never reached)
-  // is released in the `finally` below instead of sitting claimed for the
-  // whole stale window.
+  // Ids marked published or failed; anything else claimed is released in
+  // `finally` below rather than left claimed for the whole stale window.
   const settledIds = new Set<string>()
 
   try {
@@ -140,6 +134,7 @@ export function startRelay(options: RelayOptions): Relay {
   let lastTickFailureMessage: string | undefined
 
   async function tick(): Promise<TickResult> {
+    if (stopped) throw new Error('relay is stopped')
     if (inFlight !== undefined) return inFlight
     const promise = runTick(options.db, options.hatchet, options.workerId, batchSize, staleClaimMs).then((outcome) => {
       lastTickFailureMessage = outcome.lastErrorMessage
@@ -162,27 +157,42 @@ export function startRelay(options: RelayOptions): Relay {
     backoffMs = backoffMs === 0 ? pollIntervalMs * 4 : Math.min(backoffMs * 2, MAX_BACKOFF_MS)
   }
 
+  // `.then(onFulfilled, onRejected)`, not `.then(f).catch(g)`: a throwing
+  // `onTick` must not be reported to `onError` as a push failure, and the
+  // trailing `.catch` only exists to stop a callback's throw from escaping.
   function loop(): void {
     tick()
-      .then((result) => {
-        if (result.failed === 0) {
-          backoffMs = 0
-          options.onTick?.(result)
-          // Re-tick immediately only when the last batch was full and fully
-          // pushed; otherwise there is nothing more waiting right now.
-          scheduleNext(result.claimed === batchSize ? 0 : pollIntervalMs)
-          return
-        }
-        applyBackoff()
-        const detail = lastTickFailureMessage ?? 'unknown error'
-        options.onError?.(new Error(`${result.failed} envelope(s) failed to push: ${detail}`))
-        scheduleNext(backoffMs)
-      })
-      .catch((error) => {
-        applyBackoff()
-        options.onError?.(error instanceof Error ? error : new Error(String(error)))
-        scheduleNext(backoffMs)
-      })
+      .then(
+        (result) => {
+          if (result.failed === 0) {
+            backoffMs = 0
+            try {
+              options.onTick?.(result)
+            } finally {
+              // Re-tick immediately only when the last batch was full and
+              // fully pushed; otherwise there is nothing more waiting now.
+              scheduleNext(result.claimed === batchSize ? 0 : pollIntervalMs)
+            }
+            return
+          }
+          applyBackoff()
+          const detail = lastTickFailureMessage ?? 'unknown error'
+          try {
+            options.onError?.(new Error(`${result.failed} envelope(s) failed to push: ${detail}`))
+          } finally {
+            scheduleNext(backoffMs)
+          }
+        },
+        (error) => {
+          applyBackoff()
+          try {
+            options.onError?.(error instanceof Error ? error : new Error(String(error)))
+          } finally {
+            scheduleNext(backoffMs)
+          }
+        },
+      )
+      .catch(() => undefined)
   }
 
   scheduleNext(0)
