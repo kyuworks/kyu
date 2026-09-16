@@ -1,5 +1,6 @@
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { z } from 'zod'
-import type { MessageDefinition } from './define.js'
+import type { MessageDefinition, MessageSchema } from './define.js'
 import type { Envelope, EnvelopeData } from './envelope.js'
 import { envelopeSchema } from './envelope.js'
 import { EnvelopeOptionsError, MessageDataError } from './errors.js'
@@ -21,15 +22,15 @@ type RawEnvelope = Omit<z.input<typeof envelopeSchema>, 'data'> & { data: Envelo
 
 // envelopeSchema.safeParse proves `data` is plain JSON; the caller's own
 // definition already proved its shape, so one assertion bridges the two.
-function asDefinitionData<TData extends MessageDataShape>(data: EnvelopeData): TData {
-  return data as TData
+function asDefinitionData<TOutput extends MessageDataShape>(data: EnvelopeData): TOutput {
+  return data as TOutput
 }
 
-export async function createEnvelope<TData extends MessageDataShape>(
-  definition: MessageDefinition<TData>,
-  data: TData,
+export async function createEnvelope<S extends MessageSchema>(
+  definition: MessageDefinition<S>,
+  data: StandardSchemaV1.InferInput<S>,
   options: CreateEnvelopeOptions,
-): Promise<Envelope<TData>> {
+): Promise<Envelope<StandardSchemaV1.InferOutput<S>>> {
   const validatedData = await validateStandard(definition.data, data)
   // JSON.stringify drops `undefined` values; normalise to what the wire carries.
   const normalisedData: EnvelopeData = JSON.parse(JSON.stringify(validatedData))
@@ -62,5 +63,5 @@ export async function createEnvelope<TData extends MessageDataShape>(
     if (result.error.issues.some((issue) => issue.path[0] === 'data')) throw new MessageDataError(issues)
     throw new EnvelopeOptionsError(issues)
   }
-  return { ...result.data, data: asDefinitionData<TData>(result.data.data) }
+  return { ...result.data, data: asDefinitionData<StandardSchemaV1.InferOutput<S>>(result.data.data) }
 }
