@@ -18,6 +18,7 @@ pnpm install
 pnpm hatchet:up
 export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/token.sh)"
 export HATCHET_CLIENT_TLS_STRATEGY=none
+export KINESIN_TEST_DATABASE_URL=postgresql://hatchet:hatchet@localhost:15432/kinesin_test
 pnpm check
 ```
 
