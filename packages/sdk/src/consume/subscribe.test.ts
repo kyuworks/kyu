@@ -1,8 +1,8 @@
-import { createEnvelope, defineCommand, defineEvent } from '@kinesin/schemas'
+import { createEnvelope, defineCommand, defineEvent, toEnvelopeMetadata } from '@kinesin/schemas'
 import { z } from 'zod'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { EnvelopeRejectedError } from '../errors.js'
-import type { CreateTaskWorkflowOpts, HatchetClient, JsonObject, TaskWorkflowDeclaration } from '../hatchet.js'
+import type { Context, CreateTaskWorkflowOpts, HatchetClient, JsonObject, TaskWorkflowDeclaration } from '../hatchet.js'
 import { ConcurrencyLimitStrategy, Priority, RateLimitDuration } from '../hatchet.js'
 import { decodeIncomingEnvelope, subscribe, toHatchetRateLimit } from './subscribe.js'
 
@@ -85,6 +85,28 @@ describe('decodeIncomingEnvelope', () => {
     )
 
     await expect(decodeIncomingEnvelope(orderPlaced, asIncoming(envelope))).rejects.toBeInstanceOf(
+      EnvelopeRejectedError,
+    )
+  })
+
+  it('rejects an event envelope at a command subscription with the same name and version', async () => {
+    const eventWithSameNameAndVersion = defineEvent({
+      name: 'shop.invoice.send',
+      version: 1,
+      data: z.object({ orderId: z.uuid() }),
+    })
+    const commandDefinition = defineCommand({
+      name: 'shop.invoice.send',
+      version: 1,
+      data: z.object({ orderId: z.uuid() }),
+    })
+    const envelope = await createEnvelope(
+      eventWithSameNameAndVersion,
+      { orderId: '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f3a' },
+      { tenantId: null, source: 'shop.api' },
+    )
+
+    await expect(decodeIncomingEnvelope(commandDefinition, asIncoming(envelope))).rejects.toBeInstanceOf(
       EnvelopeRejectedError,
     )
   })
@@ -178,5 +200,87 @@ describe('subscribe: option wiring', () => {
     ])
     expect(options?.executionTimeout).toBe('30s')
     expect(options?.defaultPriority).toBe(Priority.HIGH)
+  })
+})
+
+// The engine's Context carries private fields, so a stub cannot satisfy it
+// structurally; a Pick of just `additionalMetadata` is comparable to the
+// class type in one direction, the same single, unchained `as` cast as
+// `fakeHatchetClient` above.
+function fakeHatchetContext(additionalMetadata: Record<string, string>): Context<JsonObject> {
+  const stub: Pick<Context<JsonObject>, 'additionalMetadata'> = {
+    additionalMetadata: () => additionalMetadata,
+  }
+  return stub as Context<JsonObject>
+}
+
+// Drives the captured workflow `fn` the way the engine would: input decoded
+// from JSON, metadata read off a fake Context.
+function subscribeCapturing() {
+  const { client, capturedOptions } = fakeHatchetClient()
+  const handler = vi.fn()
+  subscribe(client, orderPlaced, { name: 'invoice-recorder', handler })
+  const fn = capturedOptions()?.fn
+  if (fn === undefined) throw new Error('subscribe did not capture a task fn')
+  const deliver = (input: JsonObject, additionalMetadata: Record<string, string>): Promise<void> =>
+    Promise.resolve(fn(input, fakeHatchetContext(additionalMetadata)))
+  return { handler, deliver }
+}
+
+describe('subscribe: additionalMetadata checks', () => {
+  it('rejects an empty additionalMetadata map', async () => {
+    const { deliver, handler } = subscribeCapturing()
+    const envelope = await createEnvelope(
+      orderPlaced,
+      { orderId: '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f3a' },
+      { tenantId: null, source: 'shop.api' },
+    )
+
+    await expect(deliver(asIncoming(envelope), {})).rejects.toBeInstanceOf(EnvelopeRejectedError)
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('rejects when additionalMetadata envelopeId names a different envelope', async () => {
+    const { deliver, handler } = subscribeCapturing()
+    const envelope = await createEnvelope(
+      orderPlaced,
+      { orderId: '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f3a' },
+      { tenantId: null, source: 'shop.api' },
+    )
+    const other = await createEnvelope(
+      orderPlaced,
+      { orderId: '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f3a' },
+      { tenantId: null, source: 'shop.api' },
+    )
+    const metadata = { ...toEnvelopeMetadata(envelope), envelopeId: other.id }
+
+    await expect(deliver(asIncoming(envelope), metadata)).rejects.toBeInstanceOf(EnvelopeRejectedError)
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('rejects when additionalMetadata sets a tenantId the envelope does not have', async () => {
+    const { deliver, handler } = subscribeCapturing()
+    const envelope = await createEnvelope(
+      orderPlaced,
+      { orderId: '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f3a' },
+      { tenantId: null, source: 'shop.api' },
+    )
+    const metadata = { ...toEnvelopeMetadata(envelope), tenantId: 'a1f7f3e9-9f3a-4e3e-9f3a-2b1f7f3e9f3a' }
+
+    await expect(deliver(asIncoming(envelope), metadata)).rejects.toBeInstanceOf(EnvelopeRejectedError)
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('rejects when additionalMetadata is missing the envelope tenantId', async () => {
+    const { deliver, handler } = subscribeCapturing()
+    const envelope = await createEnvelope(
+      orderPlaced,
+      { orderId: '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f3a' },
+      { tenantId: 'a1f7f3e9-9f3a-4e3e-9f3a-2b1f7f3e9f3a', source: 'shop.api' },
+    )
+    const { tenantId: _tenantId, ...metadata } = toEnvelopeMetadata(envelope)
+
+    await expect(deliver(asIncoming(envelope), metadata)).rejects.toBeInstanceOf(EnvelopeRejectedError)
+    expect(handler).not.toHaveBeenCalled()
   })
 })

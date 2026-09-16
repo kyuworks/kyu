@@ -10,7 +10,7 @@ export interface HandlerLogger {
 
 export interface HandlerContext<TData extends MessageDataShape> {
   envelope: Envelope<TData>
-  /** Decoded from the engine's `additionalMetadata`; `runHandler` has already checked it agrees with `envelope`. */
+  /** Decoded from the engine's `additionalMetadata`; `runHandler` has already checked its `envelopeId` and `tenantId` agree with `envelope`. */
   metadata: EnvelopeMetadataFields
   retryCount: number
   runId: string
@@ -19,9 +19,7 @@ export interface HandlerContext<TData extends MessageDataShape> {
   logger: HandlerLogger
 }
 
-// Wraps ctx.logger in arrow functions rather than passing its methods
-// unbound; Hatchet's logger methods return a promise the handler does not
-// need to await.
+// Arrow wrappers, not unbound methods; the engine's logger returns a promise the handler need not await.
 export function buildHandlerContext<TData extends MessageDataShape>(
   envelope: Envelope<TData>,
   metadata: EnvelopeMetadataFields,

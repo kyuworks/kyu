@@ -91,12 +91,8 @@ function toConcurrencyList(
   return Array.isArray(option) ? option.map(toHatchetConcurrency) : toHatchetConcurrency(option)
 }
 
-/**
- * Parses and validates a raw event payload against a message definition. Any
- * mismatch — not an envelope, wrong name, wrong version, invalid data — is an
- * `EnvelopeRejectedError`, non-retryable: redelivering the same bad payload
- * fails the same way.
- */
+// Every mismatch is an `EnvelopeRejectedError`, non-retryable: redelivering
+// the same bad payload fails the same way.
 export async function decodeIncomingEnvelope<S extends MessageSchema>(
   definition: MessageDefinition<S>,
   input: Unparsed,
@@ -128,12 +124,8 @@ export async function decodeIncomingEnvelope<S extends MessageSchema>(
   }
 }
 
-/**
- * Decodes the engine's `additionalMetadata` at the trust edge and checks it
- * agrees with the envelope the payload decoded to. A mismatch means the
- * event was pushed with metadata that does not describe its own payload —
- * never expected from `publish()`, so rejected rather than trusted.
- */
+// The trust edge for the engine's string metadata map: metadata that does not
+// describe its own payload never comes from `publish()`, so it is rejected.
 function decodeAndCheckMetadata(
   hatchetContext: Context<JsonObject>,
   envelope: Envelope<MessageDataShape>,
@@ -143,7 +135,7 @@ function decodeAndCheckMetadata(
     metadata = fromEnvelopeMetadata(hatchetContext.additionalMetadata())
   } catch (cause) {
     if (!(cause instanceof EnvelopeMetadataError)) throw cause
-    throw new EnvelopeRejectedError('additionalMetadata failed validation', envelope.id, { cause })
+    throw new EnvelopeRejectedError(cause.message, envelope.id, { cause })
   }
   if (metadata.envelopeId !== envelope.id) {
     throw new EnvelopeRejectedError(
@@ -166,8 +158,7 @@ async function runHandler<S extends MessageSchema>(
   input: JsonObject,
   hatchetContext: Context<JsonObject>,
 ): Promise<void> {
-  // Not caught here: a thrown error retries, `NonRetryableError` (and
-  // `EnvelopeRejectedError`, which extends it) fails the run at once.
+  // Not caught here: a throw retries, an `EnvelopeRejectedError` does not.
   const envelope = await decodeIncomingEnvelope(definition, input)
   const metadata = decodeAndCheckMetadata(hatchetContext, envelope)
   await handler(buildHandlerContext(envelope, metadata, hatchetContext))

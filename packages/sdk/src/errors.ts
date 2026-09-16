@@ -1,6 +1,6 @@
 import { KinesinError, NonRetryableError } from './hatchet.js'
 
-export { EnvelopeOptionsError, MessageDataError, MessageDefinitionError } from '@kinesin/schemas'
+export { EnvelopeMetadataError, EnvelopeOptionsError, MessageDataError, MessageDefinitionError } from '@kinesin/schemas'
 export type { EnvelopeOptionIssue, MessageDataIssue } from '@kinesin/schemas'
 export { KinesinError } from './hatchet.js'
 

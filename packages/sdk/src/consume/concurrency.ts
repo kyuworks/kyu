@@ -7,9 +7,8 @@ export interface ConcurrencyOption {
   strategy?: 'fifo' | 'cancel_in_progress' | 'cancel_newest'
 }
 
-// No strategy given defaults to fifo: the bus's default concurrency key
-// behaviour is ordering, not coalescing (glossary: "maxRuns: 1 per key gives
-// FIFO per key").
+// No strategy given defaults to fifo: a concurrency key means ordering, not
+// coalescing (CONTEXT.md: "maxRuns: 1 per key gives FIFO per key").
 function toLimitStrategy(strategy: NonNullable<ConcurrencyOption['strategy']>): ConcurrencyLimitStrategy {
   switch (strategy) {
     case 'fifo':
