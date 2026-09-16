@@ -3,10 +3,10 @@ import type { MessageDataShape } from './json.js'
 
 // <project>.<aggregate>.<verb>, lower case, dots only. Events are past tense,
 // commands imperative. Enforced at publish and at subscribe.
-export const MESSAGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_]*){2,}$/
+export const MESSAGE_NAME_PATTERN = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){2}$/
 
 export const messageNameSchema = z.string().regex(MESSAGE_NAME_PATTERN, {
-  message: 'message name must look like project.aggregate.verb in lower case',
+  message: 'message name must be exactly project.aggregate.verb in lower case',
 })
 
 export type MessageName = string
@@ -61,7 +61,7 @@ export type EnvelopeMetadata = z.infer<typeof envelopeMetadataSchema>
 // No explicit Record<string, string> return annotation: the local `metadata`
 // binding already carries that type, and annotating the function too trips
 // anti-slop/no-known-value-widening on the return statement.
-export function toEnvelopeMetadata(envelope: Envelope) {
+export function toEnvelopeMetadata<TData extends MessageDataShape>(envelope: Envelope<TData>) {
   const metadata: Record<string, string> = {}
   metadata['envelopeId'] = envelope.id
   metadata['kinesin_name'] = envelope.name

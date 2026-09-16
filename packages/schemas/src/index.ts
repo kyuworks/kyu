@@ -28,6 +28,8 @@ export type {
   MessageData,
   MessageDataShape,
   MessageDefinition,
+  MessageInput,
+  MessageSchema,
 } from './define.js'
 
 export { EnvelopeOptionsError, MessageDataError, MessageDefinitionError } from './errors.js'

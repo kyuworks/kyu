@@ -6,29 +6,36 @@ import type { MessageDataShape } from './json.js'
 
 export type { JsonObject, JsonPrimitive, JsonValue, MessageDataShape } from './json.js'
 
-export interface MessageDefinition<TData extends MessageDataShape> {
-  name: MessageName
-  version: number
-  kind: MessageKind
-  data: StandardSchemaV1<unknown, TData>
+// The Input slot is fixed to `unknown` by the Standard Schema spec itself
+// (`validate` always takes `unknown`; `Input` only feeds `InferInput`), so it
+// is not a Kinesin-chosen parameter — only the Output is constrained here.
+export type MessageSchema = StandardSchemaV1<unknown, MessageDataShape>
+
+export interface MessageDefinition<S extends MessageSchema = MessageSchema> {
+  readonly name: MessageName
+  readonly version: number
+  readonly kind: MessageKind
+  readonly data: S
 }
 
-export type MessageData<TDefinition extends MessageDefinition<MessageDataShape>> =
-  TDefinition extends MessageDefinition<infer TData> ? TData : never
+/** What a caller passes in for `data`, before the definition's schema parses or transforms it. */
+export type MessageInput<TDefinition> =
+  TDefinition extends MessageDefinition<infer S> ? StandardSchemaV1.InferInput<S> : never
 
-interface DefineMessageSpec<TData extends MessageDataShape> {
+/** What an envelope carries for `data`, after the definition's schema parses or transforms it. */
+export type MessageData<TDefinition> =
+  TDefinition extends MessageDefinition<infer S> ? StandardSchemaV1.InferOutput<S> : never
+
+interface DefineMessageSpec<S extends MessageSchema> {
   name: MessageName
   version: number
-  data: StandardSchemaV1<unknown, TData>
+  data: S
 }
 
-function defineMessage<TData extends MessageDataShape>(
-  spec: DefineMessageSpec<TData>,
-  kind: MessageKind,
-): MessageDefinition<TData> {
+function defineMessage<S extends MessageSchema>(spec: DefineMessageSpec<S>, kind: MessageKind): MessageDefinition<S> {
   if (!messageNameSchema.safeParse(spec.name).success) {
     throw new MessageDefinitionError(
-      `invalid message name "${spec.name}": message name must look like project.aggregate.verb in lower case`,
+      `invalid message name "${spec.name}": message name must be exactly project.aggregate.verb in lower case`,
     )
   }
   if (!messageVersionSchema.safeParse(spec.version).success) {
@@ -39,12 +46,10 @@ function defineMessage<TData extends MessageDataShape>(
   return { name: spec.name, version: spec.version, kind, data: spec.data }
 }
 
-export function defineEvent<TData extends MessageDataShape>(spec: DefineMessageSpec<TData>): MessageDefinition<TData> {
+export function defineEvent<S extends MessageSchema>(spec: DefineMessageSpec<S>): MessageDefinition<S> {
   return defineMessage(spec, 'event')
 }
 
-export function defineCommand<TData extends MessageDataShape>(
-  spec: DefineMessageSpec<TData>,
-): MessageDefinition<TData> {
+export function defineCommand<S extends MessageSchema>(spec: DefineMessageSpec<S>): MessageDefinition<S> {
   return defineMessage(spec, 'command')
 }

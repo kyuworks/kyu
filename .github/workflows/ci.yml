@@ -69,6 +69,8 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      KINESIN_TEST_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/kinesin_test
     services:
       postgres:
         image: postgres:15.6
@@ -76,6 +78,8 @@ jobs:
           POSTGRES_USER: hatchet
           POSTGRES_PASSWORD: hatchet
           POSTGRES_DB: hatchet
+        ports:
+          - 5432:5432
         options: >-
           --health-cmd "pg_isready -d hatchet -U hatchet"
           --health-interval 5s

@@ -5,8 +5,8 @@
     "composite": false,
     "declaration": false,
     "declarationMap": false,
-    "rootDir": "./src"
+    "rootDir": "."
   },
-  "include": ["src/**/*.test.ts"],
+  "include": ["src/**/*.test.ts", "vitest.integration.setup.ts"],
   "references": [{ "path": "../schemas" }]
 }
