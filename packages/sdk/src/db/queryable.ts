@@ -4,6 +4,7 @@ export type QueryParam = string | number | boolean | null | Date
 
 export interface QueryRows {
   rows: ReadonlyArray<Unparsed>
+  rowCount: number | null
 }
 
 // The driver-neutral seam every outbox/processed repository function takes

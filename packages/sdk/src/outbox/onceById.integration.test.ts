@@ -70,6 +70,15 @@ describe('onceById (flow 4)', () => {
 
     await client.query('BEGIN')
     await expect(onceById(client, envelopeId, 'handler-a', failingFn)).rejects.toThrow('boom')
+
+    // Positive control: the processed row exists on the same client before
+    // rollback, so this test cannot pass an onceById() that never inserts it.
+    const beforeRollback = await client.query(
+      'SELECT count(*)::text AS count FROM kinesin_processed WHERE envelope_id = $1',
+      [envelopeId],
+    )
+    expect(Number(beforeRollback.rows[0]?.count)).toBe(1)
+
     await client.query('ROLLBACK')
 
     const afterRollback = await client.query(

@@ -12,7 +12,7 @@ describe('createPublisher', () => {
     const db: Queryable = {
       query(_text: string, params: readonly QueryParam[]): Promise<QueryRows> {
         recordedParams.push(params)
-        return Promise.resolve({ rows: [] })
+        return Promise.resolve({ rows: [], rowCount: 1 })
       },
     }
 

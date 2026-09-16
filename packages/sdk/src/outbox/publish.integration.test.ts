@@ -35,6 +35,14 @@ describe('publish via the outbox (flow 2)', () => {
 
     await client.query('BEGIN')
     const envelope = await publisher.publish(client, thingHappened, { n: 1 }, { tenantId: null })
+
+    // Positive control: the row exists on the same client before rollback,
+    // so this test cannot pass a publish() that silently writes nothing.
+    const beforeRollback = await client.query('SELECT count(*)::text AS count FROM kinesin_outbox WHERE id = $1', [
+      envelope.id,
+    ])
+    expect(Number(beforeRollback.rows[0]?.count)).toBe(1)
+
     await client.query('ROLLBACK')
 
     const result = await client.query('SELECT count(*)::text AS count FROM kinesin_outbox WHERE id = $1', [envelope.id])

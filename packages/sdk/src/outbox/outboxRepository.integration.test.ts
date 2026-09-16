@@ -65,7 +65,7 @@ describe('claimPendingRows (flow 24: an invalid envelope is skipped, not returne
 
     const claimed = await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 60_000 })
 
-    expect(claimed.skipped).toBe(1)
+    expect(claimed.skipped).toEqual([badId])
     expect(claimed.rows.map((row) => row.id).sort()).toEqual([goodIdA, goodIdB].sort())
 
     const bad = await client.query(
@@ -74,8 +74,15 @@ describe('claimPendingRows (flow 24: an invalid envelope is skipped, not returne
     )
     expect(bad.rows[0]?.attempts).toBe(1)
     expect(bad.rows[0]?.last_error).toEqual(expect.any(String))
-    expect(bad.rows[0]?.claimed_at).toBeNull()
-    expect(bad.rows[0]?.claimed_by).toBeNull()
+    expect(bad.rows[0]?.claimed_at).not.toBeNull()
+    expect(bad.rows[0]?.claimed_by).toBe('worker-1')
+
+    const secondClaim = await claimPendingRows(client, { limit: 10, workerId: 'worker-2', staleAfterMs: 60_000 })
+    expect(secondClaim.rows.map((row) => row.id)).toEqual([])
+    expect(secondClaim.skipped).toEqual([])
+
+    const stillOne = await client.query('SELECT attempts FROM kinesin_outbox WHERE id = $1', [badId])
+    expect(stillOne.rows[0]?.attempts).toBe(1)
   })
 })
 
@@ -85,7 +92,8 @@ describe('prunePublished (flow 22)', () => {
     const newId = await insertGoodRow(2)
     const pendingId = await insertGoodRow(3)
 
-    await markPublished(client, [oldId, newId])
+    await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 60_000 })
+    await markPublished(client, 'worker-1', [oldId, newId])
     await client.query(`UPDATE kinesin_outbox SET published_at = now() - interval '2 days' WHERE id = $1`, [oldId])
 
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000)
@@ -114,14 +122,17 @@ describe('claim semantics', () => {
     await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 60_000 })
     await backdateClaimedAt(id, 1000)
 
-    const reclaimed = await claimPendingRows(client, { limit: 10, workerId: 'worker-2', staleAfterMs: 0 })
+    const stillFresh = await claimPendingRows(client, { limit: 10, workerId: 'worker-2', staleAfterMs: 5000 })
+    expect(stillFresh.rows).toEqual([])
 
+    const reclaimed = await claimPendingRows(client, { limit: 10, workerId: 'worker-2', staleAfterMs: 500 })
     expect(reclaimed.rows.map((row) => row.id)).toEqual([id])
   })
 
   it('a published row is never claimed again', async () => {
     const id = await insertGoodRow(1)
-    await markPublished(client, [id])
+    await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 60_000 })
+    await markPublished(client, 'worker-1', [id])
 
     const claimed = await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 0 })
 
@@ -132,7 +143,7 @@ describe('claim semantics', () => {
     const id = await insertGoodRow(1)
     await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 60_000 })
 
-    await recordPublishFailure(client, [id], 'engine unreachable')
+    await recordPublishFailure(client, 'worker-1', [id], 'engine unreachable')
 
     const row = await client.query(
       'SELECT attempts, last_error, claimed_at, claimed_by FROM kinesin_outbox WHERE id = $1',
@@ -147,14 +158,35 @@ describe('claim semantics', () => {
   it('releaseClaims releases the claim without touching attempts', async () => {
     const id = await insertGoodRow(1)
     await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 60_000 })
-    await recordPublishFailure(client, [id], 'first failure')
+    await recordPublishFailure(client, 'worker-1', [id], 'first failure')
 
-    await releaseClaims(client, [id])
+    await releaseClaims(client, 'worker-1', [id])
 
     const row = await client.query('SELECT attempts, claimed_at, claimed_by FROM kinesin_outbox WHERE id = $1', [id])
     expect(row.rows[0]?.attempts).toBe(1)
     expect(row.rows[0]?.claimed_at).toBeNull()
     expect(row.rows[0]?.claimed_by).toBeNull()
+  })
+
+  it('markPublished only takes effect for the claim owner; a worker whose claim was taken over cannot mark the new owner’s row', async () => {
+    const id = await insertGoodRow(1)
+    await claimPendingRows(client, { limit: 10, workerId: 'worker-a', staleAfterMs: 60_000 })
+    await backdateClaimedAt(id, 1000)
+    const reclaimed = await claimPendingRows(client, { limit: 10, workerId: 'worker-b', staleAfterMs: 500 })
+    expect(reclaimed.rows.map((row) => row.id)).toEqual([id])
+
+    await markPublished(client, 'worker-a', [id])
+
+    const afterStaleOwner = await client.query('SELECT published_at, claimed_by FROM kinesin_outbox WHERE id = $1', [
+      id,
+    ])
+    expect(afterStaleOwner.rows[0]?.published_at).toBeNull()
+    expect(afterStaleOwner.rows[0]?.claimed_by).toBe('worker-b')
+
+    await markPublished(client, 'worker-b', [id])
+
+    const afterCurrentOwner = await client.query('SELECT published_at FROM kinesin_outbox WHERE id = $1', [id])
+    expect(afterCurrentOwner.rows[0]?.published_at).not.toBeNull()
   })
 
   it('rows come back in created_at order', async () => {

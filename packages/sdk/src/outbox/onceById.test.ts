@@ -9,9 +9,9 @@ function fakeProcessedTable(): Queryable {
   return {
     query(_text: string, params: readonly QueryParam[]): Promise<QueryRows> {
       const key = `${String(params[0])}:${String(params[1])}`
-      if (seen.has(key)) return Promise.resolve({ rows: [] })
+      if (seen.has(key)) return Promise.resolve({ rows: [], rowCount: 0 })
       seen.add(key)
-      return Promise.resolve({ rows: [{ envelope_id: params[0] }] })
+      return Promise.resolve({ rows: [{ envelope_id: params[0] }], rowCount: 1 })
     },
   }
 }
