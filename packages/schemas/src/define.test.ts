@@ -31,6 +31,18 @@ describe('defineEvent', () => {
     // @ts-expect-error data must produce a MessageDataShape (JSON object), not a bare string
     defineEvent({ name: 'shop.thing.done', version: 1, data: z.string() })
   })
+
+  it('accepts a data schema with optional fields, at compile time', () => {
+    defineEvent({
+      name: 'shop.order.placed',
+      version: 1,
+      data: z.object({
+        orderId: z.uuid(),
+        note: z.string().optional(),
+        addr: z.object({ line2: z.string().optional() }),
+      }),
+    })
+  })
 })
 
 describe('defineCommand', () => {

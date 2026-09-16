@@ -87,6 +87,30 @@ describe('createEnvelope', () => {
     }
   })
 
+  it('drops an explicit undefined optional field from the wire data', async () => {
+    const orderNoted = defineEvent({
+      name: 'shop.order.noted',
+      version: 1,
+      data: z.object({ orderId: z.uuid(), note: z.string().optional() }),
+    })
+    const envelope = await createEnvelope(orderNoted, { orderId, note: undefined }, { tenantId, source: 'shop.api' })
+    expect(envelope.data).toEqual({ orderId })
+  })
+
+  it('rejects with EnvelopeOptionsError listing occurredAt when the given Date is invalid', async () => {
+    const invalidDate = new Date('not-a-date')
+    await expect(
+      createEnvelope(orderPlaced, { orderId }, { tenantId, source: 'shop.api', occurredAt: invalidDate }),
+    ).rejects.toThrow(EnvelopeOptionsError)
+    try {
+      await createEnvelope(orderPlaced, { orderId }, { tenantId, source: 'shop.api', occurredAt: invalidDate })
+      expect.unreachable('createEnvelope should have thrown')
+    } catch (error) {
+      if (!(error instanceof EnvelopeOptionsError)) throw error
+      expect(error.issues).toEqual([{ path: 'occurredAt', message: 'Invalid Date' }])
+    }
+  })
+
   it('resolves with a full envelope for all seven options', async () => {
     const orgUnitId = '3f2504e0-4f89-41d3-9a0c-0305e82c3305'
     const actorUserId = '3f2504e0-4f89-41d3-9a0c-0305e82c3306'
