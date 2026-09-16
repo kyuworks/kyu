@@ -3,10 +3,11 @@ import { z } from 'zod'
 import { createEnvelope } from './createEnvelope.js'
 import { defineEvent } from './define.js'
 import { envelopeSchema } from './envelope.js'
-import { MessageDataError } from './errors.js'
+import { EnvelopeOptionsError, MessageDataError } from './errors.js'
 
 const orderPlaced = defineEvent({
   name: 'shop.order.placed',
+  version: 1,
   data: z.object({ orderId: z.uuid() }),
 })
 
@@ -58,5 +59,61 @@ describe('createEnvelope', () => {
       if (!(error instanceof MessageDataError)) throw error
       expect(error.issues).toEqual([{ path: 'orderId', message: 'Invalid UUID' }])
     }
+  })
+
+  it('rejects with EnvelopeOptionsError listing the issue path when tenantId is not a UUID', async () => {
+    await expect(
+      createEnvelope(orderPlaced, { orderId }, { tenantId: 'not-a-uuid', source: 'shop.api' }),
+    ).rejects.toThrow(EnvelopeOptionsError)
+    try {
+      await createEnvelope(orderPlaced, { orderId }, { tenantId: 'not-a-uuid', source: 'shop.api' })
+      expect.unreachable('createEnvelope should have thrown')
+    } catch (error) {
+      if (!(error instanceof EnvelopeOptionsError)) throw error
+      expect(error.issues).toEqual([{ path: 'tenantId', message: 'Invalid UUID' }])
+    }
+  })
+
+  it('rejects with EnvelopeOptionsError listing the issue path when source is empty', async () => {
+    await expect(createEnvelope(orderPlaced, { orderId }, { tenantId, source: '' })).rejects.toThrow(
+      EnvelopeOptionsError,
+    )
+    try {
+      await createEnvelope(orderPlaced, { orderId }, { tenantId, source: '' })
+      expect.unreachable('createEnvelope should have thrown')
+    } catch (error) {
+      if (!(error instanceof EnvelopeOptionsError)) throw error
+      expect(error.issues).toEqual([{ path: 'source', message: 'Too small: expected string to have >=1 characters' }])
+    }
+  })
+
+  it('resolves with a full envelope for all seven options', async () => {
+    const orgUnitId = '3f2504e0-4f89-41d3-9a0c-0305e82c3305'
+    const actorUserId = '3f2504e0-4f89-41d3-9a0c-0305e82c3306'
+    const correlationId = '01923e4a-7b1c-7f3e-8a2d-3c4b5a6d7e90'
+    const causationId = '01923e4a-7b1c-7f3e-8a2d-3c4b5a6d7e8f'
+    const occurredAt = new Date('2026-09-16T10:00:00.000Z')
+
+    const envelope = await createEnvelope(
+      orderPlaced,
+      { orderId },
+      { tenantId, orgUnitId, actorUserId, correlationId, causationId, source: 'shop.api', occurredAt },
+    )
+
+    const { id, ...rest } = envelope
+    expect(id).toEqual(expect.any(String))
+    expect(rest).toEqual({
+      name: 'shop.order.placed',
+      version: 1,
+      kind: 'event',
+      occurredAt: occurredAt.toISOString(),
+      tenantId,
+      orgUnitId,
+      actorUserId,
+      correlationId,
+      causationId,
+      source: 'shop.api',
+      data: { orderId },
+    })
   })
 })

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { MessageDataShape } from './json.js'
 
 // <project>.<aggregate>.<verb>, lower case, dots only. Events are past tense,
 // commands imperative. Enforced at publish and at subscribe.
@@ -8,12 +9,16 @@ export const messageNameSchema = z.string().regex(MESSAGE_NAME_PATTERN, {
   message: 'message name must look like project.aggregate.verb in lower case',
 })
 
+export type MessageName = string
+
+export const messageVersionSchema = z.number().int().positive()
+
 export const messageKindSchema = z.enum(['event', 'command'])
 
 export const envelopeSchema = z.object({
   id: z.uuidv7(),
   name: messageNameSchema,
-  version: z.number().int().positive(),
+  version: messageVersionSchema,
   kind: messageKindSchema,
   occurredAt: z.iso.datetime({ offset: true }),
   tenantId: z.uuid().nullable(),
@@ -26,7 +31,14 @@ export const envelopeSchema = z.object({
 })
 
 export type MessageKind = z.infer<typeof messageKindSchema>
-export type Envelope = z.infer<typeof envelopeSchema>
+
+/** The envelope's `data` shape when it has not been narrowed to a specific message definition. */
+export type EnvelopeData = z.infer<typeof envelopeSchema>['data']
+
+/** An envelope whose `data` is narrowed to `TData`, as produced by `createEnvelope`. */
+export type Envelope<TData extends MessageDataShape = EnvelopeData> = Omit<z.infer<typeof envelopeSchema>, 'data'> & {
+  data: TData
+}
 
 export function parseEnvelope(input: z.input<typeof envelopeSchema>): Envelope {
   return envelopeSchema.parse(input)
