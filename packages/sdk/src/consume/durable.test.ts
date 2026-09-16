@@ -1,0 +1,203 @@
+import { createEnvelope, defineEvent } from '@kinesin/schemas'
+import type { Envelope, MessageDataShape } from '@kinesin/schemas'
+import { z } from 'zod'
+import { describe, expect, it } from 'vitest'
+import { EnvelopeRejectedError } from '../errors.js'
+import { OrCondition, SleepCondition, UserEventCondition } from '../hatchet.js'
+import type { DurableContext, JsonObject } from '../hatchet.js'
+import { buildWaitForConditions, waitForMessage } from './durable.js'
+
+const orderPlaced = defineEvent({
+  name: 'shop.order.placed',
+  version: 1,
+  data: z.object({ orderId: z.string() }),
+})
+
+const orderShipped = defineEvent({
+  name: 'shop.order.shipped',
+  version: 1,
+  data: z.object({ orderId: z.string() }),
+})
+
+async function handlerEnvelope(tenantId: string | null): Promise<Envelope<MessageDataShape>> {
+  return createEnvelope(orderPlaced, { orderId: 'order-1' }, { tenantId, source: 'sdk.test' })
+}
+
+describe('buildWaitForConditions', () => {
+  const now = new Date('2026-01-01T00:00:00.000Z')
+
+  it('builds a CEL expression comparing input.<field> to a quoted, escaped literal', async () => {
+    const envelope = await handlerEnvelope(null)
+
+    const { userEvent } = buildWaitForConditions(
+      envelope,
+      orderShipped,
+      { where: { field: 'data.orderId', equals: 'ab"cd' }, timeout: '30s' },
+      now,
+    )
+
+    expect(userEvent.expression).toBe('input.data.orderId == "ab\\"cd"')
+  })
+
+  it('carries the target message name and a fixed readableDataKey pair', async () => {
+    const envelope = await handlerEnvelope(null)
+
+    const { userEvent, sleep } = buildWaitForConditions(
+      envelope,
+      orderShipped,
+      { where: { field: 'data.orderId', equals: 'order-1' }, timeout: '30s' },
+      now,
+    )
+
+    expect(userEvent.eventKey).toBe('shop.order.shipped')
+    expect(userEvent.base.readableDataKey).toBe('message')
+    expect(sleep.sleepFor).toBe('30s')
+    expect(sleep.base.readableDataKey).toBe('timeout')
+  })
+
+  it('defaults scope to the handler envelope tenant id', async () => {
+    const envelope = await handlerEnvelope('a1f7f3e9-9f3a-4e3e-9f3a-2b1f7f3e9f3a')
+
+    const { userEvent } = buildWaitForConditions(
+      envelope,
+      orderShipped,
+      { where: { field: 'data.orderId', equals: 'order-1' }, timeout: '30s' },
+      now,
+    )
+
+    expect(userEvent.scope).toBe('a1f7f3e9-9f3a-4e3e-9f3a-2b1f7f3e9f3a')
+  })
+
+  it('defaults scope to global for a null tenant', async () => {
+    const envelope = await handlerEnvelope(null)
+
+    const { userEvent } = buildWaitForConditions(
+      envelope,
+      orderShipped,
+      { where: { field: 'data.orderId', equals: 'order-1' }, timeout: '30s' },
+      now,
+    )
+
+    expect(userEvent.scope).toBe('global')
+  })
+
+  it('an explicit scope overrides the handler envelope tenant id', async () => {
+    const envelope = await handlerEnvelope('a1f7f3e9-9f3a-4e3e-9f3a-2b1f7f3e9f3a')
+
+    const { userEvent } = buildWaitForConditions(
+      envelope,
+      orderShipped,
+      { where: { field: 'data.orderId', equals: 'order-1' }, scope: 'override', timeout: '30s' },
+      now,
+    )
+
+    expect(userEvent.scope).toBe('override')
+  })
+
+  it('defaults lookback to 5 minutes', async () => {
+    const envelope = await handlerEnvelope(null)
+
+    const { userEvent } = buildWaitForConditions(
+      envelope,
+      orderShipped,
+      { where: { field: 'data.orderId', equals: 'order-1' }, timeout: '30s' },
+      now,
+    )
+
+    expect(userEvent.considerEventsSince).toBe(new Date(now.getTime() - 5 * 60_000).toISOString())
+  })
+
+  it('honours an explicit lookback', async () => {
+    const envelope = await handlerEnvelope(null)
+
+    const { userEvent } = buildWaitForConditions(
+      envelope,
+      orderShipped,
+      { where: { field: 'data.orderId', equals: 'order-1' }, lookback: '1h', timeout: '30s' },
+      now,
+    )
+
+    expect(userEvent.considerEventsSince).toBe(new Date(now.getTime() - 60 * 60_000).toISOString())
+  })
+})
+
+interface FakeDurableContext {
+  context: DurableContext<JsonObject>
+  capturedConditions: () => Parameters<DurableContext<JsonObject>['waitFor']>[0] | undefined
+}
+
+// The engine's own DurableContext carries private fields, so a stub cannot
+// satisfy it structurally; a Pick of the two members waitForMessage calls is
+// comparable to the class type in one direction, enough for a single,
+// unchained `as` cast (the same pattern subscribe.test.ts uses for HatchetClient).
+function fakeDurableContext(
+  waitForResult: Awaited<ReturnType<DurableContext<JsonObject>['waitFor']>>,
+): FakeDurableContext {
+  const now = new Date('2026-01-01T00:00:00.000Z')
+  let captured: Parameters<DurableContext<JsonObject>['waitFor']>[0] | undefined
+  const stub: Pick<DurableContext<JsonObject>, 'now' | 'waitFor'> = {
+    now: () => Promise.resolve(now),
+    waitFor: (conditions) => {
+      captured = conditions
+      return Promise.resolve(waitForResult)
+    },
+  }
+  return { context: stub as DurableContext<JsonObject>, capturedConditions: () => captured }
+}
+
+describe('waitForMessage', () => {
+  it('races the message event against a timeout sleep in one Or group', async () => {
+    const { context, capturedConditions } = fakeDurableContext({ CREATE: { timeout: [{ sleep_duration: '30s' }] } })
+    const envelope = await handlerEnvelope(null)
+
+    await waitForMessage(context, envelope, orderShipped, {
+      where: { field: 'data.orderId', equals: 'order-1' },
+      timeout: '30s',
+    })
+
+    const group = capturedConditions()
+    expect(group).toBeInstanceOf(OrCondition)
+    const conditions = group instanceof OrCondition ? group.conditions : []
+    expect(conditions).toHaveLength(2)
+    expect(conditions[0]).toBeInstanceOf(UserEventCondition)
+    expect(conditions[1]).toBeInstanceOf(SleepCondition)
+  })
+
+  it('returns a timeout result when the sleep branch wins the race', async () => {
+    const { context } = fakeDurableContext({ CREATE: { timeout: [{ sleep_duration: '30s' }] } })
+    const envelope = await handlerEnvelope(null)
+
+    const result = await waitForMessage(context, envelope, orderShipped, {
+      where: { field: 'data.orderId', equals: 'order-1' },
+      timeout: '30s',
+    })
+
+    expect(result).toEqual({ kind: 'timeout' })
+  })
+
+  it('decodes a matched event payload into the envelope', async () => {
+    const shipped = await createEnvelope(orderShipped, { orderId: 'order-1' }, { tenantId: null, source: 'sdk.test' })
+    const asIncoming: JsonObject = JSON.parse(JSON.stringify(shipped)) as JsonObject
+    const { context } = fakeDurableContext({ CREATE: { message: [asIncoming] } })
+    const envelope = await handlerEnvelope(null)
+
+    const result = await waitForMessage(context, envelope, orderShipped, {
+      where: { field: 'data.orderId', equals: 'order-1' },
+      timeout: '30s',
+    })
+
+    expect(result).toEqual({ kind: 'message', envelope: shipped })
+  })
+
+  it('rejects a matched payload that fails validation', async () => {
+    const { context } = fakeDurableContext({ CREATE: { message: [{ not: 'an envelope' }] } })
+    const envelope = await handlerEnvelope(null)
+
+    await expect(
+      waitForMessage(context, envelope, orderShipped, {
+        where: { field: 'data.orderId', equals: 'order-1' },
+        timeout: '30s',
+      }),
+    ).rejects.toBeInstanceOf(EnvelopeRejectedError)
+  })
+})

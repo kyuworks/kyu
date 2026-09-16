@@ -10,39 +10,18 @@ import type {
   Unparsed,
 } from '@kinesin/schemas'
 import { EnvelopeRejectedError } from '../errors.js'
-import { Priority, RateLimitDuration } from '../hatchet.js'
-import type {
-  Concurrency,
-  Context,
-  CreateTaskWorkflowOpts,
-  Duration,
-  HatchetClient,
-  JsonObject,
-  TaskWorkflowDeclaration,
-} from '../hatchet.js'
-import { toHatchetConcurrency } from './concurrency.js'
-import type { ConcurrencyOption } from './concurrency.js'
+import type { Context, CreateTaskWorkflowOpts, HatchetClient, JsonObject, TaskWorkflowDeclaration } from '../hatchet.js'
 import { buildHandlerContext } from './handlerContext.js'
 import type { HandlerContext } from './handlerContext.js'
+import { applySharedTaskOptions } from './taskOptions.js'
+import type { SharedTaskOptions } from './taskOptions.js'
 
-export type RateLimitOption =
-  | { staticKey: string; units?: number }
-  | {
-      dynamicKey: string
-      units?: number
-      limit: number
-      duration: 'SECOND' | 'MINUTE' | 'HOUR' | 'DAY' | 'WEEK' | 'MONTH' | 'YEAR'
-    }
+export { toHatchetRateLimit } from './taskOptions.js'
+export type { RateLimitOption } from './taskOptions.js'
 
-export interface SubscribeOptions<TData extends MessageDataShape> {
+export interface SubscribeOptions<TData extends MessageDataShape> extends SharedTaskOptions {
   name: string
   handler: (ctx: HandlerContext<TData>) => Promise<void> | void
-  concurrency?: ConcurrencyOption | ConcurrencyOption[]
-  retries?: number
-  backoff?: { factor?: number; maxSeconds?: number }
-  rateLimits?: RateLimitOption[]
-  executionTimeout?: Extract<Duration, string>
-  priority?: 'low' | 'medium' | 'high'
 }
 
 export interface Subscription {
@@ -50,45 +29,6 @@ export interface Subscription {
   kind: MessageKind
   messageName: string
   workflow: TaskWorkflowDeclaration
-}
-
-const RATE_LIMIT_DURATION = {
-  SECOND: RateLimitDuration.SECOND,
-  MINUTE: RateLimitDuration.MINUTE,
-  HOUR: RateLimitDuration.HOUR,
-  DAY: RateLimitDuration.DAY,
-  WEEK: RateLimitDuration.WEEK,
-  MONTH: RateLimitDuration.MONTH,
-  YEAR: RateLimitDuration.YEAR,
-} satisfies Record<Extract<RateLimitOption, { dynamicKey: string }>['duration'], RateLimitDuration>
-
-const PRIORITY_CODE = { low: Priority.LOW, medium: Priority.MEDIUM, high: Priority.HIGH } as const
-
-interface HatchetRateLimitInput {
-  units: number
-  staticKey?: string
-  dynamicKey?: string
-  limit?: number
-  duration?: RateLimitDuration
-}
-
-export function toHatchetRateLimit(option: RateLimitOption): HatchetRateLimitInput {
-  if ('staticKey' in option) {
-    return { staticKey: option.staticKey, units: option.units ?? 1 }
-  }
-  return {
-    dynamicKey: option.dynamicKey,
-    units: option.units ?? 1,
-    limit: option.limit,
-    duration: RATE_LIMIT_DURATION[option.duration],
-  }
-}
-
-function toConcurrencyList(
-  option: ConcurrencyOption | ConcurrencyOption[] | undefined,
-): Concurrency | Concurrency[] | undefined {
-  if (option === undefined) return undefined
-  return Array.isArray(option) ? option.map(toHatchetConcurrency) : toHatchetConcurrency(option)
 }
 
 /**
@@ -134,7 +74,7 @@ export async function decodeIncomingEnvelope<S extends MessageSchema>(
  * event was pushed with metadata that does not describe its own payload —
  * never expected from `publish()`, so rejected rather than trusted.
  */
-function decodeAndCheckMetadata(
+export function decodeAndCheckMetadata(
   hatchetContext: Context<JsonObject>,
   envelope: Envelope<MessageDataShape>,
 ): EnvelopeMetadataFields {
@@ -184,13 +124,7 @@ export function subscribe<S extends MessageSchema>(
     fn: (input: JsonObject, ctx: Context<JsonObject>) => runHandler(definition, options.handler, input, ctx),
   }
 
-  const concurrency = toConcurrencyList(options.concurrency)
-  if (concurrency !== undefined) taskOptions.concurrency = concurrency
-  if (options.retries !== undefined) taskOptions.retries = options.retries
-  if (options.backoff !== undefined) taskOptions.backoff = options.backoff
-  if (options.rateLimits !== undefined) taskOptions.rateLimits = options.rateLimits.map(toHatchetRateLimit)
-  if (options.executionTimeout !== undefined) taskOptions.executionTimeout = options.executionTimeout
-  if (options.priority !== undefined) taskOptions.defaultPriority = PRIORITY_CODE[options.priority]
+  applySharedTaskOptions(taskOptions, options)
 
   const workflow = hatchet.task<JsonObject, void>(taskOptions)
 
