@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { envelopeSchema, messageNameSchema } from './envelope.js'
+import {
+  envelopeMetadataSchema,
+  envelopeSchema,
+  fromEnvelopeMetadata,
+  messageNameSchema,
+  toEnvelopeMetadata,
+} from './envelope.js'
+import type { Envelope } from './envelope.js'
+import { EnvelopeMetadataError } from './errors.js'
 
 const validEnvelope = {
   id: '01923e4a-7b1c-7f3e-8a2d-3c4b5a6d7e8f',
@@ -15,16 +23,30 @@ const validEnvelope = {
 } as const
 
 describe('messageNameSchema', () => {
-  it.each(['shop.order.placed', 'shop.invoice.send', 'mail.message.delivered'])('accepts %s', (name) => {
-    expect(messageNameSchema.safeParse(name).success).toBe(true)
-  })
-
-  it.each(['Shop.Order.Placed', 'listing.updated', 'shop..placed', 'shop.order.placed.', 'shop-order-placed'])(
-    'rejects %s',
+  it.each(['shop.order.placed', 'shop.invoice.send', 'mail.message.delivered', 'shop_x.order.placed'])(
+    'accepts %s',
     (name) => {
-      expect(messageNameSchema.safeParse(name).success).toBe(false)
+      expect(messageNameSchema.safeParse(name).success).toBe(true)
     },
   )
+
+  it.each([
+    'Shop.Order.Placed',
+    'listing.updated',
+    'shop..placed',
+    'shop.order.placed.',
+    'shop-order-placed',
+    'shop.order.placed.extra',
+  ])('rejects %s', (name) => {
+    expect(messageNameSchema.safeParse(name).success).toBe(false)
+  })
+
+  it('reports the exact three-segment error message', () => {
+    const result = messageNameSchema.safeParse('shop.order.placed.extra')
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.issues[0]?.message).toBe('message name must be exactly project.aggregate.verb in lower case')
+  })
 })
 
 describe('envelopeSchema', () => {
@@ -48,6 +70,136 @@ describe('envelopeSchema', () => {
     expect(result.success).toBe(false)
     if (!result.success) {
       expect(z.treeifyError(result.error).properties?.version).toBeDefined()
+    }
+  })
+})
+
+describe('toEnvelopeMetadata', () => {
+  it('produces only string values and includes the fixed keys', () => {
+    const envelope: Envelope = envelopeSchema.parse(validEnvelope)
+    const metadata = toEnvelopeMetadata(envelope)
+
+    expect(metadata).toEqual({
+      envelopeId: envelope.id,
+      kinesin_name: envelope.name,
+      kinesin_version: '1',
+      kinesin_kind: 'event',
+      tenantId: envelope.tenantId,
+      correlationId: envelope.correlationId,
+      source: envelope.source,
+    })
+    for (const value of Object.values(metadata)) {
+      expect(value).toEqual(expect.any(String))
+    }
+  })
+
+  it('omits tenantId when it is null and includes optional fields when present', () => {
+    const envelope: Envelope = envelopeSchema.parse({
+      ...validEnvelope,
+      tenantId: null,
+      orgUnitId: '3f2504e0-4f89-41d3-9a0c-0305e82c3303',
+      actorUserId: '3f2504e0-4f89-41d3-9a0c-0305e82c3304',
+      causationId: '01923e4a-7b1c-7f3e-8a2d-3c4b5a6d7e91',
+    })
+    const metadata = toEnvelopeMetadata(envelope)
+
+    expect(metadata['tenantId']).toBeUndefined()
+    expect(metadata['orgUnitId']).toBe(envelope.orgUnitId)
+    expect(metadata['actorUserId']).toBe(envelope.actorUserId)
+    expect(metadata['causationId']).toBe(envelope.causationId)
+  })
+})
+
+describe('fromEnvelopeMetadata', () => {
+  it('round-trips through toEnvelopeMetadata', () => {
+    const envelope: Envelope = envelopeSchema.parse({
+      ...validEnvelope,
+      orgUnitId: '3f2504e0-4f89-41d3-9a0c-0305e82c3303',
+      actorUserId: '3f2504e0-4f89-41d3-9a0c-0305e82c3304',
+      causationId: '01923e4a-7b1c-7f3e-8a2d-3c4b5a6d7e91',
+    })
+    const fields = fromEnvelopeMetadata(toEnvelopeMetadata(envelope))
+
+    expect(fields).toEqual({
+      envelopeId: envelope.id,
+      name: envelope.name,
+      version: envelope.version,
+      kind: envelope.kind,
+      tenantId: envelope.tenantId,
+      orgUnitId: envelope.orgUnitId,
+      actorUserId: envelope.actorUserId,
+      correlationId: envelope.correlationId,
+      causationId: envelope.causationId,
+      source: envelope.source,
+    })
+  })
+
+  it('round-trips a null tenantId back to null, not absent', () => {
+    const envelope: Envelope = envelopeSchema.parse({ ...validEnvelope, tenantId: null })
+    const fields = fromEnvelopeMetadata(toEnvelopeMetadata(envelope))
+    expect(fields.tenantId).toBeNull()
+  })
+
+  it.each(['0', 'abc', '01'])('rejects a kinesin_version of %s', (kinesin_version) => {
+    const envelope: Envelope = envelopeSchema.parse(validEnvelope)
+    const metadata = { ...toEnvelopeMetadata(envelope), kinesin_version }
+    expect(() => fromEnvelopeMetadata(metadata)).toThrow()
+  })
+
+  it('rejects a kinesin_version so large it parses to a float, instead of letting it through as 1e20', () => {
+    const envelope: Envelope = envelopeSchema.parse(validEnvelope)
+    const metadata = { ...toEnvelopeMetadata(envelope), kinesin_version: '99999999999999999999' }
+    try {
+      fromEnvelopeMetadata(metadata)
+      expect.unreachable('fromEnvelopeMetadata should have thrown')
+    } catch (error) {
+      if (!(error instanceof EnvelopeMetadataError)) throw error
+      expect(error.issues.some((issue) => issue.path === 'kinesin_version')).toBe(true)
+    }
+  })
+
+  it('carries the underlying ZodError as cause', () => {
+    try {
+      fromEnvelopeMetadata({ envelopeId: 'nope' })
+      expect.unreachable('fromEnvelopeMetadata should have thrown')
+    } catch (error) {
+      if (!(error instanceof EnvelopeMetadataError)) throw error
+      const { cause } = error
+      if (!(cause instanceof Error)) throw new Error('cause should be an Error', { cause: error })
+      expect(cause.name).toBe('ZodError')
+    }
+  })
+
+  it('tolerates and strips extra metadata keys', () => {
+    const envelope: Envelope = envelopeSchema.parse(validEnvelope)
+    const metadata = { ...toEnvelopeMetadata(envelope), hatchet_run_id: 'x' }
+    const fields = fromEnvelopeMetadata(metadata)
+    expect(fields).not.toHaveProperty('hatchet_run_id')
+  })
+
+  it('accepts envelopeMetadataSchema for a full envelope round-tripped through toEnvelopeMetadata', () => {
+    const envelope: Envelope = envelopeSchema.parse({
+      ...validEnvelope,
+      orgUnitId: '3f2504e0-4f89-41d3-9a0c-0305e82c3303',
+      actorUserId: '3f2504e0-4f89-41d3-9a0c-0305e82c3304',
+      causationId: '01923e4a-7b1c-7f3e-8a2d-3c4b5a6d7e91',
+    })
+    expect(() => envelopeMetadataSchema.parse(toEnvelopeMetadata(envelope))).not.toThrow()
+  })
+
+  it('accepts envelopeMetadataSchema for a minimal envelope round-tripped through toEnvelopeMetadata', () => {
+    const envelope: Envelope = envelopeSchema.parse({ ...validEnvelope, tenantId: null })
+    expect(() => envelopeMetadataSchema.parse(toEnvelopeMetadata(envelope))).not.toThrow()
+  })
+
+  it('rejects an invalid record with EnvelopeMetadataError instead of a raw ZodError', () => {
+    expect(() => fromEnvelopeMetadata({ envelopeId: 'nope' })).toThrow(EnvelopeMetadataError)
+    try {
+      fromEnvelopeMetadata({ envelopeId: 'nope' })
+      expect.unreachable('fromEnvelopeMetadata should have thrown')
+    } catch (error) {
+      if (!(error instanceof EnvelopeMetadataError)) throw error
+      expect(error.issues.some((issue) => issue.path === 'envelopeId')).toBe(true)
     }
   })
 })
