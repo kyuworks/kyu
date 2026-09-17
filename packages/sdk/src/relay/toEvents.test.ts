@@ -55,7 +55,7 @@ describe('groupEnvelopesForPush', () => {
 
     const groups = groupEnvelopesForPush(rows)
 
-    expect([...groups.keys()].sort()).toEqual(['shop.invoice.sent', 'shop.order.placed'])
+    expect([...groups.keys()].sort((a, b) => a.localeCompare(b))).toEqual(['shop.invoice.sent', 'shop.order.placed'])
     expect(groups.get('shop.order.placed')?.map((item) => item.payload.id)).toEqual([idA, idC])
     expect(groups.get('shop.invoice.sent')?.map((item) => item.payload.id)).toEqual([idB])
   })
