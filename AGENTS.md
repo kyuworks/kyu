@@ -99,13 +99,13 @@ Before writing code, stop at the first rung that holds:
 
 ## Lint
 
-**oxlint** (`.oxlintrc.json` per package, presets in `oxlint-rules/`). Every rule is **`error`**. Type-aware `typescript/*` runs through `oxlint-tsgolint`. The anti-slop preset (`oxlint-rules/anti-slop.oxlintrc.json`) bans widened types, chained assertions, runtime `typeof` checks and `unknown` at boundaries. Do not silence a rule; fix the code. Unused disable directives are an error, and `scripts/gates/check-no-escape-hatches.sh` fails `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error` and disable comments in production source.
+**oxlint** (`.oxlintrc.json` per package, presets in `oxlint-rules/`). Every rule is **`error`**. Type-aware `typescript/*` runs through `oxlint-tsgolint`. The anti-slop preset (`oxlint-rules/anti-slop.oxlintrc.json`) bans widened types, chained assertions, runtime `typeof` checks and `unknown` at boundaries. Do not silence a rule; fix the code. Unused disable directives are an error, and `scripts/gates/check-no-escape-hatches.sh` fails `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error` and disable comments in production source. Type-aware lint needs the workspace built (`pnpm build`) whenever a package imports another's types, so it resolves real types instead of `any`; CI's Lint job builds first for this reason.
 
 **oxfmt** formats. `pnpm format` fixes, `pnpm format:check` gates.
 
 ## Package boundaries
 
-A package reaches another only through its package name and exports map. No relative import out of a package; no `@kinesin/<pkg>/src/...`. Gate: `check-package-boundaries.sh`. `packages/schemas` depends on nothing in the workspace. `packages/sdk` depends on `@kinesin/schemas`. An example under `examples/*` imports `@kinesin/sdk` only, never `@hatchet-dev/` or `@kinesin/schemas` directly; the same gate enforces it. Add a package only with an ADR.
+A package reaches another only through its package name and exports map. No relative import out of a package; no `@kinesin/<pkg>/src/...`. Gate: `check-package-boundaries.sh`. `packages/schemas` depends on nothing in the workspace. `packages/sdk` depends on `@kinesin/schemas`. An example under `examples/*` imports `@kinesin/sdk` only, never `@hatchet-dev/` or `@kinesin/schemas` directly; the same gate fails any import form (`from`, bare `import '...'`, dynamic `import('...')`, `require('...')`) and the dependency itself in `package.json`, not just one spelling of it. Add a package only with an ADR.
 
 ## Running commands
 
@@ -141,6 +141,8 @@ Before writing tests for a publish path, handler, relay step, webhook, retry, cr
 A new test that still passes after reverting the production change does not count. Watch it fail, restore, watch it pass. Do not claim done on a test you never saw go red.
 
 Levels: unit (`*.test.ts`, colocated), integration (`*.integration.test.ts`, against the local engine), manual (justified, listed). There is no browser level.
+
+A suite that builds a git repository sources `scripts/lib/git-env.sh` and unsets the variables it lists. The gate `check-selftest-git-isolation.sh` fails one that does not.
 
 ## Branch / PR defaults
 
