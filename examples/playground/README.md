@@ -22,11 +22,17 @@ Later PRs add the entrypoints these processes run (`src/bin/migrate.ts`, `src/re
 | `HATCHET_CLIENT_TOKEN` | yes | — | Read by the engine client directly, same as the SDK's own integration lane. |
 | `HATCHET_CLIENT_TLS_STRATEGY` | yes | — | Read by the engine client directly. |
 
+The namespace is a prefix; the engine lowercases it and gives it a trailing underscore if one
+is missing.
+
 ## Run it locally
 
 ```bash
 pnpm hatchet:up
-pnpm --filter @kinesin/playground migrate
-pnpm --filter @kinesin/playground relay
-pnpm --filter @kinesin/playground worker
+export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/token.sh)"
+export HATCHET_CLIENT_TLS_STRATEGY=none
 ```
+
+`HATCHET_CLIENT_TOKEN` and `HATCHET_CLIENT_TLS_STRATEGY` are needed by the relay and worker, not
+by migrate. Later PRs add the `migrate`, `relay` and `worker` commands once their entrypoints
+ship.

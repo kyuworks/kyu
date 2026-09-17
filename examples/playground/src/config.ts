@@ -31,7 +31,11 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): PlaygroundConf
     throw new MissingConfigError('KINESIN_EXAMPLE_DATABASE_URL', 'a postgres connection string')
   }
 
-  const namespace = env['KINESIN_EXAMPLE_NAMESPACE'] ?? 'playground_'
+  const namespaceValue = env['KINESIN_EXAMPLE_NAMESPACE']
+  if (namespaceValue === '') {
+    throw new MissingConfigError('KINESIN_EXAMPLE_NAMESPACE', 'a non-empty prefix')
+  }
+  const namespace = namespaceValue ?? 'playground_'
 
   const logLevelValue = env['KINESIN_EXAMPLE_LOG_LEVEL'] ?? 'info'
   if (!isLogLevel(logLevelValue)) {
