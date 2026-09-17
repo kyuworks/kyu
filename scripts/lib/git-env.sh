@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
-# git-env.sh — the GIT_* variables git exports when it invokes a hook.
-#
-# They override `git -C <dir>`, so a *.test.sh that builds a throwaway
-# fixture repository under mktemp resolves back into the real repository's
-# .git when it runs from inside .husky/pre-commit. Source this file, then:
-#   unset "${GIT_HOOK_ENV_VARS[@]}"
-# before the first `git init` / `git -C <fixture> ...` call. One list, so
-# every runner and every self-contained suite clears the same names.
+# git-env.sh — the GIT_* variables that redirect git at a repository, which a hook invocation exports.
+# GIT_AUTHOR_*/GIT_EXEC_PATH are left alone on purpose: a fixture's `git config user.*` may be harmlessly overridden by the committing human's identity under the hook.
 #
 # Used by: scripts/verify-self-tests.sh, scripts/lib/run-isolated-selftest.sh,
 # and any *.test.sh that builds a git repository directly.

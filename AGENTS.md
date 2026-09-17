@@ -132,8 +132,6 @@ The commit is the verification checkpoint. `.husky/pre-commit` runs `scripts/che
 
 **Do not run `check:changed` as a final "am I done" step** — the commit runs it on staged files. **Do not run a full suite locally**; CI owns exhaustive coverage. Iterating on one test file is feedback, not verification: `pnpm --filter @kinesin/sdk exec vitest run <file>`.
 
-A `*.test.sh` that builds a throwaway git repository under `mktemp` must source `scripts/lib/git-env.sh` and `unset "${GIT_HOOK_ENV_VARS[@]}"` before the first `git init` / `git -C <fixture> ...`, or a hook's exported `GIT_DIR`/`GIT_INDEX_FILE` makes the fixture's git commands land on the real repository; gate: `check-selftest-git-isolation.sh`.
-
 ## Test-driven changes
 
 Behavior-affecting code: tests first when practical; at minimum tests before claiming done.
@@ -143,6 +141,8 @@ Before writing tests for a publish path, handler, relay step, webhook, retry, cr
 A new test that still passes after reverting the production change does not count. Watch it fail, restore, watch it pass. Do not claim done on a test you never saw go red.
 
 Levels: unit (`*.test.ts`, colocated), integration (`*.integration.test.ts`, against the local engine), manual (justified, listed). There is no browser level.
+
+A suite that builds a git repository sources `scripts/lib/git-env.sh` and unsets the variables it lists. The gate `check-selftest-git-isolation.sh` fails one that does not.
 
 ## Branch / PR defaults
 
