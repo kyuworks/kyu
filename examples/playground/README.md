@@ -15,6 +15,10 @@ durable handler that sleeps five seconds and then waits for the correlated `shop
 event. Killing and restarting the worker while a run is parked in that wait proves the run
 resumes in the new process, not the one that started it.
 
+A worker stopped while `watch-shipping`'s body is still executing fails that attempt, and the
+engine retries it on the next worker to start. A worker stopped once the run is parked in its
+wait hands the wait to the next worker directly, with no failed attempt in between.
+
 The relay owns one dedicated `pg.Client`, not a pool (the SDK's `Queryable` rejects a pool by
 design). It has no reconnect: if that connection drops, the process logs the error and exits
 non-zero rather than stopping quietly. A real deployment runs it under a supervisor that

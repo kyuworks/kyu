@@ -93,6 +93,29 @@ describe('readConfig', () => {
     expect(error?.variable).toBe('KINESIN_EXAMPLE_WATCH_TIMEOUT')
   })
 
+  it('accepts a watch-shipping timeout of exactly 20 minutes', () => {
+    const config = readConfig({
+      KINESIN_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
+      KINESIN_EXAMPLE_WATCH_TIMEOUT: '20m',
+    })
+    expect(config.watchShippingTimeout).toBe('20m')
+  })
+
+  it('throws MissingConfigError naming the variable for a watch-shipping timeout over 20 minutes', () => {
+    let error: MissingConfigError | undefined
+    try {
+      readConfig({
+        KINESIN_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
+        KINESIN_EXAMPLE_WATCH_TIMEOUT: '21m',
+      })
+    } catch (caught) {
+      if (caught instanceof MissingConfigError) error = caught
+      else throw caught
+    }
+    expect(error).toBeInstanceOf(MissingConfigError)
+    expect(error?.variable).toBe('KINESIN_EXAMPLE_WATCH_TIMEOUT')
+  })
+
   it('throws MissingConfigError naming the variable and the allowed values for an invalid log level', () => {
     let error: MissingConfigError | undefined
     try {

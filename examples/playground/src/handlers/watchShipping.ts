@@ -63,6 +63,9 @@ export function watchShippingSubscription(kinesin: Kinesin, pool: Pool, config: 
   return kinesin.durable(orderPlaced, {
     name: 'watch-shipping',
     executionTimeout: '1h',
+    // A worker stopped while the body executes (not while parked in a wait)
+    // fails that attempt; retrying is safe because every write goes through onceById.
+    retries: 3,
     handler: (ctx) => watchShipping(pool, kinesin, config, ctx),
   })
 }
