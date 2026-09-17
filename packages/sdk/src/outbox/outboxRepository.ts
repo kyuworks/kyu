@@ -65,7 +65,7 @@ export async function claimPendingRows(db: Queryable, options: ClaimPendingRowsO
        SELECT id FROM kinesin_outbox
        WHERE published_at IS NULL
          AND (claimed_at IS NULL OR claimed_at < now() - ($2::text || ' milliseconds')::interval)
-       ORDER BY created_at
+       ORDER BY created_at, id
        LIMIT $3
        FOR UPDATE SKIP LOCKED
      )
@@ -94,7 +94,14 @@ export async function claimPendingRows(db: Queryable, options: ClaimPendingRowsO
   }
 
   // RETURNING does not inherit the subquery's ORDER BY; sort explicitly.
-  rows.sort((a, b) => a.created_at.getTime() - b.created_at.getTime())
+  // UUID v7's monotonic counter breaks a created_at tie in publish order.
+  rows.sort((a, b) => {
+    const byCreatedAt = a.created_at.getTime() - b.created_at.getTime()
+    if (byCreatedAt !== 0) return byCreatedAt
+    if (a.id < b.id) return -1
+    if (a.id > b.id) return 1
+    return 0
+  })
   return { rows, skipped }
 }
 

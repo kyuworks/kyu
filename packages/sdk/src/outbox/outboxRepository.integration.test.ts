@@ -1,4 +1,4 @@
-import { defineEvent, uuidv7 } from '@kinesin/schemas'
+import { createEnvelope, defineEvent, uuidv7 } from '@kinesin/schemas'
 import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -36,6 +36,18 @@ afterEach(async () => {
 async function insertGoodRow(n: number): Promise<string> {
   const envelope = await publisher.publish(client, thingHappened, { n }, { tenantId: null })
   return envelope.id
+}
+
+// Inserts a row under a caller-chosen id, so id order can be set independent
+// of insertion order (createEnvelope always mints its own id).
+async function insertRowWithId(id: string, n: number): Promise<void> {
+  const envelope = await createEnvelope(thingHappened, { n }, { tenantId: null, source: 'outbox-repo-test' })
+  const withId = { ...envelope, id, correlationId: id }
+  await client.query('INSERT INTO kinesin_outbox (id, name, tenant_id, envelope) VALUES ($1, $2, NULL, $3::jsonb)', [
+    id,
+    thingHappened.name,
+    JSON.stringify(withId),
+  ])
 }
 
 async function backdateCreatedAt(id: string, millisecondsAgo: number): Promise<void> {
@@ -251,5 +263,35 @@ describe('claim semantics', () => {
     const claimed = await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 60_000 })
 
     expect(claimed.rows.map((row) => row.id)).toEqual([idC, idB, idA])
+  })
+
+  it('rows published in one transaction share created_at and still come back in publish order', async () => {
+    // Postgres `now()` is fixed at transaction start: all five rows share it,
+    // so only the (created_at, id) tiebreaker keeps claim order matching publish order.
+    await client.query('BEGIN')
+    const ids: string[] = []
+    for (let n = 1; n <= 5; n += 1) {
+      ids.push(await insertGoodRow(n))
+    }
+    await client.query('COMMIT')
+
+    const claimed = await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 60_000 })
+
+    expect(claimed.rows.map((row) => row.id)).toEqual(ids)
+  })
+
+  it('equal created_at orders claims by id, independent of insertion order', async () => {
+    // Inserted in reverse id order, so a fallback to heap/insertion order
+    // (rather than id) would claim the wrong three rows below.
+    const ids = Array.from({ length: 5 }, () => uuidv7()).sort()
+    await client.query('BEGIN')
+    for (const id of [...ids].reverse()) {
+      await insertRowWithId(id, 1)
+    }
+    await client.query('COMMIT')
+
+    const claimed = await claimPendingRows(client, { limit: 3, workerId: 'worker-1', staleAfterMs: 60_000 })
+
+    expect(claimed.rows.map((row) => row.id)).toEqual(ids.slice(0, 3))
   })
 })
