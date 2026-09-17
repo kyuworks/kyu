@@ -3,6 +3,7 @@ import { createEnvelope, defineEvent, toEnvelopeMetadata } from '@kinesin/schema
 import type { Envelope } from '@kinesin/schemas'
 import { z } from 'zod'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { eventScope } from '../eventScope.js'
 import { createHatchetClient } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
 import type { DurableHandlerContext, WaitForResult } from './durable.js'
@@ -39,7 +40,7 @@ async function pushShipped(orderId: string, tenantId: string | null): Promise<En
   const envelope = await createEnvelope(orderShipped, { orderId }, { tenantId, source: 'sdk.test' })
   await hatchet.events.push(orderShipped.name, envelope, {
     additionalMetadata: toEnvelopeMetadata(envelope),
-    scope: envelope.tenantId ?? 'global',
+    scope: eventScope(envelope),
   })
   return envelope
 }

@@ -17,8 +17,10 @@ export interface CreateKinesinOptions {
   source: string
 }
 
+export type KinesinRelayOptions = Omit<RelayOptions, 'hatchet'>
+
 // One bound entry point over the standalone outbox/relay/consume functions;
-// see AGENTS.md § Smallest correct change — no new behaviour lives here.
+// no new behaviour lives here.
 export interface Kinesin {
   publish: Publisher['publish']
   publishEnvelope: typeof publishEnvelope
@@ -32,7 +34,7 @@ export interface Kinesin {
     options: DurableOptions<MessageData<MessageDefinition<S>>>,
   ): Subscription
   worker(name: string, options: CreateWorkerOptions): Promise<KinesinWorker>
-  startRelay(options: Omit<RelayOptions, 'hatchet'>): Relay
+  startRelay(options: KinesinRelayOptions): Relay
 }
 
 export function createKinesin(options: CreateKinesinOptions): Kinesin {

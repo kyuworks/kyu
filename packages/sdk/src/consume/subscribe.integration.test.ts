@@ -3,6 +3,7 @@ import { createEnvelope, defineCommand, defineEvent, toEnvelopeMetadata } from '
 import type { Envelope, EnvelopeMetadataFields } from '@kinesin/schemas'
 import { z } from 'zod'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { eventScope } from '../eventScope.js'
 import { NonRetryableError, createHatchetClient } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
 import type { HandlerContext } from './handlerContext.js'
@@ -122,7 +123,7 @@ describe('subscribe: tenant id', () => {
     )
     await hatchet.events.push(definition.name, envelope, {
       additionalMetadata: toEnvelopeMetadata(envelope),
-      scope: envelope.tenantId ?? 'global',
+      scope: eventScope(envelope),
     })
 
     await waitUntil(() => received.some((r) => r.envelope.id === envelope.id), 60_000)
@@ -137,7 +138,7 @@ describe('subscribe: tenant id', () => {
     const envelope = await createEnvelope(definition, { seq: 2 }, { tenantId: null, source: 'sdk.test' })
     await hatchet.events.push(definition.name, envelope, {
       additionalMetadata: toEnvelopeMetadata(envelope),
-      scope: envelope.tenantId ?? 'global',
+      scope: eventScope(envelope),
     })
 
     await waitUntil(() => received.some((r) => r.envelope.id === envelope.id), 60_000)
@@ -158,7 +159,7 @@ describe('subscribe: tenant id', () => {
     }
     await hatchet.events.push(definition.name, envelope, {
       additionalMetadata: mismatchedMetadata,
-      scope: envelope.tenantId ?? 'global',
+      scope: eventScope(envelope),
     })
 
     const called = await waitUntil(() => received.some((r) => r.envelope.id === envelope.id), 3_000)

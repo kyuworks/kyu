@@ -11,9 +11,11 @@ export {
 export type {
   CreateEnvelopeOptions,
   Envelope,
+  EnvelopeData,
   EnvelopeMetadataFields,
   JsonObject,
   MessageData,
+  MessageDataShape,
   MessageDefinition,
   MessageInput,
   MessageKind,
@@ -23,9 +25,7 @@ export type {
 export { SDK_VERSION } from './version.js'
 
 export { createKinesin } from './createKinesin.js'
-export type { CreateKinesinOptions, Kinesin } from './createKinesin.js'
-
-export { eventScope } from './eventScope.js'
+export type { CreateKinesinOptions, Kinesin, KinesinRelayOptions } from './createKinesin.js'
 
 export type { Queryable, QueryParam, QueryRows } from './db/queryable.js'
 
