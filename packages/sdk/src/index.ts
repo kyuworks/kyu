@@ -9,6 +9,7 @@ export {
   messageKindSchema,
   messageNameSchema,
   parseEnvelope,
+  uuidv7,
 } from '@kinesin/schemas'
 export type {
   CreateEnvelopeOptions,
@@ -25,6 +26,7 @@ export type {
   Unparsed,
 } from '@kinesin/schemas'
 export { SDK_VERSION } from './version.js'
+export { MIGRATIONS_DIRECTORY } from './migrations.js'
 
 export { createKinesin } from './createKinesin.js'
 export type { CreateKinesinOptions, Kinesin, KinesinRelayOptions } from './createKinesin.js'
