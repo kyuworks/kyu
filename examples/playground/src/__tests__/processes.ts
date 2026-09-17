@@ -6,8 +6,9 @@ export interface SpawnedProcess {
   child: ChildProcess
   // Resolves once the child prints a `log.ts`-shaped `"event":"ready"` line on stdout.
   ready: Promise<void>
-  // SIGTERM, then SIGKILL after 15s if it has not exited; resolves with the exit code.
+  // SIGTERM, then SIGKILL after 60s if it has not exited; resolves with the exit code.
   // child.signalCode tells a caller apart a clean SIGTERM stop from a forced SIGKILL.
+  // 60s: a worker with parked durable runs waits up to 30s per eviction ack; see worker.ts's "stopped" log.
   stop(): Promise<number>
 }
 
@@ -27,7 +28,7 @@ function terminate(child: ChildProcess): Promise<number> {
     }
     const killTimer = setTimeout(() => {
       if (child.exitCode === null) child.kill('SIGKILL')
-    }, 15_000)
+    }, 60_000)
     child.once('exit', (code) => {
       clearTimeout(killTimer)
       resolve(code ?? -1)
