@@ -7,3 +7,16 @@ export {
 } from '@kinesin/schemas'
 export type { Envelope, MessageKind } from '@kinesin/schemas'
 export { SDK_VERSION } from './version.js'
+
+export { ConcurrencyLimitStrategy, NonRetryableError, Or, Priority, createHatchetClient } from './hatchet.js'
+export type { HatchetClient, HatchetClientConfig, HatchetClientOptions, Worker } from './hatchet.js'
+
+export {
+  CommandHasTwoSubscribersError,
+  EnvelopeOptionsError,
+  EnvelopeRejectedError,
+  KinesinError,
+  MessageDataError,
+  MessageDefinitionError,
+} from './errors.js'
+export type { EnvelopeOptionIssue, MessageDataIssue } from './errors.js'
