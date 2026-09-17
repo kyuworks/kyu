@@ -1,4 +1,3 @@
-import nodeProcess from 'node:process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { log } from './log.js'
 
@@ -16,7 +15,7 @@ describe('log', () => {
   })
 
   it('writes one NDJSON line with the process, event and fields', () => {
-    const write = vi.spyOn(nodeProcess.stdout, 'write').mockImplementation(() => true)
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
 
     log('worker', 'ready', { pid: 123, namespace: 'playground_' })
 
@@ -29,5 +28,18 @@ describe('log', () => {
     expect(record.pid).toBe(123)
     expect(record.namespace).toBe('playground_')
     expect(record.ts).toEqual(expect.any(String))
+  })
+
+  it('keeps its own ts, process and event when fields tries to override them', () => {
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
+    log('worker', 'ready', { ts: 'nope', process: 'nope', event: 'nope' })
+
+    const line = String(write.mock.calls[0]?.[0])
+    const record = JSON.parse(line) as { ts: string; process: string; event: string }
+    expect(record.process).toBe('worker')
+    expect(record.event).toBe('ready')
+    expect(record.ts).not.toBe('nope')
+    expect(Object.keys(record)[0]).toBe('ts')
   })
 })
