@@ -9,9 +9,9 @@ Three processes share one Postgres database and one Hatchet engine:
 - **relay** — ships the transactional outbox to the engine.
 - **worker** — runs the event and command handlers.
 
-This PR adds `worker` and its handlers: `record-order` and `audit-order` (two subscribers on
-`shop.order.placed`) and `send-invoice` (a FIFO-per-order command handler, `shop.invoice.send`).
-A later PR adds a durable handler that waits for a shipped event.
+`worker` runs the event and command handlers: `record-order` and `audit-order` (two subscribers
+on `shop.order.placed`) and `send-invoice` (a FIFO-per-order command handler, `shop.invoice.send`).
+A durable handler that waits for a shipped event is not implemented yet.
 
 The relay owns one dedicated `pg.Client`, not a pool (the SDK's `Queryable` rejects a pool by
 design). It has no reconnect: if that connection drops, the process logs the error and exits
@@ -53,6 +53,7 @@ is missing.
 pnpm hatchet:up
 export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/token.sh)"
 export HATCHET_CLIENT_TLS_STRATEGY=none
+pnpm --filter @kinesin/playground build
 pnpm --filter @kinesin/playground migrate
 pnpm --filter @kinesin/playground relay
 ```
@@ -68,3 +69,9 @@ pnpm --filter @kinesin/playground publish-cli place-order --tenant <uuid>
 
 `HATCHET_CLIENT_TOKEN` and `HATCHET_CLIENT_TLS_STRATEGY` are needed by the relay, the worker and
 the CLI's producers, not by migrate.
+
+## Engine hygiene
+
+Each test run registers workflows and a concurrency strategy under a random namespace that the
+engine never removes. Run `pnpm hatchet:down -v` then `pnpm hatchet:up` periodically to clear
+the accumulated registrations and keep the local engine responsive.

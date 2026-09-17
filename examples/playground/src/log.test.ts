@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { exitAfterLog, log } from './log.js'
+import { describeError, exitAfterLog, log } from './log.js'
 
 interface LoggedRecord {
   readonly ts: string
@@ -65,5 +65,24 @@ describe('exitAfterLog', () => {
     onSettled?.()
 
     expect(exit).toHaveBeenCalledWith(1)
+  })
+})
+
+describe('describeError', () => {
+  it('joins an AggregateError into its constituent messages', () => {
+    const aggregate = new AggregateError([new Error('econnrefused'), new Error('etimedout')], '')
+
+    expect(describeError(aggregate)).toBe('econnrefused, etimedout')
+  })
+
+  it('falls back to the error name when the message is empty', () => {
+    const error = new Error('')
+    error.name = 'ConnectionError'
+
+    expect(describeError(error)).toBe('ConnectionError')
+  })
+
+  it('stringifies a non-Error cause', () => {
+    expect(describeError('boom')).toBe('boom')
   })
 })

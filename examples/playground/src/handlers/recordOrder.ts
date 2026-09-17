@@ -1,16 +1,13 @@
 import type { HandlerContext, Kinesin, MessageData, Subscription } from '@kinesin/sdk'
-import { NonRetryableError } from '@kinesin/sdk'
 import type { Pool } from 'pg'
 import { withTransaction } from '../db/pool.js'
 import { orderPlaced } from '../messages.js'
+import { requireTenant } from './tenant.js'
 
 type OrderPlacedContext = HandlerContext<MessageData<typeof orderPlaced>>
 
 async function recordOrder(pool: Pool, kinesin: Kinesin, ctx: OrderPlacedContext): Promise<void> {
-  const { tenantId } = ctx.envelope
-  // Every shop.* message is tenant-scoped (AGENTS.md non-goals); a null
-  // tenantId means a message this app never publishes reached the handler.
-  if (tenantId === null) throw new NonRetryableError(`record-order: envelope ${ctx.envelope.id} has no tenantId`)
+  const tenantId = requireTenant('record-order', ctx)
 
   await withTransaction(pool, (tx) =>
     kinesin.onceById(tx, ctx.envelope.id, 'record-order', async () => {

@@ -5,12 +5,8 @@ import { describe, expect, it } from 'vitest'
 import { sendInvoiceSubscription } from './handlers/sendInvoice.js'
 import { buildSubscriptions } from './subscriptions.js'
 
-// task()/worker() are never given real work here: assertSingleCommandSubscriber
-// throws before createWorker touches the client, and buildSubscriptions never
-// calls worker() at all. A single indexed-type cast per method — the same
-// unchained-cast idiom packages/sdk/src/createKinesin.test.ts uses for its own
-// fakeHatchetClient — since CreateTaskWorkflowOpts/CreateWorkerOpts are the
-// engine SDK's own types and are not part of @kinesin/sdk's public exports.
+// task()/worker() are never given real work; a single indexed-type cast per method
+// mirrors packages/sdk/src/createKinesin.test.ts's own fakeHatchetClient idiom.
 function fakeHatchetClient(): HatchetClient {
   const stub: Pick<HatchetClient, 'task' | 'worker'> = {
     task: (_options: Parameters<HatchetClient['task']>[0]) => ({}) as ReturnType<HatchetClient['task']>,

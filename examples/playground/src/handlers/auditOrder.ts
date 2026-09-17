@@ -1,16 +1,15 @@
 import type { HandlerContext, Kinesin, MessageData, Subscription } from '@kinesin/sdk'
-import { NonRetryableError } from '@kinesin/sdk'
 import type { Pool } from 'pg'
 import { withTransaction } from '../db/pool.js'
 import { orderPlaced } from '../messages.js'
+import { requireTenant } from './tenant.js'
 
 type OrderPlacedContext = HandlerContext<MessageData<typeof orderPlaced>>
 
 // A second subscriber on the same event (fan-out); onceById absorbs a
 // redelivery the same way record-order does, so the unique log index never fails a retry.
 async function auditOrder(pool: Pool, kinesin: Kinesin, ctx: OrderPlacedContext): Promise<void> {
-  const { tenantId } = ctx.envelope
-  if (tenantId === null) throw new NonRetryableError(`audit-order: envelope ${ctx.envelope.id} has no tenantId`)
+  const tenantId = requireTenant('audit-order', ctx)
 
   await withTransaction(pool, (tx) =>
     kinesin.onceById(tx, ctx.envelope.id, 'audit-order', () =>

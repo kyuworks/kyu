@@ -2,6 +2,14 @@ export interface LogFields {
   [key: string]: string | number | boolean | null
 }
 
+// pg raises an AggregateError with an empty top-level message on a refused
+// connection; join its constituent errors instead of logging a blank reason.
+export function describeError(cause: unknown): string {
+  if (cause instanceof AggregateError) return cause.errors.map(describeError).join(', ')
+  if (cause instanceof Error) return cause.message === '' ? cause.name : cause.message
+  return String(cause)
+}
+
 // ts is set first and reapplied last so a caller-supplied field of the same
 // name can never win or move it.
 function formatLine(proc: string, event: string, fields?: LogFields): string {
