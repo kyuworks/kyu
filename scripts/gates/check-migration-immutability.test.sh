@@ -4,6 +4,13 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# git exports these when it runs a hook, and they override `git -C`, so the
+# throwaway repositories below would commit into the real one.
+# shellcheck source=../lib/git-env.sh
+source "${SCRIPT_DIR}/../lib/git-env.sh"
+unset "${GIT_HOOK_ENV_VARS[@]}"
+
 source "${SCRIPT_DIR}/../lib/gate-test-lib.sh"
 CHECK="${SCRIPT_DIR}/check-migration-immutability.sh"
 

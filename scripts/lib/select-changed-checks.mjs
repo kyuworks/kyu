@@ -94,7 +94,10 @@ for (const raw of changedFiles()) {
   if (f.startsWith('scripts/gates/') || f === 'scripts/verify-gates.sh' || f.startsWith('.github/workflows/')) allGates = true
   if (f.endsWith('.sh')) {
     const suite = f.endsWith('.test.sh') ? f : f.slice(0, -3) + '.test.sh'
-    if (existsSync(path.join(root, suite))) add(`selftest:${suite}`, `bash ${suite}`)
+    // Routed through run-isolated-selftest.sh, not a bare `bash <suite>`: this
+    // step runs outside scripts/verify-self-tests.sh, so nothing else clears
+    // the GIT_* vars a hook invocation exports (scripts/lib/git-env.sh).
+    if (existsSync(path.join(root, suite))) add(`selftest:${suite}`, `bash scripts/lib/run-isolated-selftest.sh ${suite}`)
   }
 }
 
