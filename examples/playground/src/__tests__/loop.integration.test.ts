@@ -11,6 +11,7 @@ import { createPool, withTransaction } from '../db/pool.js'
 import { createPlaygroundKinesin } from '../kinesin.js'
 import { sendInvoice } from '../messages.js'
 import { placeOrder } from '../producer/placeOrder.js'
+import { shipOrder } from '../producer/shipOrder.js'
 import { spawnProcess, stopAllSpawnedProcesses } from './processes.js'
 import type { SpawnedProcess } from './processes.js'
 
@@ -27,6 +28,9 @@ let admin: Client
 let engine: HatchetClient
 let relay: SpawnedProcess
 let worker: SpawnedProcess
+// Every placeOrder() envelope id in this file, so the "no worker running" test
+// can check its own watch-shipping runs instead of the whole (shared) tenant.
+const placedOrderEnvelopeIds: string[] = []
 
 function childEnv(): NodeJS.ProcessEnv {
   return { ...process.env, KINESIN_EXAMPLE_DATABASE_URL: config.databaseUrl, KINESIN_EXAMPLE_NAMESPACE: namespace }
@@ -49,6 +53,8 @@ async function waitUntil(
 }
 
 const TERMINAL_RUN_STATUSES = new Set(['COMPLETED', 'CANCELLED', 'FAILED'])
+// engine.runs.list() rows carry displayName ("<subscription-name>-<ts>"), not a bare workflow name.
+const WATCH_SHIPPING_DISPLAY_NAME_PREFIX = 'watch-shipping-'
 
 interface LogRow {
   handler: string
@@ -65,6 +71,23 @@ async function handlerLogRows(envelopeIds: readonly string[]): Promise<LogRow[]>
   return result.rows
 }
 
+// Ship the order so its watch-shipping run finishes; a parked run makes the
+// shared worker's stop() wait up to 30s per eviction ack.
+async function shipAndAwaitWatchShipping(tenantId: string, orderId: string): Promise<void> {
+  await shipOrder(pool, kinesin, { tenantId, orderId, carrier: 'ups' })
+  await waitUntil(
+    async () => {
+      const result = await admin.query(
+        "SELECT 1 FROM shop_handler_log WHERE handler = 'watch-shipping:completed' AND order_id = $1",
+        [orderId],
+      )
+      return result.rows.length > 0
+    },
+    60_000,
+    () => `watch-shipping never completed for order ${orderId} after shipping`,
+  )
+}
+
 beforeAll(async () => {
   const base = readConfig()
   config = { ...base, namespace }
@@ -79,16 +102,19 @@ beforeAll(async () => {
   await Promise.all([relay.ready, worker.ready])
 }, 60_000)
 
+// 90s: the last test's worker can still hold two unshipped watch-shipping
+// runs, and stop() evicts each with its own up-to-30s ack wait.
 afterAll(async () => {
   await stopAllSpawnedProcesses()
   await admin.end()
   await pool.end()
-}, 30_000)
+}, 90_000)
 
 describe('loop: relay and worker against the local engine', () => {
   it('an order reaches both subscribers and the command handler, tenant id unchanged (mandatory)', async () => {
     const tenantId = randomUUID()
     const placed = await placeOrder(pool, kinesin, { tenantId, customerId: randomUUID() })
+    placedOrderEnvelopeIds.push(placed.envelopeIds.orderPlaced)
 
     let recordedAt: unknown
     await waitUntil(
@@ -135,11 +161,14 @@ describe('loop: relay and worker against the local engine', () => {
     expect(byHandler('audit-order')).toHaveLength(1)
     expect(byHandler('send-invoice')).toHaveLength(1)
     expect(rows.every((row) => row.tenant_id === tenantId)).toBe(true)
+
+    await shipAndAwaitWatchShipping(tenantId, placed.orderId)
   }, 180_000)
 
   it('a re-shipped outbox row runs record-order once (mandatory)', async () => {
     const tenantId = randomUUID()
     const placed = await placeOrder(pool, kinesin, { tenantId, customerId: randomUUID() })
+    placedOrderEnvelopeIds.push(placed.envelopeIds.orderPlaced)
     const envelopeId = placed.envelopeIds.orderPlaced
 
     let recordedAt: unknown
@@ -179,7 +208,9 @@ describe('loop: relay and worker against the local engine', () => {
       async () => {
         const result = await engine.runs.list({ additionalMetadata: { envelopeId } })
         runsAfter = result.rows
-        return runsAfter.length > runsBefore && runsAfter.every((row) => TERMINAL_RUN_STATUSES.has(row.status))
+        // watch-shipping parks in waitFor by design; only the plain subscriptions must be terminal here.
+        const nonDurable = runsAfter.filter((row) => !row.displayName.startsWith(WATCH_SHIPPING_DISPLAY_NAME_PREFIX))
+        return runsAfter.length > runsBefore && nonDurable.every((row) => TERMINAL_RUN_STATUSES.has(row.status))
       },
       20_000,
       () =>
@@ -197,7 +228,9 @@ describe('loop: relay and worker against the local engine', () => {
     const rows = await handlerLogRows([envelopeId])
     expect(rows.filter((row) => row.handler === 'record-order')).toHaveLength(1)
     expect(rows.filter((row) => row.handler === 'audit-order')).toHaveLength(1)
-  }, 120_000)
+
+    await shipAndAwaitWatchShipping(tenantId, placed.orderId)
+  }, 180_000)
 
   it('five invoice commands for one order are handled in publish order (mandatory)', async () => {
     const tenantId = randomUUID()
@@ -278,6 +311,18 @@ describe('loop: relay and worker against the local engine', () => {
   }, 90_000)
 
   it('orders placed with no worker running are handled once it starts', async () => {
+    // A parked watch-shipping run makes stop() evict it (up to 30s ack); assert none remain for this file's own orders.
+    const runsByEnvelope = await Promise.all(
+      placedOrderEnvelopeIds.map((envelopeId) => engine.runs.list({ additionalMetadata: { envelopeId } })),
+    )
+    const parked = runsByEnvelope
+      .flatMap((result) => result.rows)
+      .filter(
+        (row) =>
+          row.displayName.startsWith(WATCH_SHIPPING_DISPLAY_NAME_PREFIX) && !TERMINAL_RUN_STATUSES.has(row.status),
+      )
+    expect(parked, `parked watch-shipping runs: ${JSON.stringify(parked)}`).toHaveLength(0)
+
     const stoppedCode = await worker.stop()
     expect(stoppedCode).toBe(0)
 
