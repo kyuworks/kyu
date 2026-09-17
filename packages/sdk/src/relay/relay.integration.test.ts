@@ -4,6 +4,10 @@ import type { Envelope } from '@kinesin/schemas'
 import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import type { HandlerContext } from '../consume/handlerContext.js'
+import { subscribe } from '../consume/subscribe.js'
+import { createWorker } from '../consume/worker.js'
+import type { KinesinWorker } from '../consume/worker.js'
 import type { Queryable, QueryParam, QueryRows } from '../db/queryable.js'
 import { createHatchetClient } from '../hatchet.js'
 import type { Worker } from '../hatchet.js'
@@ -28,6 +32,20 @@ const invoiceSent = defineEvent({
   version: 1,
   data: z.object({ n: z.number() }),
 })
+const relayOrdered = defineEvent({
+  name: 'kinesin.relay_test.ordered',
+  version: 1,
+  data: z.object({ orderId: z.string(), seq: z.number() }),
+})
+
+async function waitUntil(predicate: () => boolean, timeoutMs: number, intervalMs = 25): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (predicate()) return true
+    await new Promise<void>((resolve) => setTimeout(resolve, intervalMs))
+  }
+  return predicate()
+}
 
 vi.setConfig({ testTimeout: 60_000 })
 
@@ -347,4 +365,51 @@ describe('relay against the local engine', () => {
     const bad = await client.query('SELECT published_at FROM kinesin_outbox WHERE id = $1', [badId])
     expect(bad.rows[0]?.['published_at']).toBeNull()
   })
+})
+
+describe('relay + subscribe: outbox claim order reaches the handler', () => {
+  const seen: number[] = []
+  let worker: KinesinWorker | undefined
+
+  beforeAll(async () => {
+    const subscription = subscribe(hatchet, relayOrdered, {
+      name: 'relay-order-recorder',
+      concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'fifo' },
+      // Inverse to seq: an unserialised run would let later, shorter sleeps
+      // finish first and reverse the recorded order.
+      handler: async (ctx: HandlerContext<{ orderId: string; seq: number }>) => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 300 - ctx.envelope.data.seq * 50))
+        seen.push(ctx.envelope.data.seq)
+      },
+    })
+    worker = await createWorker(hatchet, 'kinesin-sdk-relay-order-test', { subscriptions: [subscription], slots: 5 })
+    void worker.start()
+    await worker.waitUntilReady()
+  }, 60_000)
+
+  afterAll(async () => {
+    await worker?.stop()
+  })
+
+  it('five envelopes published in one transaction and relayed in one tick arrive in publish order', async () => {
+    const orderId = randomUUID()
+    await client.query('BEGIN')
+    for (let seq = 1; seq <= 5; seq += 1) {
+      await publisher.publish(client, relayOrdered, { orderId, seq }, { tenantId: null })
+    }
+    await client.query('COMMIT')
+
+    const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
+    try {
+      await relay.tick()
+    } finally {
+      await relay.stop()
+    }
+
+    // A fresh workflow's first delivery can lag by up to a minute on a cold
+    // engine (see the cold-start test above); the budget covers that plus
+    // margin for the four ordered deliveries behind it.
+    await waitUntil(() => seen.length >= 5, 150_000)
+    expect(seen).toEqual([1, 2, 3, 4, 5])
+  }, 180_000)
 })

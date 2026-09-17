@@ -252,4 +252,20 @@ describe('claim semantics', () => {
 
     expect(claimed.rows.map((row) => row.id)).toEqual([idC, idB, idA])
   })
+
+  it('rows published in one transaction share created_at and still come back in publish order', async () => {
+    // Postgres `now()` is fixed at transaction start, so all five rows below
+    // get the identical created_at; only the (created_at, id) tiebreaker
+    // can keep claim order matching publish order.
+    await client.query('BEGIN')
+    const ids: string[] = []
+    for (let n = 1; n <= 5; n += 1) {
+      ids.push(await insertGoodRow(n))
+    }
+    await client.query('COMMIT')
+
+    const claimed = await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 60_000 })
+
+    expect(claimed.rows.map((row) => row.id)).toEqual(ids)
+  })
 })
