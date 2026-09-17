@@ -29,4 +29,8 @@ pnpm check
 | `@kinesin/schemas` | The envelope contract, naming rules, schema adapters |
 | `@kinesin/sdk` | Publish through a transactional outbox, subscribe with Hatchet, run durable handlers |
 
+## Examples
+
+[`examples/playground`](examples/playground) is a small app that uses `@kinesin/sdk` the way a real project would.
+
 Status: design accepted, SDK in progress. See the issues.

@@ -1,0 +1,28 @@
+{
+  "name": "@kinesin/playground",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc -b --pretty false",
+    "typecheck:tests": "tsc -b --pretty false tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "NODE_OPTIONS='--import tsx' oxlint"
+  },
+  "dependencies": {
+    "@kinesin/sdk": "workspace:*",
+    "pg": "^8.23.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
+    "oxlint": "^1.82.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "typescript": "^6.0.0",
+    "vitest": "^4.1.0"
+  }
+}
