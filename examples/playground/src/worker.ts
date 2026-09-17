@@ -7,10 +7,12 @@ import { createPlaygroundKinesin } from './kinesin.js'
 import { describeError, exitAfterLog, log } from './log.js'
 import { buildSubscriptions } from './subscriptions.js'
 
-// SIGTERM/SIGINT both stop the worker before exiting; a supervisor sends
-// either depending on how it stops the process.
+// SIGTERM/SIGINT both stop the worker before exiting. stop() evicts parked
+// durable runs (up to 30s ack each), so the duration is logged; processes.ts sizes its grace window from it.
 async function shutdown(worker: KinesinWorker, pool: Pool): Promise<void> {
+  const startedAt = Date.now()
   await worker.stop()
+  log('worker', 'stopped', { durationMs: Date.now() - startedAt })
   await pool.end()
   nodeProcess.exit(0)
 }
@@ -27,7 +29,7 @@ async function main(): Promise<void> {
   const kinesin = createPlaygroundKinesin(config)
 
   const worker = await kinesin.worker('playground-worker', {
-    subscriptions: buildSubscriptions(kinesin, pool),
+    subscriptions: buildSubscriptions(kinesin, pool, config),
     slots: 5,
     durableSlots: 5,
   })
