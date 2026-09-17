@@ -1,0 +1,49 @@
+import type { HatchetClient, Kinesin } from '@kinesin/sdk'
+import { CommandHasTwoSubscribersError, createKinesin } from '@kinesin/sdk'
+import type { Pool } from 'pg'
+import { describe, expect, it } from 'vitest'
+import { sendInvoiceSubscription } from './handlers/sendInvoice.js'
+import { buildSubscriptions } from './subscriptions.js'
+
+// task()/worker() are never given real work; a single indexed-type cast per method
+// mirrors packages/sdk/src/createKinesin.test.ts's own fakeHatchetClient idiom.
+function fakeHatchetClient(): HatchetClient {
+  const stub: Pick<HatchetClient, 'task' | 'worker'> = {
+    task: (_options: Parameters<HatchetClient['task']>[0]) => ({}) as ReturnType<HatchetClient['task']>,
+    worker: (_name: string) => new Promise<never>(() => undefined),
+  }
+  return stub as HatchetClient
+}
+
+function fakePool(): Pool {
+  const stub: Pick<Pool, 'connect'> = { connect: (() => new Promise<never>(() => undefined)) as Pool['connect'] }
+  return stub as Pool
+}
+
+function buildKinesin(): Kinesin {
+  return createKinesin({ hatchet: fakeHatchetClient(), source: 'subscriptions-test' })
+}
+
+describe('buildSubscriptions', () => {
+  it('registers record-order, audit-order and send-invoice', () => {
+    const subscriptions = buildSubscriptions(buildKinesin(), fakePool())
+
+    expect(subscriptions.map((subscription) => subscription.name)).toEqual([
+      'record-order',
+      'audit-order',
+      'send-invoice',
+    ])
+  })
+})
+
+describe('createWorker via kinesin.worker', () => {
+  it('throws CommandHasTwoSubscribersError when a command is subscribed twice', async () => {
+    const kinesin = buildKinesin()
+    const pool = fakePool()
+    const subscriptions = [...buildSubscriptions(kinesin, pool), sendInvoiceSubscription(kinesin, pool)]
+
+    await expect(kinesin.worker('duplicate-worker', { subscriptions })).rejects.toBeInstanceOf(
+      CommandHasTwoSubscribersError,
+    )
+  })
+})

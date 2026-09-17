@@ -7,10 +7,11 @@ Three processes share one Postgres database and one Hatchet engine:
 
 - **migrate** — applies the SDK's shipped migrations, then this app's own, through its own runner.
 - **relay** — ships the transactional outbox to the engine.
-- **worker** — runs the event and command handlers, including a durable handler.
+- **worker** — runs the event and command handlers.
 
-This PR adds `relay` and the `publish-cli` producer commands (`migrate` already existed). A
-later PR adds `worker` and the handlers it runs.
+`worker` runs the event and command handlers: `record-order` and `audit-order` (two subscribers
+on `shop.order.placed`) and `send-invoice` (a FIFO-per-order command handler, `shop.invoice.send`).
+A durable handler that waits for a shipped event is not implemented yet.
 
 The relay owns one dedicated `pg.Client`, not a pool (the SDK's `Queryable` rejects a pool by
 design). It has no reconnect: if that connection drops, the process logs the error and exits
@@ -52,17 +53,25 @@ is missing.
 pnpm hatchet:up
 export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/token.sh)"
 export HATCHET_CLIENT_TLS_STRATEGY=none
+pnpm --filter @kinesin/playground build
 pnpm --filter @kinesin/playground migrate
 pnpm --filter @kinesin/playground relay
 ```
 
-`relay` blocks in its own terminal, polling the outbox until you stop it with Ctrl-C. Run the
-CLI in a second terminal, with the same environment variables exported there too:
+`relay` blocks in its own terminal, polling the outbox until you stop it with Ctrl-C. Run
+`worker` in a second terminal, with the same environment variables exported there too, then run
+the CLI in a third:
 
 ```bash
+pnpm --filter @kinesin/playground worker
 pnpm --filter @kinesin/playground publish-cli place-order --tenant <uuid>
 ```
 
-`HATCHET_CLIENT_TOKEN` and `HATCHET_CLIENT_TLS_STRATEGY` are needed by the relay and the CLI's
-producers, not by migrate. `worker` lands in a later PR; until then a published order sits in
-the outbox, gets shipped by the relay, and has no subscriber to receive it.
+`HATCHET_CLIENT_TOKEN` and `HATCHET_CLIENT_TLS_STRATEGY` are needed by the relay, the worker and
+the CLI's producers, not by migrate.
+
+## Engine hygiene
+
+Each test run registers workflows and a concurrency strategy under a random namespace that the
+engine never removes. Run `pnpm hatchet:down -v` then `pnpm hatchet:up` periodically to clear
+the accumulated registrations and keep the local engine responsive.

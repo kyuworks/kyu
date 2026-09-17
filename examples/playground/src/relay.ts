@@ -3,15 +3,7 @@ import type { KinesinRelayOptions, Relay } from '@kinesin/sdk'
 import { Client } from 'pg'
 import { readConfig } from './config.js'
 import { createPlaygroundKinesin } from './kinesin.js'
-import { exitAfterLog, log } from './log.js'
-
-// pg raises an AggregateError with an empty top-level message on a refused
-// connection; join its constituent errors instead of logging a blank reason.
-function describeError(cause: unknown): string {
-  if (cause instanceof AggregateError) return cause.errors.map(describeError).join(', ')
-  if (cause instanceof Error) return cause.message === '' ? cause.name : cause.message
-  return String(cause)
-}
+import { describeError, exitAfterLog, log } from './log.js'
 
 // SIGTERM/SIGINT both drain the relay before exiting; a supervisor sends
 // either depending on how it stops the process.
