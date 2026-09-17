@@ -142,6 +142,8 @@ A new test that still passes after reverting the production change does not coun
 
 Levels: unit (`*.test.ts`, colocated), integration (`*.integration.test.ts`, against the local engine), manual (justified, listed). There is no browser level.
 
+A suite that builds a git repository sources `scripts/lib/git-env.sh` and unsets the variables it lists. The gate `check-selftest-git-isolation.sh` fails one that does not.
+
 ## Branch / PR defaults
 
 - Only long-lived branch: **`main`**. PRs target `main`. Branches: `feat/<slug>`, `fix/<slug>`, `chore/<slug>`.

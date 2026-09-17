@@ -1,6 +1,6 @@
-import path from 'node:path'
 import { Client } from 'pg'
 import { applyMigrations } from './src/db/applyMigrations.js'
+import { MIGRATIONS_DIRECTORY } from './src/migrations.js'
 
 // Global setup for the integration suite. A missing engine or database is a
 // failure, not a skip: a suite that silently skips reports green for code it
@@ -84,8 +84,7 @@ export default async function setup(): Promise<void> {
   const db = new Client({ connectionString: testDatabaseUrl })
   await db.connect()
   try {
-    const migrationsDir = path.resolve(import.meta.dirname, 'migrations')
-    await applyMigrations(db, migrationsDir)
+    await applyMigrations(db, MIGRATIONS_DIRECTORY)
   } finally {
     await db.end()
   }

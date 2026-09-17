@@ -1,3 +1,5 @@
+import type { Duration as HatchetDuration } from './hatchet.js'
+
 export {
   MESSAGE_NAME_PATTERN,
   createEnvelope,
@@ -7,12 +9,16 @@ export {
   messageKindSchema,
   messageNameSchema,
   parseEnvelope,
+  uuidv7,
 } from '@kinesin/schemas'
 export type {
+  CreateEnvelopeOptions,
   Envelope,
+  EnvelopeData,
   EnvelopeMetadataFields,
   JsonObject,
   MessageData,
+  MessageDataShape,
   MessageDefinition,
   MessageInput,
   MessageKind,
@@ -20,6 +26,10 @@ export type {
   Unparsed,
 } from '@kinesin/schemas'
 export { SDK_VERSION } from './version.js'
+export { MIGRATIONS_DIRECTORY } from './migrations.js'
+
+export { createKinesin } from './createKinesin.js'
+export type { CreateKinesinOptions, Kinesin, KinesinRelayOptions } from './createKinesin.js'
 
 export type { Queryable, QueryParam, QueryRows } from './db/queryable.js'
 
@@ -44,6 +54,9 @@ export type { OutboxRow, ProcessedRow } from './outbox/rows.js'
 
 export { ConcurrencyLimitStrategy, NonRetryableError, Or, Priority, createHatchetClient } from './hatchet.js'
 export type { HatchetClient, HatchetClientConfig, HatchetClientOptions, Worker } from './hatchet.js'
+// The string form: `sleepFor`/`waitFor`/`executionTimeout` never take the
+// object or millisecond forms the engine's own `Duration` also allows.
+export type Duration = Extract<HatchetDuration, string>
 
 export {
   CommandHasTwoSubscribersError,
@@ -64,7 +77,7 @@ export type { HandlerContext, HandlerLogger } from './consume/handlerContext.js'
 
 export { subscribe } from './consume/subscribe.js'
 export type { SubscribeOptions, Subscription } from './consume/subscribe.js'
-export type { RateLimitOption } from './consume/taskOptions.js'
+export type { RateLimitOption, SharedTaskOptions } from './consume/taskOptions.js'
 
 export { durable } from './consume/durable.js'
 export type { DurableHandlerContext, DurableOptions, WaitForOptions, WaitForResult } from './consume/durable.js'

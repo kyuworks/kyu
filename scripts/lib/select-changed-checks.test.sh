@@ -5,14 +5,7 @@ set -uo pipefail
 # git exports these when it runs a hook (this suite may run from the
 # pre-commit hook itself), and they override `git -C`, so the throwaway
 # fixture repos below would resolve back into the real repo's .git.
-#
-# TODO(fix/selftest-git-env): once that branch merges, replace the array
-# above `unset` with `source "$(dirname "${BASH_SOURCE[0]}")/git-env.sh"` —
-# the `unset "${GIT_HOOK_ENV_VARS[@]}"` line stays as-is, a two-line swap.
-GIT_HOOK_ENV_VARS=(
-  GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
-  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE GIT_PREFIX
-)
+source "$(dirname "${BASH_SOURCE[0]}")/git-env.sh"
 unset "${GIT_HOOK_ENV_VARS[@]}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/gate-test-lib.sh"
