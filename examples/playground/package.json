@@ -10,7 +10,9 @@
     "typecheck": "tsc -b --pretty false",
     "typecheck:tests": "tsc -b --pretty false tsconfig.test.json",
     "test": "vitest run",
-    "lint": "NODE_OPTIONS='--import tsx' oxlint"
+    "test:integration": "pnpm run build && vitest run --config vitest.integration.config.ts",
+    "lint": "NODE_OPTIONS='--import tsx' oxlint",
+    "migrate": "node dist/bin/migrate.js"
   },
   "dependencies": {
     "@kinesin/sdk": "workspace:*",
