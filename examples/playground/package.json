@@ -12,7 +12,9 @@
     "test": "vitest run",
     "test:integration": "pnpm run build && vitest run --config vitest.integration.config.ts",
     "lint": "NODE_OPTIONS='--import tsx' oxlint",
-    "migrate": "node dist/bin/migrate.js"
+    "migrate": "node dist/bin/migrate.js",
+    "relay": "node dist/relay.js",
+    "publish-cli": "node dist/bin/publish.js"
   },
   "dependencies": {
     "@kinesin/sdk": "workspace:*",
