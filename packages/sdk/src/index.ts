@@ -9,6 +9,7 @@ export {
   parseEnvelope,
 } from '@kinesin/schemas'
 export type {
+  CreateEnvelopeOptions,
   Envelope,
   EnvelopeMetadataFields,
   JsonObject,
@@ -20,6 +21,11 @@ export type {
   Unparsed,
 } from '@kinesin/schemas'
 export { SDK_VERSION } from './version.js'
+
+export { createKinesin } from './createKinesin.js'
+export type { CreateKinesinOptions, Kinesin } from './createKinesin.js'
+
+export { eventScope } from './eventScope.js'
 
 export type { Queryable, QueryParam, QueryRows } from './db/queryable.js'
 
