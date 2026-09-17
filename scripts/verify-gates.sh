@@ -38,4 +38,10 @@ else
   bash scripts/gates/check-pr-size.sh
 fi
 
+echo "[verify:gates] check-tsconfig-references"
+bash scripts/gates/check-tsconfig-references.sh
+
+echo "[verify:gates] check-selftest-git-isolation"
+bash scripts/gates/check-selftest-git-isolation.sh
+
 echo "[verify:gates] OK"

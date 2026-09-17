@@ -3,12 +3,14 @@
 # Run: bash .agents/skills/_pipeline/scripts/red2-worktree.test.sh
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # git exports these when it runs a hook, and they override the repository the
 # script would otherwise find.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
-  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE GIT_PREFIX
+# shellcheck source=../../../../scripts/lib/git-env.sh
+source "${SCRIPT_DIR}/../../../../scripts/lib/git-env.sh"
+unset "${GIT_HOOK_ENV_VARS[@]}"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../../../scripts/lib/gate-test-lib.sh"
 RED2="${SCRIPT_DIR}/red2-worktree.sh"
 

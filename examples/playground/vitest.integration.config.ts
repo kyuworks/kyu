@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config'
 
 // test:integration builds first, so @kinesin/sdk resolves through its
-// package exports against built JS, the same as any other consumer.
+// package exports against built JS, like every other consumer.
 export default defineConfig({
   test: {
     globalSetup: ['./vitest.integration.setup.ts'],
