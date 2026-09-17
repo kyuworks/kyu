@@ -12,7 +12,7 @@ export interface HandlerContext<TData extends MessageDataShape> {
   envelope: Envelope<TData>
   /** Decoded from the engine's `additionalMetadata`; `runHandler` has already checked its `envelopeId` and `tenantId` agree with `envelope`. */
   metadata: EnvelopeMetadataFields
-  /** Counts engine reassignments (durable eviction/replay) as well as application-level retries. */
+  /** Application-level retries only; an engine reassignment of a durable run re-enters the handler with this unchanged. */
   retryCount: number
   runId: string
   /**

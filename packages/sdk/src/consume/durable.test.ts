@@ -1,7 +1,7 @@
-import { createEnvelope, defineEvent } from '@kinesin/schemas'
+import { createEnvelope, defineEvent, toEnvelopeMetadata } from '@kinesin/schemas'
 import type { Envelope, MessageDataShape } from '@kinesin/schemas'
 import { z } from 'zod'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { EnvelopeRejectedError, KinesinError } from '../errors.js'
 import { ConcurrencyLimitStrategy, OrCondition, SleepCondition, UserEventCondition } from '../hatchet.js'
 import type {
@@ -305,6 +305,18 @@ describe('waitForMessage', () => {
     expect(result).toEqual({ kind: 'message', envelope: shipped })
   })
 
+  it('raises KinesinError when the engine result matches neither message nor timeout', async () => {
+    const { context } = fakeDurableContext({ CREATE: { unexpected: [] } })
+    const envelope = await handlerEnvelope(null)
+
+    await expect(
+      waitForMessage(context, envelope, orderShipped, {
+        where: { field: 'data.orderId', equals: 'order-1' },
+        timeout: '30s',
+      }),
+    ).rejects.toBeInstanceOf(KinesinError)
+  })
+
   it('rejects a matched envelope from another tenant when scope was not given', async () => {
     const shipped = await createEnvelope(
       orderShipped,
@@ -394,5 +406,46 @@ describe('durable: option wiring', () => {
     })
 
     expect(capturedOptions()?.executionTimeout).toBe('10m')
+  })
+})
+
+function asIncoming<T extends object>(value: T): JsonObject {
+  return JSON.parse(JSON.stringify(value)) as JsonObject
+}
+
+// DurableContext carries private fields, so a Pick of just `additionalMetadata`
+// needs the same single, unchained `as` cast as subscribe.test.ts's fakeHatchetContext.
+function fakeDurableHatchetContext(additionalMetadata: Record<string, string>): DurableContext<JsonObject> {
+  const stub: Pick<DurableContext<JsonObject>, 'additionalMetadata'> = {
+    additionalMetadata: () => additionalMetadata,
+  }
+  return stub as DurableContext<JsonObject>
+}
+
+// Drives the captured workflow `fn` the way the engine would, mirroring
+// subscribe.test.ts's subscribeCapturing for the durable trust edge.
+function durableCapturing() {
+  const { client, capturedOptions } = fakeHatchetClient()
+  const handler = vi.fn()
+  durable(client, orderPlaced, { name: 'follow-up', handler })
+  const fn = capturedOptions()?.fn
+  if (fn === undefined) throw new Error('durable did not capture a task fn')
+  const deliver = (input: JsonObject, additionalMetadata: Record<string, string>): Promise<void> =>
+    Promise.resolve(fn(input, fakeDurableHatchetContext(additionalMetadata)))
+  return { handler, deliver }
+}
+
+describe('durable: additionalMetadata trust edge', () => {
+  it('rejects when additionalMetadata tenantId differs from the envelope tenantId', async () => {
+    const { deliver, handler } = durableCapturing()
+    const envelope = await createEnvelope(
+      orderPlaced,
+      { orderId: 'order-1' },
+      { tenantId: 'a1f7f3e9-9f3a-4e3e-9f3a-2b1f7f3e9f3a', source: 'sdk.test' },
+    )
+    const metadata = { ...toEnvelopeMetadata(envelope), tenantId: '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f30' }
+
+    await expect(deliver(asIncoming(envelope), metadata)).rejects.toBeInstanceOf(EnvelopeRejectedError)
+    expect(handler).not.toHaveBeenCalled()
   })
 })

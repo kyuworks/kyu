@@ -28,7 +28,7 @@ export interface WaitForOptions {
   scope?: string
   /** Defaults to `'5m'`. */
   lookback?: Extract<Duration, string>
-  /** Must be below the task's `executionTimeout`, or the engine cancels the run mid-wait and the result never arrives. */
+  /** The run's total sleep and wait time must stay below the task's `executionTimeout`, or the engine cancels the run mid-wait and the result never arrives. */
   timeout: Extract<Duration, string>
 }
 
