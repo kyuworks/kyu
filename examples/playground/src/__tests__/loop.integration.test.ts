@@ -326,8 +326,11 @@ describe('loop: relay and worker against the local engine', () => {
     const stoppedCode = await worker.stop()
     expect(stoppedCode).toBe(0)
 
-    const placedA = await placeOrder(pool, kinesin, { tenantId: randomUUID(), customerId: randomUUID() })
-    const placedB = await placeOrder(pool, kinesin, { tenantId: randomUUID(), customerId: randomUUID() })
+    const tenantA = randomUUID()
+    const tenantB = randomUUID()
+    const placedA = await placeOrder(pool, kinesin, { tenantId: tenantA, customerId: randomUUID() })
+    const placedB = await placeOrder(pool, kinesin, { tenantId: tenantB, customerId: randomUUID() })
+    placedOrderEnvelopeIds.push(placedA.envelopeIds.orderPlaced, placedB.envelopeIds.orderPlaced)
     const envelopeIds = [
       placedA.envelopeIds.orderPlaced,
       placedA.envelopeIds.sendInvoice,
@@ -361,5 +364,8 @@ describe('loop: relay and worker against the local engine', () => {
       60_000,
       () => `${recordedCount}/2 orders recorded`,
     )
-  }, 120_000)
+
+    await shipAndAwaitWatchShipping(tenantA, placedA.orderId)
+    await shipAndAwaitWatchShipping(tenantB, placedB.orderId)
+  }, 180_000)
 })
