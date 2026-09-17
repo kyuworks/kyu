@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { log } from './log.js'
+import { exitAfterLog, log } from './log.js'
 
 interface LoggedRecord {
   readonly ts: string
@@ -41,5 +41,29 @@ describe('log', () => {
     expect(record.event).toBe('ready')
     expect(record.ts).not.toBe('nope')
     expect(Object.keys(record)[0]).toBe('ts')
+  })
+})
+
+describe('exitAfterLog', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('calls process.exit only after the write settles, not before', () => {
+    let onSettled: (() => void) | undefined
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(((_line: string, callback: () => void) => {
+      onSettled = callback
+      return true
+    }) as typeof process.stdout.write)
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+
+    exitAfterLog(1, 'relay', 'failed', { message: 'boom' })
+
+    expect(write).toHaveBeenCalledTimes(1)
+    expect(exit).not.toHaveBeenCalled()
+
+    onSettled?.()
+
+    expect(exit).toHaveBeenCalledWith(1)
   })
 })
