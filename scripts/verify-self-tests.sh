@@ -30,9 +30,12 @@ set -uo pipefail
 
 # git exports these when it runs a hook, and they override `git -C`, so a suite
 # that builds a throwaway repo would commit into the real one instead. Cleared
-# before repo discovery so discovery uses the working directory.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
-  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE GIT_PREFIX
+# before repo discovery so discovery uses the working directory. List shared
+# with scripts/lib/run-isolated-selftest.sh: scripts/lib/git-env.sh.
+SELF_TESTS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)"
+# shellcheck source=./lib/git-env.sh
+source "${SELF_TESTS_LIB_DIR}/git-env.sh"
+unset "${GIT_HOOK_ENV_VARS[@]}"
 
 physical_file() {
   printf '%s/%s' "$(cd "$(dirname "$1")" && pwd -P)" "$(basename "$1")"
