@@ -9,8 +9,28 @@ Three processes share one Postgres database and one Hatchet engine:
 - **relay** — ships the transactional outbox to the engine.
 - **worker** — runs the event and command handlers, including a durable handler.
 
-Later PRs add the entrypoints these processes run (`src/bin/migrate.ts`, `src/relay.ts`,
-`src/worker.ts`); this PR ships the package skeleton, configuration and logging only.
+This PR adds `relay` and the `publish-cli` producer commands (`migrate` already existed). A
+later PR adds `worker` and the handlers it runs.
+
+The relay owns one dedicated `pg.Client`, not a pool (the SDK's `Queryable` rejects a pool by
+design). It has no reconnect: if that connection drops, the process logs the error and exits
+non-zero rather than stopping quietly. A real deployment runs it under a supervisor that
+restarts it — `pnpm --filter @kinesin/playground relay` alone does not.
+
+A relay stopped by SIGTERM releases its claimed rows before exiting. A relay killed without
+SIGTERM (a crash, a supervisor's SIGKILL) leaves its claims stale for 30 seconds before another
+relay takes them over.
+
+## Producer CLI
+
+```bash
+pnpm --filter @kinesin/playground publish-cli place-order --tenant <uuid> [--customer <uuid>]
+pnpm --filter @kinesin/playground publish-cli ship-order --tenant <uuid> --order <uuid> [--carrier <name>]
+```
+
+Each command commits one transaction and prints the ids it created as one JSON line. A missing
+`--tenant` (or `--order` for `ship-order`) prints an error and exits 1; an unknown command does
+the same.
 
 ## Environment variables
 
@@ -19,6 +39,7 @@ Later PRs add the entrypoints these processes run (`src/bin/migrate.ts`, `src/re
 | `KINESIN_EXAMPLE_DATABASE_URL` | yes | — | Postgres connection string for this app's own database. |
 | `KINESIN_EXAMPLE_NAMESPACE` | no | `playground_` | Shared prefix so the three processes agree on one run. |
 | `KINESIN_EXAMPLE_LOG_LEVEL` | no | `info` | One of `debug`, `info`, `warn`, `error`. |
+| `KINESIN_EXAMPLE_RELAY_BATCH_SIZE` | no | the SDK's default | Read only by `relay`; rows claimed per tick. |
 | `HATCHET_CLIENT_TOKEN` | yes | — | Read by the engine client directly, same as the SDK's own integration lane. |
 | `HATCHET_CLIENT_TLS_STRATEGY` | yes | — | Read by the engine client directly. |
 
@@ -31,8 +52,17 @@ is missing.
 pnpm hatchet:up
 export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/token.sh)"
 export HATCHET_CLIENT_TLS_STRATEGY=none
+pnpm --filter @kinesin/playground migrate
+pnpm --filter @kinesin/playground relay
 ```
 
-`HATCHET_CLIENT_TOKEN` and `HATCHET_CLIENT_TLS_STRATEGY` are needed by the relay and worker, not
-by migrate. Later PRs add the `migrate`, `relay` and `worker` commands once their entrypoints
-ship.
+`relay` blocks in its own terminal, polling the outbox until you stop it with Ctrl-C. Run the
+CLI in a second terminal, with the same environment variables exported there too:
+
+```bash
+pnpm --filter @kinesin/playground publish-cli place-order --tenant <uuid>
+```
+
+`HATCHET_CLIENT_TOKEN` and `HATCHET_CLIENT_TLS_STRATEGY` are needed by the relay and the CLI's
+producers, not by migrate. `worker` lands in a later PR; until then a published order sits in
+the outbox, gets shipped by the relay, and has no subscriber to receive it.
