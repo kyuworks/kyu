@@ -21,8 +21,12 @@ CREATE TABLE shop_handler_log (
   handler       text NOT NULL,
   envelope_id   uuid NOT NULL,
   order_id      uuid,
-  tenant_id     uuid,
+  tenant_id     uuid NOT NULL,
   pid           integer,
   note          text,
   at            timestamptz NOT NULL DEFAULT now()
 );
+
+-- Handlers are idempotent on the envelope id; this index turns a double
+-- write for one envelope and handler into a database error, not a silent dup.
+CREATE UNIQUE INDEX shop_handler_log_once_idx ON shop_handler_log (handler, envelope_id);

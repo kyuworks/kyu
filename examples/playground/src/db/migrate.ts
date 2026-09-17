@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Queryable } from '@kinesin/sdk'
 import { Client } from 'pg'
+import { z } from 'zod'
 
 const PLAYGROUND_DATABASE_NAME_PATTERN = /^kinesin_playground[a-z0-9_]*$/
 
@@ -9,9 +10,24 @@ const PLAYGROUND_DATABASE_NAME_PATTERN = /^kinesin_playground[a-z0-9_]*$/
 // levels up from this file, whether running from src/ (vitest) or dist/ (built).
 export const APP_MIGRATIONS_DIRECTORY: string = path.resolve(import.meta.dirname, '../../migrations')
 
+/** `databaseUrl` was not a valid URL, so no database name could be read from it. */
+export class InvalidDatabaseUrlError extends Error {
+  constructor(databaseUrl: string, cause: TypeError) {
+    super(`invalid database url: "${databaseUrl}"`, { cause })
+    this.name = 'InvalidDatabaseUrlError'
+  }
+}
+
 /** The target database name, or throws before any connection is opened. */
 export function assertPlaygroundDatabaseName(databaseUrl: string): string {
-  const name = decodeURIComponent(new URL(databaseUrl).pathname.replace(/^\//, ''))
+  let url: URL
+  try {
+    url = new URL(databaseUrl)
+  } catch (error) {
+    if (error instanceof TypeError) throw new InvalidDatabaseUrlError(databaseUrl, error)
+    throw error
+  }
+  const name = decodeURIComponent(url.pathname.replace(/^\//, ''))
   if (!PLAYGROUND_DATABASE_NAME_PATTERN.test(name)) {
     throw new Error(
       `refusing to create database "${name}": the playground only creates databases matching ` +
@@ -68,9 +84,10 @@ function assertNoDuplicateNames(listings: readonly Listing[]): void {
   }
 }
 
-// Applies every *.sql file not yet in the `playground_migrations` ledger,
-// directory by directory in the order given, file by file in name order,
-// each inside its own transaction. Returns the names applied, in order.
+const xactIdRowSchema = z.object({ xid: z.string().nullable() })
+
+// Applies every *.sql file not yet in the ledger, directory by directory,
+// file by file in name order, each inside its own transaction.
 export async function applyPending(client: Queryable, directories: readonly string[]): Promise<readonly string[]> {
   const listings = await Promise.all(directories.map(listSqlFiles))
   assertNoDuplicateNames(listings)
@@ -85,7 +102,15 @@ export async function applyPending(client: Queryable, directories: readonly stri
       const sql = await readFile(path.join(directory, file), 'utf8')
       await client.query('BEGIN', [])
       try {
+        const before = await client.query('SELECT pg_current_xact_id()::text AS xid', [])
+        const openedXid = xactIdRowSchema.parse(before.rows[0]).xid
+        // Empty params keep pg on the simple protocol, which is what lets one file hold several statements.
         await client.query(sql, [])
+        const after = await client.query('SELECT pg_current_xact_id_if_assigned()::text AS xid', [])
+        const currentXid = xactIdRowSchema.parse(after.rows[0]).xid
+        if (currentXid === null || currentXid !== openedXid) {
+          throw new Error('ended or replaced the transaction the harness opened around it')
+        }
         await client.query('INSERT INTO playground_migrations (name) VALUES ($1)', [file])
         await client.query('COMMIT', [])
       } catch (error) {

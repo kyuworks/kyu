@@ -1,12 +1,14 @@
-import { Client, Pool } from 'pg'
+import { Client } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { readConfig } from '../config.js'
-import { withTransaction } from './pool.js'
+import { createPool, withTransaction } from './pool.js'
+
+class Marker extends Error {}
 
 describe('withTransaction', () => {
   const { databaseUrl } = readConfig()
   const admin = new Client({ connectionString: databaseUrl })
-  const pool = new Pool({ connectionString: databaseUrl })
+  const pool = createPool(databaseUrl, { max: 1 })
 
   beforeAll(async () => {
     await admin.connect()
@@ -42,5 +44,13 @@ describe('withTransaction', () => {
 
     const rows = await admin.query('SELECT * FROM with_transaction_probe')
     expect(rows.rows).toHaveLength(1)
+  })
+
+  it('rethrows the original error subclass, not a wrapped Error', async () => {
+    await expect(
+      withTransaction(pool, async () => {
+        throw new Marker('boom')
+      }),
+    ).rejects.toBeInstanceOf(Marker)
   })
 })

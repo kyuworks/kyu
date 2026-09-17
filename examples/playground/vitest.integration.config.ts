@@ -1,9 +1,7 @@
 import { defineConfig } from 'vitest/config'
 
-// test:integration is `pnpm run build && vitest run --config
-// vitest.integration.config.ts`, so @kinesin/sdk resolves through its
-// package exports against built JS, the same as any other consumer — no
-// source alias here.
+// test:integration builds first, so @kinesin/sdk resolves through its
+// package exports against built JS, the same as any other consumer.
 export default defineConfig({
   test: {
     globalSetup: ['./vitest.integration.setup.ts'],
