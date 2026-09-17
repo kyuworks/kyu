@@ -8,6 +8,7 @@ import type {
   Unparsed,
 } from '@kinesin/schemas'
 import { EnvelopeRejectedError, KinesinError } from '../errors.js'
+import { eventScope } from '../eventScope.js'
 import { Or, SleepCondition, UserEventCondition, durationToMs } from '../hatchet.js'
 import type { CreateDurableTaskWorkflowOpts, Duration, DurableContext, HatchetClient, JsonObject } from '../hatchet.js'
 import { decodeAndCheckMetadata, decodeIncomingEnvelope } from './subscribe.js'
@@ -77,7 +78,7 @@ export function buildWaitForConditions(
   now: Date,
 ): WaitForConditions {
   const lookback = options.lookback ?? '5m'
-  const scope = options.scope ?? handlerEnvelope.tenantId ?? 'global'
+  const scope = options.scope ?? eventScope(handlerEnvelope)
   const considerEventsSince = new Date(now.getTime() - durationToMs(lookback)).toISOString()
   // Pinned to the awaited definition's version: a same-name event on another
   // version would otherwise match here and fail decoding non-retryably.

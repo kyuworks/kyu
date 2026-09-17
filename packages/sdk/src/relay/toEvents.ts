@@ -1,5 +1,6 @@
 import type { Envelope, MessageName } from '@kinesin/schemas'
 import { toEnvelopeMetadata } from '@kinesin/schemas'
+import { eventScope } from '../eventScope.js'
 import type { OutboxRow } from '../outbox/rows.js'
 
 /** One `bulkPush` array element; `scope` is the tenant id, or `'global'` for a tenant-less envelope. */
@@ -17,7 +18,7 @@ export function groupEnvelopesForPush(rows: readonly OutboxRow[]): Map<MessageNa
     const item: PushItem = {
       payload: envelope,
       additionalMetadata: toEnvelopeMetadata(envelope),
-      scope: envelope.tenantId ?? 'global',
+      scope: eventScope(envelope),
     }
     const group = groups.get(envelope.name)
     if (group === undefined) {
