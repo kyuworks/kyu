@@ -1,9 +1,9 @@
 import nodeProcess from 'node:process'
-import type { Relay } from '@kinesin/sdk'
+import type { KinesinRelayOptions, Relay } from '@kinesin/sdk'
 import { Client } from 'pg'
 import { readConfig } from './config.js'
 import { createPlaygroundKinesin } from './kinesin.js'
-import { log } from './log.js'
+import { describeError, exitAfterLog, log } from './log.js'
 
 // SIGTERM/SIGINT both drain the relay before exiting; a supervisor sends
 // either depending on how it stops the process.
@@ -15,9 +15,7 @@ async function shutdown(relay: Relay, db: Client): Promise<void> {
 
 function onShutdownSignal(relay: Relay, db: Client): void {
   shutdown(relay, db).catch((error) => {
-    const message = error instanceof Error ? error.message : String(error)
-    log('relay', 'shutdown-failed', { message })
-    nodeProcess.exit(1)
+    exitAfterLog(1, 'relay', 'shutdown-failed', { message: describeError(error) })
   })
 }
 
@@ -30,23 +28,27 @@ async function main(): Promise<void> {
   // The connection dying quietly would stop the relay without a sign of
   // life; exit non-zero instead so a supervisor restarts it.
   db.on('error', (error) => {
-    log('relay', 'db-error', { message: error.message })
-    nodeProcess.exit(1)
+    exitAfterLog(1, 'relay', 'db-error', { message: describeError(error) })
   })
 
   const kinesin = createPlaygroundKinesin(config)
-  const relay = kinesin.startRelay({
+  const relayOptions: KinesinRelayOptions = {
     db,
     workerId: `playground-relay-${nodeProcess.pid}`,
+    // A relay killed without SIGTERM (a crash, a supervisor SIGKILL) leaves
+    // its claims stale for this long before another relay takes them.
+    staleClaimMs: 30_000,
     onTick: (result) => {
-      if (result.pushed > 0 || result.failed > 0) {
-        log('relay', 'tick', { pushed: result.pushed, failed: result.failed })
+      if (result.pushed > 0 || result.failed > 0 || result.skipped.length > 0) {
+        log('relay', 'tick', { pushed: result.pushed, failed: result.failed, skipped: result.skipped.length })
       }
     },
     onError: (error) => {
       log('relay', 'error', { message: error.message })
     },
-  })
+  }
+  if (config.relayBatchSize !== undefined) relayOptions.batchSize = config.relayBatchSize
+  const relay = kinesin.startRelay(relayOptions)
 
   nodeProcess.on('SIGTERM', () => onShutdownSignal(relay, db))
   nodeProcess.on('SIGINT', () => onShutdownSignal(relay, db))
@@ -55,7 +57,5 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  const message = error instanceof Error ? error.message : String(error)
-  log('relay', 'failed', { message })
-  nodeProcess.exitCode = 1
+  exitAfterLog(1, 'relay', 'failed', { message: describeError(error) })
 })

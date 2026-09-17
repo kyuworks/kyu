@@ -116,6 +116,43 @@ describe('readConfig', () => {
     expect(error?.variable).toBe('KINESIN_EXAMPLE_WATCH_TIMEOUT')
   })
 
+  it('leaves relayBatchSize unset when KINESIN_EXAMPLE_RELAY_BATCH_SIZE is unset', () => {
+    const config = readConfig({ KINESIN_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db' })
+    expect(config.relayBatchSize).toBeUndefined()
+  })
+
+  it('reads relayBatchSize when KINESIN_EXAMPLE_RELAY_BATCH_SIZE is a positive integer', () => {
+    const config = readConfig({
+      KINESIN_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
+      KINESIN_EXAMPLE_RELAY_BATCH_SIZE: '5',
+    })
+    expect(config.relayBatchSize).toBe(5)
+  })
+
+  it('throws MissingConfigError naming the variable for a non-integer relay batch size', () => {
+    let error: MissingConfigError | undefined
+    try {
+      readConfig({
+        KINESIN_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
+        KINESIN_EXAMPLE_RELAY_BATCH_SIZE: 'nope',
+      })
+    } catch (caught) {
+      if (caught instanceof MissingConfigError) error = caught
+      else throw caught
+    }
+    expect(error).toBeInstanceOf(MissingConfigError)
+    expect(error?.variable).toBe('KINESIN_EXAMPLE_RELAY_BATCH_SIZE')
+  })
+
+  it('throws MissingConfigError naming the variable for a zero or negative relay batch size', () => {
+    expect(() =>
+      readConfig({
+        KINESIN_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
+        KINESIN_EXAMPLE_RELAY_BATCH_SIZE: '0',
+      }),
+    ).toThrow('KINESIN_EXAMPLE_RELAY_BATCH_SIZE')
+  })
+
   it('throws MissingConfigError naming the variable and the allowed values for an invalid log level', () => {
     let error: MissingConfigError | undefined
     try {

@@ -20,8 +20,9 @@ const tracked = new Set<ChildProcess>()
 
 function terminate(child: ChildProcess): Promise<number> {
   return new Promise((resolve) => {
-    if (child.exitCode !== null) {
-      resolve(child.exitCode)
+    // A signal-killed child has `signalCode` set instead of `exitCode`.
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve(child.exitCode ?? -1)
       return
     }
     const killTimer = setTimeout(() => {
@@ -75,7 +76,7 @@ export function spawnProcess(
       if (settled) return
       settled = true
       clearTimeout(timeoutTimer)
-      reject(new Error(`${script} exited with code ${code ?? 'null'} before printing ready`))
+      reject(new Error(`${script} exited with code ${code ?? 'null'} before printing ready. stdout: ${buffered}`))
     })
   })
 

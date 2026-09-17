@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { HandlerContext, Kinesin, MessageData } from '@kinesin/sdk'
-import { createEnvelope, onceById } from '@kinesin/sdk'
+import { NonRetryableError, createEnvelope, onceById } from '@kinesin/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
 import { sendInvoice } from '../messages.js'
@@ -71,7 +71,9 @@ describe('handleSendInvoice', () => {
     const pool = fakePool(fakeClient(events, false))
     const ctx = await buildContext(orderId, invoiceId, randomUUID())
 
-    await expect(handleSendInvoice(pool, fakeKinesin(), ctx)).rejects.toThrow(new RegExp(invoiceId))
+    const rejection = handleSendInvoice(pool, fakeKinesin(), ctx)
+    await expect(rejection).rejects.toThrow(new RegExp(invoiceId))
+    await expect(rejection).rejects.toBeInstanceOf(NonRetryableError)
     expect(events).not.toContain(LOG_INSERT)
   })
 

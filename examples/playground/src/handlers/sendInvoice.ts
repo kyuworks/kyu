@@ -3,14 +3,14 @@ import { NonRetryableError } from '@kinesin/sdk'
 import type { Pool } from 'pg'
 import { withTransaction } from '../db/pool.js'
 import { sendInvoice } from '../messages.js'
+import { requireTenant } from './tenant.js'
 
 type SendInvoiceContext = HandlerContext<MessageData<typeof sendInvoice>>
 
 // Exported so the unit test can drive it directly against a fake pool,
 // without reaching into the opaque Hatchet workflow subscribe() builds.
 export async function handleSendInvoice(pool: Pool, kinesin: Kinesin, ctx: SendInvoiceContext): Promise<void> {
-  const { tenantId } = ctx.envelope
-  if (tenantId === null) throw new NonRetryableError(`send-invoice: envelope ${ctx.envelope.id} has no tenantId`)
+  const tenantId = requireTenant('send-invoice', ctx)
   const { orderId, invoiceId } = ctx.envelope.data
 
   await withTransaction(pool, (tx) =>

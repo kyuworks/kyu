@@ -1,9 +1,9 @@
 import type { DurableHandlerContext, Kinesin, MessageData, Subscription } from '@kinesin/sdk'
-import { NonRetryableError } from '@kinesin/sdk'
 import type { Pool, PoolClient } from 'pg'
 import type { PlaygroundConfig } from '../config.js'
 import { withTransaction } from '../db/pool.js'
 import { orderPlaced, orderShipped } from '../messages.js'
+import { requireTenant } from './tenant.js'
 
 type OrderPlacedContext = DurableHandlerContext<MessageData<typeof orderPlaced>>
 
@@ -30,8 +30,7 @@ async function watchShipping(
   config: PlaygroundConfig,
   ctx: OrderPlacedContext,
 ): Promise<void> {
-  const { tenantId } = ctx.envelope
-  if (tenantId === null) throw new NonRetryableError(`watch-shipping: envelope ${ctx.envelope.id} has no tenantId`)
+  const tenantId = requireTenant('watch-shipping', ctx)
   const { orderId } = ctx.envelope.data
 
   await withTransaction(pool, (tx) =>

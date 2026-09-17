@@ -11,6 +11,7 @@ import { createPlaygroundKinesin } from '../kinesin.js'
 import { placeOrder, placeOrderOn } from '../producer/placeOrder.js'
 import type { PlacedOrder } from '../producer/placeOrder.js'
 import { spawnProcess, stopAllSpawnedProcesses } from './processes.js'
+import type { SpawnedProcess } from './processes.js'
 
 const RELAY_SCRIPT = path.resolve(import.meta.dirname, '../../dist/relay.js')
 
@@ -91,6 +92,23 @@ describe('placeOrder: the transaction boundary', () => {
   })
 })
 
+function waitForLogEvent(running: SpawnedProcess, marker: string): Promise<void> {
+  return new Promise((resolve) => {
+    function onData(chunk: Buffer): void {
+      if (chunk.toString('utf8').includes(marker)) {
+        running.child.stdout?.off('data', onData)
+        resolve()
+      }
+    }
+    running.child.stdout?.on('data', onData)
+  })
+}
+
+async function pendingOutboxCount(): Promise<number> {
+  const result = await admin.query('SELECT count(*)::text AS count FROM kinesin_outbox WHERE published_at IS NULL')
+  return Number(result.rows[0]?.count)
+}
+
 describe('relay.ts: restart survival (mandatory)', () => {
   it('a killed and restarted relay process still drains the outbox', async () => {
     const env = {
@@ -99,24 +117,19 @@ describe('relay.ts: restart survival (mandatory)', () => {
       KINESIN_EXAMPLE_NAMESPACE: namespace,
     }
 
-    let running = spawnProcess(RELAY_SCRIPT, env)
-    await running.ready
-
-    const pushed = new Promise<void>((resolve) => {
-      function onData(chunk: Buffer): void {
-        if (chunk.toString('utf8').includes('"event":"tick"')) {
-          running.child.stdout?.off('data', onData)
-          resolve()
-        }
-      }
-      running.child.stdout?.on('data', onData)
-    })
-
+    // placeOrder publishes two envelopes each, so twenty orders leave forty
+    // outbox rows — more than one batch of 5, so the first tick cannot drain
+    // them all and the process must be killed mid-drain.
     for (let i = 0; i < 20; i += 1) {
       await placeOrder(pool, kinesin, { tenantId: randomUUID(), customerId: randomUUID() })
     }
 
-    await pushed
+    let running = spawnProcess(RELAY_SCRIPT, { ...env, KINESIN_EXAMPLE_RELAY_BATCH_SIZE: '5' })
+    await running.ready
+
+    await waitForLogEvent(running, '"event":"tick"')
+    expect(await pendingOutboxCount()).toBeGreaterThan(0)
+
     const exitCode = await running.stop()
     expect(exitCode).toBe(0)
 
@@ -126,8 +139,7 @@ describe('relay.ts: restart survival (mandatory)', () => {
     const deadline = Date.now() + 60_000
     let remaining = -1
     while (Date.now() < deadline) {
-      const result = await admin.query('SELECT count(*)::text AS count FROM kinesin_outbox WHERE published_at IS NULL')
-      remaining = Number(result.rows[0]?.count)
+      remaining = await pendingOutboxCount()
       if (remaining === 0) break
       await new Promise((resolve) => setTimeout(resolve, 500))
     }
