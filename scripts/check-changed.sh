@@ -7,17 +7,22 @@
 # failure: FAILED, the first error, and a log path under .artifacts/check/.
 #
 # Selection rules (scripts/lib/select-changed-checks.mjs):
-#   packages/<p>/**          lint, typecheck, typecheck:tests (when defined)
-#   examples/<p>/**          and unit tests for <p> and every workspace
-#                            package that depends on <p>
+#   packages/<p>/**, examples/<p>/**   lint, typecheck, typecheck:tests (when
+#                            defined) and unit tests for <p> and every
+#                            workspace package that depends on <p>
 #   packages/sdk/migrations  migration immutability gate
 #   scripts/gates/*, scripts/verify-gates.sh, .github/workflows/*
 #                            every gate (they are cheap)
-#   any *.sh                 its colocated *.test.sh
+#   any *.sh or *.mjs        its colocated *.test.sh
 #   oxlint-rules/**          lint for every package
 #   *.ts *.json *.css        format check on those files
 #
 # Exhaustive backstop: pnpm check.
+#
+# ROOT_DIR and SELECT_CHANGED_ROOT are test-only overrides read by the
+# selector; both are stripped from this script's own environment before
+# invoking it, so a caller's stray export cannot silently retarget the
+# selector and select the wrong (or zero) checks.
 #
 # Usage:
 #   bash scripts/check-changed.sh
@@ -38,7 +43,10 @@ ARGS=()
 for arg in "$@"; do
   case "${arg}" in
     -h|--help)
-      sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      # From line 2 up to (not including) the first non-comment line, so the
+      # header can grow without truncating --help. A fixed end line silently
+      # dropped the last usage row before.
+      sed -n '2,/^[^#]/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     --dry-run) DRY_RUN=1 ;;
@@ -50,7 +58,7 @@ for arg in "$@"; do
   esac
 done
 
-STEPS="$(node "${SELECTOR}" "${ARGS[@]+"${ARGS[@]}"}")"
+STEPS="$(env -u ROOT_DIR -u SELECT_CHANGED_ROOT node "${SELECTOR}" "${ARGS[@]+"${ARGS[@]}"}")"
 
 if [ "${DRY_RUN}" -eq 1 ]; then
   if [ -z "${STEPS}" ]; then echo "(nothing selected)"; else printf '%s\n' "${STEPS}"; fi

@@ -200,7 +200,11 @@ while IFS= read -r line || [ -n "${line}" ]; do
 done < "${STEPS_FILE}"
 
 is_serial_prefix() {
-  case "$1" in
+  # A selected step id carries its package, e.g. "lint:packages/sdk" — compare
+  # the prefix before the first colon, not the whole id, or a gate-triggered
+  # run falls out of the serial window and every lint/typecheck step starts
+  # at once (oxlint OOM on the 8 GB sandbox).
+  case "${1%%:*}" in
     gates | format | lint | typecheck | typecheck-tests) return 0 ;;
     *) return 1 ;;
   esac
