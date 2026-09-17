@@ -1,11 +1,24 @@
 export {
   MESSAGE_NAME_PATTERN,
+  createEnvelope,
+  defineCommand,
+  defineEvent,
   envelopeSchema,
   messageKindSchema,
   messageNameSchema,
   parseEnvelope,
 } from '@kinesin/schemas'
-export type { Envelope, MessageKind } from '@kinesin/schemas'
+export type {
+  Envelope,
+  EnvelopeMetadataFields,
+  JsonObject,
+  MessageData,
+  MessageDefinition,
+  MessageInput,
+  MessageKind,
+  MessageSchema,
+  Unparsed,
+} from '@kinesin/schemas'
 export { SDK_VERSION } from './version.js'
 
 export type { Queryable, QueryParam, QueryRows } from './db/queryable.js'
@@ -44,3 +57,17 @@ export type { EnvelopeOptionIssue, MessageDataIssue } from './errors.js'
 
 export { groupEnvelopesForPush, startRelay } from './relay/index.js'
 export type { PushItem, Relay, RelayOptions, TickResult } from './relay/index.js'
+
+export type { ConcurrencyOption } from './consume/concurrency.js'
+
+export type { HandlerContext, HandlerLogger } from './consume/handlerContext.js'
+
+export { subscribe } from './consume/subscribe.js'
+export type { SubscribeOptions, Subscription } from './consume/subscribe.js'
+export type { RateLimitOption } from './consume/taskOptions.js'
+
+export { durable } from './consume/durable.js'
+export type { DurableHandlerContext, DurableOptions, WaitForOptions, WaitForResult } from './consume/durable.js'
+
+export { createWorker } from './consume/worker.js'
+export type { CreateWorkerOptions, KinesinWorker } from './consume/worker.js'
