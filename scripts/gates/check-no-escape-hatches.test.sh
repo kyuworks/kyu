@@ -15,4 +15,15 @@ mkdir -p "${WORK}/dirty/packages/b/src"
 printf '// @ts-ignore\nexport const b = 1 as unknown as string\n' > "${WORK}/dirty/packages/b/src/b.ts"
 assert_exit "as unknown as / ts-ignore in source fails" 1 env ROOT_DIR="${WORK}/dirty" bash "${CHECK}"
 assert_output_contains "failure names the file" "packages/b/src/b.ts" env ROOT_DIR="${WORK}/dirty" bash "${CHECK}"
+
+mkdir -p "${WORK}/example-clean/examples/playground/src"
+printf 'export const a = 1\n' > "${WORK}/example-clean/examples/playground/src/a.ts"
+printf 'const x = 1 as any\n' > "${WORK}/example-clean/examples/playground/src/a.test.ts"
+assert_exit "clean example source passes; test files are exempt" 0 env ROOT_DIR="${WORK}/example-clean" bash "${CHECK}"
+
+mkdir -p "${WORK}/example-dirty/examples/playground/src"
+printf '// @ts-ignore\nexport const b = 1 as unknown as string\n' > "${WORK}/example-dirty/examples/playground/src/b.ts"
+assert_exit "escape hatch in example source fails" 1 env ROOT_DIR="${WORK}/example-dirty" bash "${CHECK}"
+assert_output_contains "failure names the example file" "examples/playground/src/b.ts" env ROOT_DIR="${WORK}/example-dirty" bash "${CHECK}"
+
 gate_test_finish

@@ -19,4 +19,19 @@ assert_exit "relative import into another package fails" 1 env ROOT_DIR="${WORK}
 mkdir -p "${WORK}/deep/packages/b/src"
 printf "import { x } from '@kinesin/a/src/x.js'\nexport const z = x\n" > "${WORK}/deep/packages/b/src/z.ts"
 assert_exit "deep import past the exports map fails" 1 env ROOT_DIR="${WORK}/deep" bash "${CHECK}"
+
+mkdir -p "${WORK}/example-ok/examples/playground/src"
+printf "import { publish } from '@kinesin/sdk'\nexport const p = publish\n" > "${WORK}/example-ok/examples/playground/src/index.ts"
+assert_exit "example importing @kinesin/sdk passes" 0 env ROOT_DIR="${WORK}/example-ok" bash "${CHECK}"
+
+mkdir -p "${WORK}/example-hatchet/examples/playground/src"
+printf "import { Hatchet } from '@hatchet-dev/typescript-sdk'\nexport const h = Hatchet\n" > "${WORK}/example-hatchet/examples/playground/src/index.ts"
+assert_exit "example importing @hatchet-dev/ fails" 1 env ROOT_DIR="${WORK}/example-hatchet" bash "${CHECK}"
+assert_output_contains "failure says examples consume @kinesin/sdk only" "@kinesin/sdk only" env ROOT_DIR="${WORK}/example-hatchet" bash "${CHECK}"
+
+mkdir -p "${WORK}/example-schemas/examples/playground/src"
+printf "import { parseEnvelope } from '@kinesin/schemas'\nexport const p = parseEnvelope\n" > "${WORK}/example-schemas/examples/playground/src/index.ts"
+assert_exit "example importing @kinesin/schemas fails" 1 env ROOT_DIR="${WORK}/example-schemas" bash "${CHECK}"
+assert_output_contains "failure says examples consume @kinesin/sdk only (schemas case)" "@kinesin/sdk only" env ROOT_DIR="${WORK}/example-schemas" bash "${CHECK}"
+
 gate_test_finish

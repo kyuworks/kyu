@@ -71,6 +71,7 @@ jobs:
     timeout-minutes: 20
     env:
       KINESIN_TEST_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/kinesin_test
+      KINESIN_EXAMPLE_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/kinesin_playground
     services:
       postgres:
         image: postgres:15.6

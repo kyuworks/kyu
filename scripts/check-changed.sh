@@ -7,8 +7,9 @@
 # failure: FAILED, the first error, and a log path under .artifacts/check/.
 #
 # Selection rules (scripts/lib/select-changed-checks.mjs):
-#   packages/<p>/**          lint, typecheck, unit tests for <p> and every
-#                            workspace package that depends on <p>
+#   packages/<p>/**          lint, typecheck, typecheck:tests (when defined)
+#   examples/<p>/**          and unit tests for <p> and every workspace
+#                            package that depends on <p>
 #   packages/sdk/migrations  migration immutability gate
 #   scripts/gates/*, scripts/verify-gates.sh, .github/workflows/*
 #                            every gate (they are cheap)

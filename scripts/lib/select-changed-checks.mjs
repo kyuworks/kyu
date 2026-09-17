@@ -2,11 +2,19 @@
 // scripts/check.sh. Reads the staged index with --staged, else
 // CHECK_CHANGED_RANGE, else the working tree plus untracked files against the
 // merge-base with origin/main.
+//
+// Workspace scan covers packages/<name> and examples/<name> the same way: a
+// changed file under either selects that package's lint, typecheck,
+// typecheck:tests (when the package defines that script) and test steps.
+//
+// Env (tests): ROOT_DIR overrides the repo root the selector scans and diffs.
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..')
+const root = process.env.ROOT_DIR
+  ? path.resolve(process.env.ROOT_DIR)
+  : path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..')
 const staged = process.argv.includes('--staged')
 
 function git(args) {
@@ -37,16 +45,22 @@ function changedFiles() {
   return [...tracked, ...untracked]
 }
 
-// Workspace graph: package dir -> { name, deps: [package dir...] }
+// Workspace graph: "packages/<dir>" | "examples/<dir>" -> { name, deps, scripts }
 function workspace() {
-  const pkgsDir = path.join(root, 'packages')
   const out = new Map()
-  if (!existsSync(pkgsDir)) return out
-  for (const dir of readdirSync(pkgsDir)) {
-    const pj = path.join(pkgsDir, dir, 'package.json')
-    if (!existsSync(pj)) continue
-    const json = JSON.parse(readFileSync(pj, 'utf8'))
-    out.set(`packages/${dir}`, { name: json.name, deps: Object.keys({ ...json.dependencies, ...json.devDependencies }) })
+  for (const base of ['packages', 'examples']) {
+    const baseDir = path.join(root, base)
+    if (!existsSync(baseDir)) continue
+    for (const dir of readdirSync(baseDir)) {
+      const pj = path.join(baseDir, dir, 'package.json')
+      if (!existsSync(pj)) continue
+      const json = JSON.parse(readFileSync(pj, 'utf8'))
+      out.set(`${base}/${dir}`, {
+        name: json.name,
+        deps: Object.keys({ ...json.dependencies, ...json.devDependencies }),
+        scripts: json.scripts ?? {},
+      })
+    }
   }
   return out
 }
@@ -83,9 +97,11 @@ for (const raw of changedFiles()) {
   if (pkg) {
     if (f.startsWith(`${pkg}/migrations/`)) add('gate:migration-immutability', 'bash scripts/gates/check-migration-immutability.sh')
     for (const d of [pkg, ...dependants(pkg)]) {
-      const name = ws.get(d).name
+      const meta = ws.get(d)
+      const name = meta.name
       add(`lint:${d}`, `pnpm --filter ${name} lint`)
       add(`typecheck:${d}`, `pnpm --filter ${name} typecheck`)
+      if (meta.scripts['typecheck:tests']) add(`typecheck-tests:${d}`, `pnpm --filter ${name} typecheck:tests`)
       add(`test:${d}`, `pnpm --filter ${name} test`)
     }
     continue
