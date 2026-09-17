@@ -41,4 +41,11 @@ describe('EnvelopeRejectedError', () => {
     expect(error.message).toContain('version mismatch')
     expect(error.message).toContain('01923e4a-7b1c-7f3e-8a2d-000000000000')
   })
+
+  it('carries a caught error as cause', () => {
+    const cause = new Error('metadata failed validation')
+    const error = new EnvelopeRejectedError('bad metadata', undefined, { cause })
+
+    expect(error.cause).toBe(cause)
+  })
 })

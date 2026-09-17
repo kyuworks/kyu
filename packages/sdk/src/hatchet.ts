@@ -8,11 +8,31 @@ import {
   NonRetryableError,
   Or,
   Priority,
+  RateLimitDuration,
 } from '@hatchet-dev/typescript-sdk/v1/index.js'
-import type { Worker } from '@hatchet-dev/typescript-sdk/v1/index.js'
+import type {
+  Concurrency,
+  Context,
+  CreateTaskWorkflowOpts,
+  CreateWorkerOpts,
+  Duration,
+  JsonObject,
+  TaskWorkflowDeclaration,
+  Worker,
+} from '@hatchet-dev/typescript-sdk/v1/index.js'
 
-export { ConcurrencyLimitStrategy, NonRetryableError, Or, Priority }
-export type { HatchetClient, Worker }
+export { ConcurrencyLimitStrategy, NonRetryableError, Or, Priority, RateLimitDuration }
+export type {
+  Concurrency,
+  Context,
+  CreateTaskWorkflowOpts,
+  CreateWorkerOpts,
+  Duration,
+  HatchetClient,
+  JsonObject,
+  TaskWorkflowDeclaration,
+  Worker,
+}
 
 /**
  * Base for SDK-raised errors that are not envelope- or message-definition
