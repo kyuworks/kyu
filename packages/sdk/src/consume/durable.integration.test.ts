@@ -81,7 +81,7 @@ describe('durable: sleepFor', () => {
     const pushedAt = Date.now()
     await hatchet.events.push(trigger.name, envelope, {
       additionalMetadata: toEnvelopeMetadata(envelope),
-      scope: 'global',
+      scope: eventScope(envelope),
     })
 
     await waitUntil(() => completedAt.has(envelope.id), 150_000)

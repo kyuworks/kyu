@@ -8,6 +8,7 @@ import type { HandlerContext } from './consume/handlerContext.js'
 import type { KinesinWorker } from './consume/worker.js'
 import { createKinesin } from './createKinesin.js'
 import { createHatchetClient } from './hatchet.js'
+import type { OnceResult } from './outbox/onceById.js'
 
 // Namespaced per run so parallel worktrees sharing one engine do not see
 // each other's events (relay.integration.test.ts's own convention).
@@ -46,8 +47,7 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null
 
 let client: Client
 // The relay's own connection: sharing `client` would put its 60 s poll on
-// the same connection the test runs BEGIN/publish/COMMIT on, inside the
-// 120 s retry budget below.
+// the connection the test runs BEGIN/publish/COMMIT on.
 let relayDb: Client
 
 beforeAll(async () => {
@@ -72,20 +72,18 @@ interface Received {
 }
 
 describe('createKinesin end to end', () => {
-  it('publishes through the outbox, relays, and a redelivery does not re-run the idempotent handler', async () => {
+  it('a second onceById on the same envelope id does not run the body again', async () => {
     const received = deferred<Received>()
 
-    // A fresh pg Client per invocation: the worker can run handlers for
-    // several publish attempts concurrently, and a shared client's BEGIN
-    // would silently join whichever transaction is already open on it.
+    // A fresh pg Client per invocation: a shared client's BEGIN would
+    // silently join whichever transaction is already open on it.
     const subscription = kinesin.subscribe(delivered, {
       name: 'e2e-handler',
       handler: async (ctx: HandlerContext<{ n: number }>) => {
         const handlerDb = new Client({ connectionString: process.env['KINESIN_TEST_DATABASE_URL'] })
         await handlerDb.connect()
-        // Captured inside the onceById body and resolved only after COMMIT:
-        // another connection's read must never observe this row before the
-        // transaction that wrote it has actually committed.
+        // Resolved only after COMMIT: keeps the test's read ordered after
+        // the handler's write (the row lock already blocks a dirty read).
         let receivedHere: Received | undefined
         try {
           await handlerDb.query('BEGIN')
@@ -113,8 +111,7 @@ describe('createKinesin end to end', () => {
       await worker.waitUntilReady()
 
       // A fresh workflow's first delivery can lag by a minute on a cold
-      // engine (relay.integration.test.ts's own margin); retry with a
-      // fresh envelope until one arrives.
+      // engine; retry with a fresh envelope until one arrives.
       const retryIntervalMs = 5_000
       const budgetMs = 120_000
       const deadline = Date.now() + budgetMs
@@ -141,12 +138,23 @@ describe('createKinesin end to end', () => {
       expect(result.envelope.tenantId).toBe(match.tenantId)
       expect(result.metadata.envelopeId).toBe(match.envelope.id)
 
-      // Redeliver the same envelope id straight through onceById — the
-      // mandatory row (AGENTS.md § Test-driven changes): redelivery must not
-      // re-run the handler body.
-      const redelivery = await kinesin.onceById(client, match.envelope.id, 'e2e-handler', () => {
-        throw new Error('onceById must not re-run the handler body on redelivery')
-      })
+      // The mandatory row (AGENTS.md § Test-driven changes), run on its own
+      // connection in a transaction — the shape onceById's docstring requires.
+      const redeliveryDb = new Client({ connectionString: process.env['KINESIN_TEST_DATABASE_URL'] })
+      await redeliveryDb.connect()
+      let redelivery: OnceResult<void> | undefined
+      try {
+        await redeliveryDb.query('BEGIN')
+        redelivery = await kinesin.onceById<void>(redeliveryDb, match.envelope.id, 'e2e-handler', () => {
+          throw new Error('onceById must not re-run the handler body on redelivery')
+        })
+        await redeliveryDb.query('COMMIT')
+      } catch (error) {
+        await redeliveryDb.query('ROLLBACK')
+        throw error
+      } finally {
+        await redeliveryDb.end()
+      }
       expect(redelivery).toEqual({ ran: false })
 
       const processed = await client.query(

@@ -206,7 +206,7 @@ describe('subscribe: fifo concurrency', () => {
       const envelope = await createEnvelope(definition, { orderId, seq }, { tenantId: null, source: 'sdk.test' })
       await hatchet.events.push(definition.name, envelope, {
         additionalMetadata: toEnvelopeMetadata(envelope),
-        scope: 'global',
+        scope: eventScope(envelope),
       })
     }
 
@@ -254,7 +254,7 @@ describe('subscribe: coalescing', () => {
     const first = await createEnvelope(definition, { seq: 1 }, { tenantId: null, source: 'sdk.test' })
     await hatchet.events.push(definition.name, first, {
       additionalMetadata: toEnvelopeMetadata(first),
-      scope: 'global',
+      scope: eventScope(first),
     })
     // Long enough that `first` has entered RUNNING before `second` arrives —
     // cancel_in_progress cancels a running run, not a merely queued one.
@@ -262,7 +262,7 @@ describe('subscribe: coalescing', () => {
     const second = await createEnvelope(definition, { seq: 2 }, { tenantId: null, source: 'sdk.test' })
     await hatchet.events.push(definition.name, second, {
       additionalMetadata: toEnvelopeMetadata(second),
-      scope: 'global',
+      scope: eventScope(second),
     })
 
     const [firstStatus, secondStatus] = await Promise.all([
@@ -345,7 +345,7 @@ describe('subscribe: malformed payload and version mismatch', () => {
     const envelope = await createEnvelope(versionedV2, { seq: 1 }, { tenantId: null, source: 'sdk.test' })
     await hatchet.events.push(versionedV1.name, envelope, {
       additionalMetadata: toEnvelopeMetadata(envelope),
-      scope: 'global',
+      scope: eventScope(envelope),
     })
 
     const called = await waitUntil(() => versionedCalls.length > 0, 3_000)
@@ -388,7 +388,7 @@ describe('subscribe: retries', () => {
     const envelope = await createEnvelope(definition, { seq: 1 }, { tenantId: null, source: 'sdk.test' })
     await hatchet.events.push(definition.name, envelope, {
       additionalMetadata: toEnvelopeMetadata(envelope),
-      scope: 'global',
+      scope: eventScope(envelope),
     })
 
     // Same margin as the fifo-ordering test: a retried run needs more engine
@@ -430,7 +430,7 @@ describe('subscribe: non-retryable errors', () => {
     const envelope = await createEnvelope(definition, { seq: 1 }, { tenantId: null, source: 'sdk.test' })
     await hatchet.events.push(definition.name, envelope, {
       additionalMetadata: toEnvelopeMetadata(envelope),
-      scope: 'global',
+      scope: eventScope(envelope),
     })
 
     await waitUntil(() => calls.length > 0, 10_000)
@@ -473,7 +473,7 @@ describe('subscribe: command', () => {
     const envelope = await createEnvelope(definition, { seq: 1 }, { tenantId: null, source: 'sdk.test' })
     await hatchet.events.push(definition.name, envelope, {
       additionalMetadata: toEnvelopeMetadata(envelope),
-      scope: 'global',
+      scope: eventScope(envelope),
     })
 
     await waitUntil(() => received.some((e) => e.id === envelope.id), 60_000)

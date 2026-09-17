@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { z } from 'zod'
 import { createKinesin } from './createKinesin.js'
+import type { KinesinRelayOptions } from './createKinesin.js'
 import type { Queryable, QueryParam, QueryRows } from './db/queryable.js'
 import type {
   CreateDurableTaskWorkflowOpts,
@@ -40,9 +41,8 @@ interface FakeHatchetClient {
   workerCallCount: () => number
 }
 
-// One stub covering task, durableTask and worker: createKinesin's own
-// subscribe, durable and worker members each reach a different engine
-// method, all through the one client createKinesin was given.
+// One stub covering task, durableTask and worker: subscribe, durable and
+// worker each reach a different engine method through the same client.
 function fakeHatchetClient(): FakeHatchetClient {
   let taskOptions: CreateTaskWorkflowOpts | undefined
   let durableOptions: CreateDurableTaskWorkflowOpts<JsonObject, void> | undefined
@@ -127,7 +127,7 @@ describe('createKinesin', () => {
     const kinesin = createKinesin({ hatchet: client, source: 'shop-service' })
 
     expect(Object.keys(kinesin).sort()).toEqual(
-      ['durable', 'onceById', 'publish', 'publishEnvelope', 'startRelay', 'subscribe', 'worker'].sort(),
+      ['durable', 'onceById', 'publish', 'startRelay', 'subscribe', 'worker'].sort(),
     )
   })
 
@@ -201,6 +201,35 @@ describe('createKinesin: startRelay', () => {
     try {
       await relay.tick()
       expect(bulkPush).toHaveBeenCalledTimes(1)
+    } finally {
+      await relay.stop()
+    }
+  })
+
+  it('never pushes through a second engine client passed inside the options', async () => {
+    const boundBulkPush = vi.fn<BulkPushProcedure>(async (_name, items) => ({ events: items.map(() => ({})) }))
+    const bound = { events: fakeEvents(boundBulkPush) } as HatchetClient
+    const otherBulkPush = vi.fn<BulkPushProcedure>(async (_name, items) => ({ events: items.map(() => ({})) }))
+    const other = { events: fakeEvents(otherBulkPush) } as HatchetClient
+    const kinesin = createKinesin({ hatchet: bound, source: 'shop-service' })
+    const db = fakeRelayDb(claimedRow())
+
+    // Stands in for a caller holding a value already typed `RelayOptions`
+    // (which carries `hatchet`) — the case `hatchet?: never` rejects at the
+    // type boundary, so the cast forces it through to prove the runtime is
+    // also safe.
+    const relayOptions = {
+      db,
+      workerId: 'worker-1',
+      pollIntervalMs: 60_000,
+      hatchet: other,
+    } as KinesinRelayOptions
+
+    const relay = kinesin.startRelay(relayOptions)
+    try {
+      await relay.tick()
+      expect(boundBulkPush).toHaveBeenCalledTimes(1)
+      expect(otherBulkPush).not.toHaveBeenCalled()
     } finally {
       await relay.stop()
     }
