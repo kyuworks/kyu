@@ -99,7 +99,7 @@ Before writing code, stop at the first rung that holds:
 
 ## Lint
 
-**oxlint** (`.oxlintrc.json` per package, presets in `oxlint-rules/`). Every rule is **`error`**. Type-aware `typescript/*` runs through `oxlint-tsgolint`. The anti-slop preset (`oxlint-rules/anti-slop.oxlintrc.json`) bans widened types, chained assertions, runtime `typeof` checks and `unknown` at boundaries. Do not silence a rule; fix the code. Unused disable directives are an error, and `scripts/gates/check-no-escape-hatches.sh` fails `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error` and disable comments in production source.
+**oxlint** (`.oxlintrc.json` per package, presets in `oxlint-rules/`). Every rule is **`error`**. Type-aware `typescript/*` runs through `oxlint-tsgolint`. The anti-slop preset (`oxlint-rules/anti-slop.oxlintrc.json`) bans widened types, chained assertions, runtime `typeof` checks and `unknown` at boundaries. Do not silence a rule; fix the code. Unused disable directives are an error, and `scripts/gates/check-no-escape-hatches.sh` fails `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error` and disable comments in production source. Type-aware lint needs the workspace built (`pnpm build`) whenever a package imports another's types, so it resolves real types instead of `any`; CI's Lint job builds first for this reason.
 
 **oxfmt** formats. `pnpm format` fixes, `pnpm format:check` gates.
 
