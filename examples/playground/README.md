@@ -18,6 +18,10 @@ design). It has no reconnect: if that connection drops, the process logs the err
 non-zero rather than stopping quietly. A real deployment runs it under a supervisor that
 restarts it — `pnpm --filter @kinesin/playground relay` alone does not.
 
+A relay stopped by SIGTERM releases its claimed rows before exiting. A relay killed without
+SIGTERM (a crash, a supervisor's SIGKILL) leaves its claims stale for 30 seconds before another
+relay takes them over.
+
 ## Producer CLI
 
 ```bash
@@ -36,6 +40,7 @@ the same.
 | `KINESIN_EXAMPLE_DATABASE_URL` | yes | — | Postgres connection string for this app's own database. |
 | `KINESIN_EXAMPLE_NAMESPACE` | no | `playground_` | Shared prefix so the three processes agree on one run. |
 | `KINESIN_EXAMPLE_LOG_LEVEL` | no | `info` | One of `debug`, `info`, `warn`, `error`. |
+| `KINESIN_EXAMPLE_RELAY_BATCH_SIZE` | no | the SDK's default | Read only by `relay`; rows claimed per tick. |
 | `HATCHET_CLIENT_TOKEN` | yes | — | Read by the engine client directly, same as the SDK's own integration lane. |
 | `HATCHET_CLIENT_TLS_STRATEGY` | yes | — | Read by the engine client directly. |
 
@@ -50,6 +55,13 @@ export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/token.sh)"
 export HATCHET_CLIENT_TLS_STRATEGY=none
 pnpm --filter @kinesin/playground migrate
 pnpm --filter @kinesin/playground relay
+```
+
+`relay` blocks in its own terminal, polling the outbox until you stop it with Ctrl-C. Run
+`worker` in a second terminal, with the same environment variables exported there too, then run
+the CLI in a third:
+
+```bash
 pnpm --filter @kinesin/playground worker
 pnpm --filter @kinesin/playground publish-cli place-order --tenant <uuid>
 ```

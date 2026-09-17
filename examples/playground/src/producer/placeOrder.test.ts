@@ -32,7 +32,10 @@ function fakeKinesin(events: string[], txs: Queryable[], failOnCall?: number): K
   const publish: Kinesin['publish'] = async (tx, definition, data, options) => {
     calls += 1
     txs.push(tx)
-    events.push(`publish ${definition.name}`)
+    // Assigned to a typed const: with the SDK unbuilt, `definition.name` is
+    // `any`, and `restrict-template-expressions` fires on it in a template.
+    const name: string = definition.name
+    events.push(`publish ${name}`)
     if (failOnCall === calls) throw new Error('publish failed')
     return createEnvelope(definition, data, { tenantId: options.tenantId, source: 'test' })
   }

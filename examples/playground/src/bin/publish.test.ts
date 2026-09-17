@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { parseCommand } from './publish.js'
+import { parseCommand } from '../producer/publishCommand.js'
 
 describe('parseCommand', () => {
-  it('parses place-order, defaulting customer to a generated id', () => {
+  it('parses place-order, leaving customer unset when not given (main defaults it)', () => {
     const command = parseCommand(['place-order', '--tenant', 'tenant-1'])
-    expect(command.kind).toBe('place-order')
-    expect(command).toMatchObject({ kind: 'place-order', tenantId: 'tenant-1' })
-    if (command.kind !== 'place-order') throw new Error('unreachable')
-    expect(command.customerId).toEqual(expect.any(String))
+    expect(command).toEqual({ kind: 'place-order', tenantId: 'tenant-1', customerId: undefined })
   })
 
   it('parses place-order with an explicit customer', () => {
