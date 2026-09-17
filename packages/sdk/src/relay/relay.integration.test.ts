@@ -375,11 +375,11 @@ describe('relay + subscribe: outbox claim order reaches the handler', () => {
     const subscription = subscribe(hatchet, relayOrdered, {
       name: 'relay-order-recorder',
       concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'fifo' },
-      // Inverse to seq: an unserialised run would let later, shorter sleeps
-      // finish first and reverse the recorded order.
+      // Sleep is inverse to seq so an unserialised run would reorder `seen`;
+      // only the first sighting of a seq counts, since redelivery is at-least-once.
       handler: async (ctx: HandlerContext<{ orderId: string; seq: number }>) => {
         await new Promise<void>((resolve) => setTimeout(resolve, 300 - ctx.envelope.data.seq * 50))
-        seen.push(ctx.envelope.data.seq)
+        if (!seen.includes(ctx.envelope.data.seq)) seen.push(ctx.envelope.data.seq)
       },
     })
     worker = await createWorker(hatchet, 'kinesin-sdk-relay-order-test', { subscriptions: [subscription], slots: 5 })
@@ -406,10 +406,8 @@ describe('relay + subscribe: outbox claim order reaches the handler', () => {
       await relay.stop()
     }
 
-    // A fresh workflow's first delivery can lag by up to a minute on a cold
-    // engine (see the cold-start test above); the budget covers that plus
-    // margin for the four ordered deliveries behind it.
-    await waitUntil(() => seen.length >= 5, 150_000)
+    // A fresh workflow's first delivery can lag by up to a minute on a cold engine.
+    expect(await waitUntil(() => seen.length >= 5, 150_000)).toBe(true)
     expect(seen).toEqual([1, 2, 3, 4, 5])
   }, 180_000)
 })
