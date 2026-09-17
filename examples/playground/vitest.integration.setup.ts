@@ -1,0 +1,32 @@
+import { MIGRATIONS_DIRECTORY } from '@kinesin/sdk'
+import { Client } from 'pg'
+import { APP_MIGRATIONS_DIRECTORY, applyPending, ensureDatabase } from './src/db/migrate.js'
+
+const CLEAN_TABLES = ['shop_order', 'shop_invoice', 'shop_handler_log', 'kinesin_outbox', 'kinesin_processed']
+
+// Global setup for the integration suite. A missing database is a failure,
+// not a skip: a suite that silently skips reports green for code it never ran.
+export default async function setup(): Promise<void> {
+  const databaseUrl = process.env['KINESIN_EXAMPLE_DATABASE_URL']
+  if (!databaseUrl) {
+    throw new Error(
+      [
+        'KINESIN_EXAMPLE_DATABASE_URL is not set, so the integration suite has no database.',
+        'Start the local stack and point this lane at its own database:',
+        '  pnpm hatchet:up',
+        '  export KINESIN_EXAMPLE_DATABASE_URL="postgresql://hatchet:hatchet@localhost:15432/kinesin_playground_pr3"',
+      ].join('\n'),
+    )
+  }
+
+  await ensureDatabase(databaseUrl)
+
+  const db = new Client({ connectionString: databaseUrl })
+  await db.connect()
+  try {
+    await applyPending(db, [MIGRATIONS_DIRECTORY, APP_MIGRATIONS_DIRECTORY])
+    await db.query(`TRUNCATE TABLE ${CLEAN_TABLES.join(', ')}`)
+  } finally {
+    await db.end()
+  }
+}
