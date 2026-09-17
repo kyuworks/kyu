@@ -9,9 +9,11 @@ Three processes share one Postgres database and one Hatchet engine:
 - **relay** — ships the transactional outbox to the engine.
 - **worker** — runs the event and command handlers.
 
-This PR adds `worker` and its handlers: `record-order` and `audit-order` (two subscribers on
-`shop.order.placed`) and `send-invoice` (a FIFO-per-order command handler, `shop.invoice.send`).
-A later PR adds a durable handler that waits for a shipped event.
+`worker` runs `record-order` and `audit-order` (two subscribers on `shop.order.placed`),
+`send-invoice` (a FIFO-per-order command handler, `shop.invoice.send`), and `watch-shipping`, a
+durable handler that sleeps five seconds and then waits for the correlated `shop.order.shipped`
+event. Killing and restarting the worker while a run is parked in that wait proves the run
+resumes in the new process, not the one that started it.
 
 The relay owns one dedicated `pg.Client`, not a pool (the SDK's `Queryable` rejects a pool by
 design). It has no reconnect: if that connection drops, the process logs the error and exits
@@ -36,6 +38,7 @@ the same.
 | `KINESIN_EXAMPLE_DATABASE_URL` | yes | — | Postgres connection string for this app's own database. |
 | `KINESIN_EXAMPLE_NAMESPACE` | no | `playground_` | Shared prefix so the three processes agree on one run. |
 | `KINESIN_EXAMPLE_LOG_LEVEL` | no | `info` | One of `debug`, `info`, `warn`, `error`. |
+| `KINESIN_EXAMPLE_WATCH_TIMEOUT` | no | `3m` | `watch-shipping`'s correlated wait timeout; an h/m/s duration string. |
 | `HATCHET_CLIENT_TOKEN` | yes | — | Read by the engine client directly, same as the SDK's own integration lane. |
 | `HATCHET_CLIENT_TLS_STRATEGY` | yes | — | Read by the engine client directly. |
 

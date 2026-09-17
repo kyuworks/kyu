@@ -1,15 +1,26 @@
+import type { Duration } from '@kinesin/sdk'
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 export interface PlaygroundConfig {
   databaseUrl: string
   namespace: string
   logLevel: LogLevel
+  watchShippingTimeout: Duration
 }
 
 const LOG_LEVELS: readonly LogLevel[] = ['debug', 'info', 'warn', 'error']
 
 function isLogLevel(value: string): value is LogLevel {
   return LOG_LEVELS.some((level) => level === value)
+}
+
+// The engine's own Duration string grammar (h then m then s, each optional):
+// packages/sdk wraps it but does not export the parser, so tests can shorten it.
+const DURATION_PATTERN = /^(?:\d+h)?(?:\d+m)?(?:\d+s)?$/
+
+function isDuration(value: string): value is Duration {
+  return value !== '' && DURATION_PATTERN.test(value)
 }
 
 /** A required environment variable was missing, or an optional one held a value outside its contract. */
@@ -42,5 +53,10 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): PlaygroundConf
     throw new MissingConfigError('KINESIN_EXAMPLE_LOG_LEVEL', `one of ${LOG_LEVELS.join(', ')}`)
   }
 
-  return { databaseUrl, namespace, logLevel: logLevelValue }
+  const watchShippingTimeout = env['KINESIN_EXAMPLE_WATCH_TIMEOUT'] ?? '3m'
+  if (!isDuration(watchShippingTimeout)) {
+    throw new MissingConfigError('KINESIN_EXAMPLE_WATCH_TIMEOUT', 'an h/m/s duration string, e.g. "3m" or "30s"')
+  }
+
+  return { databaseUrl, namespace, logLevel: logLevelValue, watchShippingTimeout }
 }

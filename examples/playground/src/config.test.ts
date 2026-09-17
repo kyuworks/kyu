@@ -58,21 +58,39 @@ describe('readConfig', () => {
     expect(config.logLevel).toBe('warn')
   })
 
-  it('defaults namespace and log level when unset', () => {
+  it('defaults namespace, log level and the watch-shipping timeout when unset', () => {
     const config = readConfig({ KINESIN_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db' })
     expect(config.databaseUrl).toBe('postgresql://localhost/db')
     expect(config.namespace).toBe('playground_')
     expect(config.logLevel).toBe('info')
+    expect(config.watchShippingTimeout).toBe('3m')
   })
 
-  it('reads namespace and log level when set', () => {
+  it('reads namespace, log level and the watch-shipping timeout when set', () => {
     const config = readConfig({
       KINESIN_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
       KINESIN_EXAMPLE_NAMESPACE: 'other_',
       KINESIN_EXAMPLE_LOG_LEVEL: 'debug',
+      KINESIN_EXAMPLE_WATCH_TIMEOUT: '20s',
     })
     expect(config.namespace).toBe('other_')
     expect(config.logLevel).toBe('debug')
+    expect(config.watchShippingTimeout).toBe('20s')
+  })
+
+  it('throws MissingConfigError naming the variable for an invalid watch-shipping timeout', () => {
+    let error: MissingConfigError | undefined
+    try {
+      readConfig({
+        KINESIN_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
+        KINESIN_EXAMPLE_WATCH_TIMEOUT: '5 minutes',
+      })
+    } catch (caught) {
+      if (caught instanceof MissingConfigError) error = caught
+      else throw caught
+    }
+    expect(error).toBeInstanceOf(MissingConfigError)
+    expect(error?.variable).toBe('KINESIN_EXAMPLE_WATCH_TIMEOUT')
   })
 
   it('throws MissingConfigError naming the variable and the allowed values for an invalid log level', () => {

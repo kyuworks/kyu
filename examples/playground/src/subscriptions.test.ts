@@ -2,18 +2,22 @@ import type { HatchetClient, Kinesin } from '@kinesin/sdk'
 import { CommandHasTwoSubscribersError, createKinesin } from '@kinesin/sdk'
 import type { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
+import type { PlaygroundConfig } from './config.js'
 import { sendInvoiceSubscription } from './handlers/sendInvoice.js'
 import { buildSubscriptions } from './subscriptions.js'
 
-// task()/worker() are never given real work here: assertSingleCommandSubscriber
-// throws before createWorker touches the client, and buildSubscriptions never
-// calls worker() at all. A single indexed-type cast per method — the same
-// unchained-cast idiom packages/sdk/src/createKinesin.test.ts uses for its own
-// fakeHatchetClient — since CreateTaskWorkflowOpts/CreateWorkerOpts are the
-// engine SDK's own types and are not part of @kinesin/sdk's public exports.
+// task()/worker()/durableTask() are never given real work here:
+// assertSingleCommandSubscriber throws before createWorker touches the
+// client, and buildSubscriptions never calls worker() at all. A single
+// indexed-type cast per method — the same unchained-cast idiom
+// packages/sdk/src/createKinesin.test.ts uses for its own fakeHatchetClient
+// — since CreateTaskWorkflowOpts/CreateWorkerOpts are the engine SDK's own
+// types and are not part of @kinesin/sdk's public exports.
 function fakeHatchetClient(): HatchetClient {
-  const stub: Pick<HatchetClient, 'task' | 'worker'> = {
+  const stub: Pick<HatchetClient, 'task' | 'durableTask' | 'worker'> = {
     task: (_options: Parameters<HatchetClient['task']>[0]) => ({}) as ReturnType<HatchetClient['task']>,
+    durableTask: (_options: Parameters<HatchetClient['durableTask']>[0]) =>
+      ({}) as ReturnType<HatchetClient['durableTask']>,
     worker: (_name: string) => new Promise<never>(() => undefined),
   }
   return stub as HatchetClient
@@ -28,14 +32,24 @@ function buildKinesin(): Kinesin {
   return createKinesin({ hatchet: fakeHatchetClient(), source: 'subscriptions-test' })
 }
 
+function fakeConfig(): PlaygroundConfig {
+  return {
+    databaseUrl: 'postgresql://localhost/fake',
+    namespace: 'test_',
+    logLevel: 'info',
+    watchShippingTimeout: '3m',
+  }
+}
+
 describe('buildSubscriptions', () => {
-  it('registers record-order, audit-order and send-invoice', () => {
-    const subscriptions = buildSubscriptions(buildKinesin(), fakePool())
+  it('registers record-order, audit-order, send-invoice and watch-shipping', () => {
+    const subscriptions = buildSubscriptions(buildKinesin(), fakePool(), fakeConfig())
 
     expect(subscriptions.map((subscription) => subscription.name)).toEqual([
       'record-order',
       'audit-order',
       'send-invoice',
+      'watch-shipping',
     ])
   })
 })
@@ -44,7 +58,8 @@ describe('createWorker via kinesin.worker', () => {
   it('throws CommandHasTwoSubscribersError when a command is subscribed twice', async () => {
     const kinesin = buildKinesin()
     const pool = fakePool()
-    const subscriptions = [...buildSubscriptions(kinesin, pool), sendInvoiceSubscription(kinesin, pool)]
+    const config = fakeConfig()
+    const subscriptions = [...buildSubscriptions(kinesin, pool, config), sendInvoiceSubscription(kinesin, pool)]
 
     await expect(kinesin.worker('duplicate-worker', { subscriptions })).rejects.toBeInstanceOf(
       CommandHasTwoSubscribersError,

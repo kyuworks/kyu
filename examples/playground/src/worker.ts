@@ -29,7 +29,7 @@ async function main(): Promise<void> {
   const kinesin = createPlaygroundKinesin(config)
 
   const worker = await kinesin.worker('playground-worker', {
-    subscriptions: buildSubscriptions(kinesin, pool),
+    subscriptions: buildSubscriptions(kinesin, pool, config),
     slots: 5,
     durableSlots: 5,
   })
