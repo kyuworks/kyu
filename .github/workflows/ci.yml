@@ -71,6 +71,7 @@ jobs:
     timeout-minutes: 20
     env:
       KINESIN_TEST_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/kinesin_test
+      # The example's own runner creates kinesin_playground itself; this only names where to connect.
       KINESIN_EXAMPLE_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/kinesin_playground
     services:
       postgres:

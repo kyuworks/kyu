@@ -7,13 +7,16 @@
 // changed file under either selects that package's lint, typecheck,
 // typecheck:tests (when the package defines that script) and test steps.
 //
-// Env (tests): ROOT_DIR overrides the repo root the selector scans and diffs.
+// Env (tests): SELECT_CHANGED_ROOT overrides the repo root the selector scans
+// and diffs. Test-only: check-changed.sh strips both this and the older
+// ROOT_DIR name from its own environment before invoking this script, so
+// neither leaks in from a caller and silently selects nothing.
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
-const root = process.env.ROOT_DIR
-  ? path.resolve(process.env.ROOT_DIR)
+const root = process.env.SELECT_CHANGED_ROOT
+  ? path.resolve(process.env.SELECT_CHANGED_ROOT)
   : path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..')
 const staged = process.argv.includes('--staged')
 
@@ -108,8 +111,8 @@ for (const raw of changedFiles()) {
   }
   if (f.startsWith('oxlint-rules/')) lintAll = true
   if (f.startsWith('scripts/gates/') || f === 'scripts/verify-gates.sh' || f.startsWith('.github/workflows/')) allGates = true
-  if (f.endsWith('.sh')) {
-    const suite = f.endsWith('.test.sh') ? f : f.slice(0, -3) + '.test.sh'
+  if (f.endsWith('.sh') || f.endsWith('.mjs')) {
+    const suite = f.endsWith('.test.sh') ? f : f.replace(/\.(sh|mjs)$/, '.test.sh')
     if (existsSync(path.join(root, suite))) add(`selftest:${suite}`, `bash ${suite}`)
   }
 }

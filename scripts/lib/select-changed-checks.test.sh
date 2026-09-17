@@ -5,8 +5,15 @@ set -uo pipefail
 # git exports these when it runs a hook (this suite may run from the
 # pre-commit hook itself), and they override `git -C`, so the throwaway
 # fixture repos below would resolve back into the real repo's .git.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+#
+# TODO(fix/selftest-git-env): once that branch merges, replace the array
+# above `unset` with `source "$(dirname "${BASH_SOURCE[0]}")/git-env.sh"` —
+# the `unset "${GIT_HOOK_ENV_VARS[@]}"` line stays as-is, a two-line swap.
+GIT_HOOK_ENV_VARS=(
+  GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE GIT_PREFIX
+)
+unset "${GIT_HOOK_ENV_VARS[@]}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/gate-test-lib.sh"
 SELECTOR="${SCRIPT_DIR}/select-changed-checks.mjs"
@@ -16,7 +23,8 @@ echo "=== select-changed-checks tests ==="
 
 init_fixture() {
   local root="$1"
-  mkdir -p "${root}/packages/schemas/src" "${root}/packages/sdk/src" "${root}/examples/playground/src"
+  mkdir -p "${root}/packages/schemas/src" "${root}/packages/sdk/src" "${root}/examples/playground/src" \
+    "${root}/packages/notests/src" "${root}/scripts/lib"
   cat > "${root}/packages/schemas/package.json" <<'JSON'
 {
   "name": "@kinesin/schemas",
@@ -37,9 +45,21 @@ JSON
   "scripts": { "lint": "true", "typecheck": "true", "typecheck:tests": "true", "test": "true" }
 }
 JSON
+  # No typecheck:tests script: pins the guard that only emits that step when a
+  # package actually defines it (a reviewer showed it can be reverted with a
+  # green suite when nothing exercises a package missing the script).
+  cat > "${root}/packages/notests/package.json" <<'JSON'
+{
+  "name": "@kinesin/notests",
+  "scripts": { "lint": "true", "typecheck": "true", "test": "true" }
+}
+JSON
   printf 'export const a = 1\n' > "${root}/packages/schemas/src/a.ts"
   printf 'export const b = 1\n' > "${root}/packages/sdk/src/b.ts"
   printf 'export const c = 1\n' > "${root}/examples/playground/src/c.ts"
+  printf 'export const n = 1\n' > "${root}/packages/notests/src/n.ts"
+  printf '// selector fixture\n' > "${root}/scripts/lib/select-changed-checks.mjs"
+  printf '#!/usr/bin/env bash\necho fixture-selftest\n' > "${root}/scripts/lib/select-changed-checks.test.sh"
   git -C "${root}" init -q
   git -C "${root}" config user.email "select@test.local"
   git -C "${root}" config user.name "select"
@@ -49,11 +69,12 @@ JSON
 
 run_select() {
   local root="$1" range="$2"
-  env ROOT_DIR="${root}" CHECK_CHANGED_RANGE="${range}" node "${SELECTOR}"
+  env SELECT_CHANGED_ROOT="${root}" CHECK_CHANGED_RANGE="${range}" node "${SELECTOR}"
 }
 
 REPO="${WORK}/repo"
 init_fixture "${REPO}"
+REPO_BASE="$(git -C "${REPO}" rev-parse HEAD)"
 
 # --- A change under examples/<name>/src selects that example's four steps ---
 printf 'export const c = 2\n' >> "${REPO}/examples/playground/src/c.ts"
@@ -93,5 +114,50 @@ assert_output_contains "package change selects test" \
 # --- A change to a package pulls in the example that depends on it ---
 assert_output_contains "sdk change pulls in the dependent example" \
   "lint:examples/playground" run_select "${REPO}" "HEAD~1...HEAD"
+
+# --- A package with no typecheck:tests script does not get that step ---
+printf 'export const n = 2\n' >> "${REPO}/packages/notests/src/n.ts"
+git -C "${REPO}" add packages/notests/src/n.ts
+git -C "${REPO}" commit -qm "touch notests"
+
+assert_output_contains "notests change still selects lint" \
+  "lint:packages/notests" run_select "${REPO}" "HEAD~1...HEAD"
+assert_output_contains "notests change still selects typecheck" \
+  "typecheck:packages/notests" run_select "${REPO}" "HEAD~1...HEAD"
+assert_output_contains "notests change still selects test" \
+  "test:packages/notests" run_select "${REPO}" "HEAD~1...HEAD"
+assert_output_lacks "notests change does not select typecheck:tests (script undefined)" \
+  "typecheck-tests:packages/notests" run_select "${REPO}" "HEAD~1...HEAD"
+
+# --- A changed .mjs selects its own colocated self-test, same as a .sh ---
+printf '// touched\n' >> "${REPO}/scripts/lib/select-changed-checks.mjs"
+git -C "${REPO}" add scripts/lib/select-changed-checks.mjs
+git -C "${REPO}" commit -qm "touch selector mjs"
+
+assert_output_contains "changed .mjs selects its colocated .test.sh" \
+  "selftest:scripts/lib/select-changed-checks.test.sh" \
+  run_select "${REPO}" "HEAD~1...HEAD"
+
+# --- SELECT_CHANGED_ROOT is the only override; a stray ROOT_DIR is inert
+# (#review: renamed so a caller's own ROOT_DIR cannot silently retarget the
+# selector at an unrelated directory and select nothing). An empty decoy repo
+# stands in for "some other directory a caller happened to export ROOT_DIR
+# for" — if the selector honored it, the fixture repo's steps below would not
+# appear.
+DECOY="${WORK}/decoy"
+mkdir -p "${DECOY}"
+git -C "${DECOY}" init -q
+git -C "${DECOY}" config user.email "decoy@test.local"
+git -C "${DECOY}" config user.name "decoy"
+printf 'not a workspace\n' > "${DECOY}/README"
+git -C "${DECOY}" add README
+git -C "${DECOY}" commit -qm "decoy base"
+
+assert_output_contains "SELECT_CHANGED_ROOT retargets the selector to the fixture repo" \
+  "lint:packages/sdk" \
+  env SELECT_CHANGED_ROOT="${REPO}" CHECK_CHANGED_RANGE="${REPO_BASE}...HEAD" node "${SELECTOR}"
+assert_output_contains "a ROOT_DIR export alongside it does not override SELECT_CHANGED_ROOT" \
+  "lint:packages/sdk" \
+  env SELECT_CHANGED_ROOT="${REPO}" ROOT_DIR="${DECOY}" CHECK_CHANGED_RANGE="${REPO_BASE}...HEAD" node "${SELECTOR}"
 
 gate_test_finish
