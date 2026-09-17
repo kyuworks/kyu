@@ -7,6 +7,7 @@ export {
   messageKindSchema,
   messageNameSchema,
   parseEnvelope,
+  uuidv7,
 } from '@kinesin/schemas'
 export type {
   Envelope,
@@ -20,6 +21,7 @@ export type {
   Unparsed,
 } from '@kinesin/schemas'
 export { SDK_VERSION } from './version.js'
+export { MIGRATIONS_DIRECTORY } from './migrations.js'
 
 export type { Queryable, QueryParam, QueryRows } from './db/queryable.js'
 
