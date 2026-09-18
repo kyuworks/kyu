@@ -1,7 +1,8 @@
-import type { Kinesin, Queryable } from '@kinesin/sdk'
+import type { Kinesin, Queryable, QueryParam, Unparsed } from '@kinesin/sdk'
 import { createEnvelope } from '@kinesin/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
+import type { BusTopology } from './busTopology.js'
 import type { UiRequest } from './handleRequest.js'
 import { handleUiRequest } from './handleRequest.js'
 
@@ -56,8 +57,36 @@ function fakeKinesin(publishes: RecordedPublish[]): Kinesin {
   return stub as Kinesin
 }
 
-function deps(pool: Pool, kinesin: Kinesin) {
-  return { pool, kinesin, dashboardUrl: 'http://localhost:8888' }
+const fakeTopology: BusTopology = {
+  producer: { source: 'playground' },
+  subscriptions: [
+    { name: 'record-order', messageName: 'shop.order.placed', kind: 'event', doneHandlers: ['record-order'] },
+    {
+      name: 'watch-shipping',
+      messageName: 'shop.order.placed',
+      kind: 'event',
+      doneHandlers: ['watch-shipping:completed', 'watch-shipping:timeout'],
+      waitingHandler: 'watch-shipping:waiting',
+    },
+  ],
+}
+
+function deps(pool: Pool, kinesin: Kinesin, topology: BusTopology = fakeTopology) {
+  return { pool, kinesin, dashboardUrl: 'http://localhost:8888', topology }
+}
+
+// readBusCounts calls deps.pool.query() directly (no transaction), so this
+// stub only needs `query`, unlike fakePool's `connect` above.
+function fakeQueryPool(responses: readonly Unparsed[][]): Pool {
+  let call = 0
+  const stub: Pick<Pool, 'query'> = {
+    query: ((_text: string, _params?: readonly QueryParam[]) => {
+      const rows = responses[call] ?? []
+      call += 1
+      return Promise.resolve({ rows, rowCount: rows.length })
+    }) as Pool['query'],
+  }
+  return stub as Pool
 }
 
 describe('handleUiRequest', () => {
@@ -205,5 +234,49 @@ describe('handleUiRequest', () => {
     const response = await handleUiRequest(deps(pool, kinesin), getRequest('/nope'))
 
     expect(response.status).toBe(404)
+  })
+
+  it('serves the bus page with the producer box, the bus box, and a container for the subscription columns', async () => {
+    const client = fakeClient([])
+    const pool = fakePool([], client)
+    const kinesin = fakeKinesin([])
+
+    const response = await handleUiRequest(deps(pool, kinesin), getRequest('/bus'))
+
+    expect(response.status).toBe(200)
+    expect(response.contentType).toBe('text/html')
+    expect(response.body).toContain('id="producer-box"')
+    expect(response.body).toContain('id="bus-box"')
+    expect(response.body).toContain('id="subscription-columns"')
+    expect(response.body).toContain('/bus.json')
+    expect(response.body).toContain('href="/"')
+  })
+
+  it('returns the topology and counts for /bus.json', async () => {
+    const kinesin = fakeKinesin([])
+    const pool = fakeQueryPool([
+      [{ count: 7 }],
+      [
+        { name: 'record-order', processed: 3 },
+        { name: 'watch-shipping', processed: 1 },
+      ],
+      [{ name: 'watch-shipping', in_progress: 2 }],
+      [{ count: 4 }],
+    ])
+
+    const response = await handleUiRequest(deps(pool, kinesin), getRequest('/bus.json'))
+
+    expect(response.status).toBe(200)
+    expect(response.contentType).toBe('application/json')
+    const parsed: { topology: BusTopology; counts: unknown } = JSON.parse(response.body)
+    expect(parsed.topology).toEqual(fakeTopology)
+    expect(parsed.counts).toEqual({
+      producer: { published: 7 },
+      bus: { published: 7, inFlight: 4 },
+      subscriptions: [
+        { name: 'record-order', processed: 3 },
+        { name: 'watch-shipping', processed: 1, inProgress: 2 },
+      ],
+    })
   })
 })
