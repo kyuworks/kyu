@@ -49,6 +49,11 @@ Serves the same two forms on `http://127.0.0.1:3333` (`KINESIN_EXAMPLE_UI_PORT` 
 port). The page sends ids and shows the ids it got back; it does not read handler logs or run
 status. Watch what happens next in the Hatchet dashboard.
 
+`/bus` draws the producer, the bus, and one box per subscription, with counts read from this
+app's own database every 2 seconds. In flight counts a published message until every subscriber
+for its name has finished it; in progress counts `watch-shipping` runs parked in their wait.
+There is no errored count yet; a failed run only shows in the Hatchet dashboard.
+
 ## Environment variables
 
 | Variable | Required | Default | Purpose |

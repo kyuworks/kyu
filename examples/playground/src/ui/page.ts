@@ -75,7 +75,8 @@ export function renderUiPage(dashboardUrl: string): string {
 <body>
 <h1>Kinesin playground</h1>
 <p>Sends messages onto the bus and shows the ids it got back. Watch what happens next in the
-<a href="${dashboardUrl}" target="_blank" rel="noreferrer">Hatchet dashboard</a>.</p>
+<a href="${dashboardUrl}" target="_blank" rel="noreferrer">Hatchet dashboard</a> or on the
+<a href="/bus">bus diagram</a>.</p>
 
 <section>
 <h2>Place order</h2>
