@@ -52,7 +52,12 @@ async function main(): Promise<void> {
         ),
       )
       .then((response) => {
-        res.writeHead(response.status, { 'content-type': response.contentType })
+        // /bus.json is read every 2s; without this an intermediary could cache a stale count.
+        if (response.contentType === 'application/json') {
+          res.writeHead(response.status, { 'content-type': response.contentType, 'cache-control': 'no-store' })
+        } else {
+          res.writeHead(response.status, { 'content-type': response.contentType })
+        }
         res.end(response.body)
       })
       .catch((error) => {

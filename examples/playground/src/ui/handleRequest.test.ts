@@ -248,6 +248,7 @@ describe('handleUiRequest', () => {
     expect(response.body).toContain('id="producer-box"')
     expect(response.body).toContain('id="bus-box"')
     expect(response.body).toContain('id="subscription-columns"')
+    expect(response.body).toContain('id="status"')
     expect(response.body).toContain('/bus.json')
     expect(response.body).toContain('href="/"')
   })

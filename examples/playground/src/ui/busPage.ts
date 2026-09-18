@@ -12,6 +12,8 @@ const STYLE = `
   .column { display: flex; flex-direction: column; align-items: center; gap: 0.2rem; }
   .arrow-label { font-size: 0.75rem; opacity: 0.85; text-align: center; }
   .arrow-line { border-left: 1px solid color-mix(in srgb, CanvasText 40%, Canvas); height: 1.2rem; }
+  #status:empty { display: none; }
+  #status { font-weight: bold; }
 `
 
 const SCRIPT = `
@@ -56,35 +58,42 @@ const SCRIPT = `
 
   var columnsBuilt = false
 
+  function setStatus(message) {
+    document.getElementById('status').textContent = message
+  }
+
+  // Never writes into #diagram: a failed fetch or a 500 body only updates
+  // #status, so the count elements a later successful tick needs stay in place.
   async function refresh() {
-    var response = await fetch('/bus.json')
-    var json = await response.json()
-    if (!columnsBuilt) {
-      var container = document.getElementById('subscription-columns')
-      json.topology.subscriptions.forEach(function (subscription) {
-        container.appendChild(buildColumn(subscription))
-      })
-      columnsBuilt = true
+    try {
+      var response = await fetch('/bus.json')
+      var json = await response.json()
+      if (!response.ok) {
+        setStatus('bus.json failed: ' + (json && json.error ? json.error : response.status))
+        return
+      }
+      if (!columnsBuilt) {
+        var container = document.getElementById('subscription-columns')
+        json.topology.subscriptions.forEach(function (subscription) {
+          container.appendChild(buildColumn(subscription))
+        })
+        columnsBuilt = true
+      }
+      applyCounts(json.counts)
+      setStatus('')
+    } catch (error) {
+      setStatus('failed to load /bus.json: ' + error.message)
     }
-    applyCounts(json.counts)
   }
 
   document.addEventListener('DOMContentLoaded', function () {
-    refresh().catch(function (error) {
-      document.getElementById('diagram').textContent = 'failed to load /bus.json: ' + error.message
-    })
-    setInterval(function () {
-      refresh().catch(function () {})
-    }, 2000)
+    refresh()
+    setInterval(refresh, 2000)
   })
 `
 
-/**
- * The bus diagram: producer on top, the bus in the middle, one column per
- * subscription below. Columns and counts come only from `/bus.json`, fetched
- * on load and every 2s, so the diagram cannot drift from what the worker
- * actually registers (src/subscriptions.ts).
- */
+// The boxes and counts come only from `/bus.json`, fetched on load and every
+// 2s, so this page cannot drift from what the worker registers (subscriptions.ts).
 export function renderBusPage(dashboardUrl: string): string {
   return `<!doctype html>
 <html lang="en">
@@ -97,6 +106,7 @@ export function renderBusPage(dashboardUrl: string): string {
 <h1>Kinesin playground: the bus</h1>
 <p><a href="/">Back to the forms</a> &middot;
 <a href="${dashboardUrl}" target="_blank" rel="noreferrer">Hatchet dashboard</a></p>
+<p id="status"></p>
 
 <div id="diagram">
 <div class="row producer-row">

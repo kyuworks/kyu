@@ -3,6 +3,7 @@ import { createKinesin } from '@kinesin/sdk'
 import type { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
 import type { PlaygroundConfig } from '../config.js'
+import { WATCH_SHIPPING_COMPLETED, WATCH_SHIPPING_TIMEOUT, WATCH_SHIPPING_WAITING } from '../handlers/watchShipping.js'
 import { buildSubscriptions } from '../subscriptions.js'
 import { describeBusTopology } from './busTopology.js'
 
@@ -81,8 +82,8 @@ describe('describeBusTopology', () => {
       name: 'watch-shipping',
       messageName: 'shop.order.placed',
       kind: 'event',
-      doneHandlers: ['watch-shipping:completed', 'watch-shipping:timeout'],
-      waitingHandler: 'watch-shipping:waiting',
+      doneHandlers: [WATCH_SHIPPING_COMPLETED, WATCH_SHIPPING_TIMEOUT],
+      waitingHandler: WATCH_SHIPPING_WAITING,
     })
   })
 
@@ -97,5 +98,22 @@ describe('describeBusTopology', () => {
       'send-invoice',
       'watch-shipping',
     ])
+  })
+
+  // A plain subscription's module logs its own name; only watch-shipping
+  // diverges, from watchShipping.ts's own exported constants (not a literal).
+  const EXPECTED_DONE_HANDLERS = new Map<string, string[]>([
+    ['watch-shipping', [WATCH_SHIPPING_COMPLETED, WATCH_SHIPPING_TIMEOUT]],
+  ])
+
+  it("ties every subscription's doneHandlers to the handler names its own module writes", () => {
+    const subscriptions = buildSubscriptions(fakeKinesin(), fakePool(), fakeConfig())
+
+    const topology = describeBusTopology(subscriptions)
+
+    for (const subscription of topology.subscriptions) {
+      const expected = EXPECTED_DONE_HANDLERS.get(subscription.name) ?? [subscription.name]
+      expect(subscription.doneHandlers).toEqual(expected)
+    }
   })
 })

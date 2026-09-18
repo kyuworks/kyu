@@ -14,16 +14,13 @@ export interface BusCounts {
   subscriptions: SubscriptionCounts[]
 }
 
-// @kinesin/sdk's Queryable rejects a Pool by design (its `totalCount?: never`
-// guard, see db/queryable.ts): a Pool runs each query on its own connection,
-// wrong for a publish transaction but fine for these four independent reads.
-// A Pool, a PoolClient and a Queryable all structurally satisfy this.
+// @kinesin/sdk's Queryable rejects a Pool by design (db/queryable.ts's
+// `totalCount?: never`); a Pool, PoolClient and Queryable all satisfy this.
 export interface CountsSource {
   query(text: string, params: readonly QueryParam[]): Promise<QueryRows>
 }
 
-// Postgres array literal for `unnest($n::text[])`; readonly string[] is not a
-// QueryParam (@kinesin/sdk's db/queryable.ts), so every array goes through here.
+// Postgres array literal for `unnest($n::text[])`; readonly string[] is not a QueryParam.
 function textArrayLiteral(values: readonly string[]): string {
   return `{${values.map((value) => JSON.stringify(value)).join(',')}}`
 }
@@ -145,10 +142,12 @@ async function readInFlightCount(db: CountsSource, topology: BusTopology): Promi
 
 /** Assembles the bus diagram's counts from the playground database; no engine call (busTopology.ts). */
 export async function readBusCounts(db: CountsSource, topology: BusTopology): Promise<BusCounts> {
-  const published = await readPublishedCount(db)
-  const processed = await readProcessedCounts(db, topology)
-  const inProgress = await readInProgressCounts(db, topology)
-  const inFlight = await readInFlightCount(db, topology)
+  const [published, processed, inProgress, inFlight] = await Promise.all([
+    readPublishedCount(db),
+    readProcessedCounts(db, topology),
+    readInProgressCounts(db, topology),
+    readInFlightCount(db, topology),
+  ])
 
   const subscriptions: SubscriptionCounts[] = topology.subscriptions.map((subscription) => {
     const counts: SubscriptionCounts = { name: subscription.name, processed: processed.get(subscription.name) ?? 0 }

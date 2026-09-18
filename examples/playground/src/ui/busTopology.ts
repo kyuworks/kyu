@@ -1,4 +1,5 @@
 import type { Subscription } from '@kinesin/sdk'
+import { WATCH_SHIPPING_COMPLETED, WATCH_SHIPPING_TIMEOUT, WATCH_SHIPPING_WAITING } from '../handlers/watchShipping.js'
 import { PLAYGROUND_SOURCE } from '../kinesin.js'
 
 export interface TopologySubscription {
@@ -19,17 +20,12 @@ interface HandlerOverride {
   waitingHandler: string
 }
 
-// watch-shipping's durable body (handlers/watchShipping.ts) writes a waiting
-// row before its wait and a completed/timeout row after it, under two
-// different shop_handler_log handler names; every other subscription
-// finishes in one row under its own name.
+// watch-shipping finishes under two handler names instead of one; every
+// other subscription finishes in one row under its own name.
 const HANDLER_OVERRIDES = new Map<string, HandlerOverride>([
   [
     'watch-shipping',
-    {
-      doneHandlers: ['watch-shipping:completed', 'watch-shipping:timeout'],
-      waitingHandler: 'watch-shipping:waiting',
-    },
+    { doneHandlers: [WATCH_SHIPPING_COMPLETED, WATCH_SHIPPING_TIMEOUT], waitingHandler: WATCH_SHIPPING_WAITING },
   ],
 ])
 

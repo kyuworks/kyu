@@ -52,7 +52,10 @@ status. Watch what happens next in the Hatchet dashboard.
 `/bus` draws the producer, the bus, and one box per subscription, with counts read from this
 app's own database every 2 seconds. In flight counts a published message until every subscriber
 for its name has finished it; in progress counts `watch-shipping` runs parked in their wait.
-There is no errored count yet; a failed run only shows in the Hatchet dashboard.
+There is no errored count yet; a failed run only shows in the Hatchet dashboard. In flight scans
+`kinesin_outbox` and `shop_handler_log` across the whole database, not scoped to `KINESIN_EXAMPLE_NAMESPACE`,
+so a database shared with another namespace, or a run that exhausted its retries, keeps that count
+above zero.
 
 ## Environment variables
 
