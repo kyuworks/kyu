@@ -6,6 +6,7 @@ import { describeError, log } from '../log.js'
 import { placeOrder } from '../producer/placeOrder.js'
 import { shipOrder } from '../producer/shipOrder.js'
 import { renderUiPage } from './page.js'
+import type { PlaceOrderRequest, ShipOrderRequest } from './requests.js'
 import { placeOrderRequestSchema, shipOrderRequestSchema } from './requests.js'
 
 export interface UiRequestDeps {
@@ -17,6 +18,8 @@ export interface UiRequestDeps {
 export interface UiRequest {
   method: string
   url: string
+  // The request's own Content-Type header; '' when absent. Unused for GET.
+  contentType: string
   body: string
 }
 
@@ -26,12 +29,32 @@ export interface UiResponse {
   body: string
 }
 
+// A local dev form never sends more; a limit keeps a stray large body from
+// being parsed at all.
+const MAX_BODY_BYTES = 64 * 1024
+
 function jsonResponse<T>(status: number, value: T): UiResponse {
   return { status, contentType: 'application/json', body: JSON.stringify(value) }
 }
 
 function errorResponse(status: number, message: string): UiResponse {
   return jsonResponse(status, { error: message })
+}
+
+function isJsonContentType(contentType: string): boolean {
+  return contentType.toLowerCase().startsWith('application/json')
+}
+
+// Runs before a POST body is even looked at: too large or the wrong content
+// type never reaches JSON.parse or a producer.
+function checkPostBody(request: UiRequest): UiResponse | undefined {
+  if (Buffer.byteLength(request.body, 'utf8') > MAX_BODY_BYTES) {
+    return errorResponse(413, `request body exceeds ${MAX_BODY_BYTES} bytes`)
+  }
+  if (!isJsonContentType(request.contentType)) {
+    return errorResponse(415, 'content-type must be application/json')
+  }
+  return undefined
 }
 
 type ParseOutcome<T> = { ok: true; value: T } | { ok: false; error: string }
@@ -59,7 +82,7 @@ function parseBody<T>(schema: z.ZodType<T>, body: string): ParseOutcome<T> {
 }
 
 async function handlePlaceOrder(deps: UiRequestDeps, body: string): Promise<UiResponse> {
-  const parsed = parseBody(placeOrderRequestSchema, body)
+  const parsed = parseBody<PlaceOrderRequest>(placeOrderRequestSchema, body)
   if (!parsed.ok) return errorResponse(400, parsed.error)
   try {
     const placed = await placeOrder(deps.pool, deps.kinesin, {
@@ -79,7 +102,7 @@ async function handlePlaceOrder(deps: UiRequestDeps, body: string): Promise<UiRe
 }
 
 async function handleShipOrder(deps: UiRequestDeps, body: string): Promise<UiResponse> {
-  const parsed = parseBody(shipOrderRequestSchema, body)
+  const parsed = parseBody<ShipOrderRequest>(shipOrderRequestSchema, body)
   if (!parsed.ok) return errorResponse(400, parsed.error)
   try {
     const envelopeId = await shipOrder(deps.pool, deps.kinesin, {
@@ -99,7 +122,11 @@ export async function handleUiRequest(deps: UiRequestDeps, request: UiRequest): 
   if (request.method === 'GET' && request.url === '/') {
     return { status: 200, contentType: 'text/html', body: renderUiPage(deps.dashboardUrl) }
   }
-  if (request.method === 'POST' && request.url === '/orders') return handlePlaceOrder(deps, request.body)
-  if (request.method === 'POST' && request.url === '/shipments') return handleShipOrder(deps, request.body)
+  if (request.method === 'POST' && request.url === '/orders') {
+    return checkPostBody(request) ?? handlePlaceOrder(deps, request.body)
+  }
+  if (request.method === 'POST' && request.url === '/shipments') {
+    return checkPostBody(request) ?? handleShipOrder(deps, request.body)
+  }
   return errorResponse(404, `no route for ${request.method} ${request.url}`)
 }

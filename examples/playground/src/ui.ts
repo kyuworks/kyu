@@ -43,7 +43,7 @@ async function main(): Promise<void> {
       .then((body) =>
         handleUiRequest(
           { pool, kinesin, dashboardUrl: DASHBOARD_URL },
-          { method: req.method ?? '', url: req.url ?? '', body },
+          { method: req.method ?? '', url: req.url ?? '', contentType: req.headers['content-type'] ?? '', body },
         ),
       )
       .then((response) => {
@@ -55,6 +55,13 @@ async function main(): Promise<void> {
         res.writeHead(500, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ error: describeError(error) }))
       })
+  })
+
+  // A port already in use (or another bind failure) fires here, not as a
+  // thrown exception; without this the process would print a raw stack
+  // trace instead of the NDJSON line a supervisor watches for.
+  server.on('error', (error) => {
+    exitAfterLog(1, 'ui', 'listen-failed', { message: describeError(error) })
   })
 
   nodeProcess.on('SIGTERM', () => onShutdownSignal(server, pool))

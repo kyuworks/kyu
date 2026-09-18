@@ -2,7 +2,16 @@ import type { Kinesin, Queryable } from '@kinesin/sdk'
 import { createEnvelope } from '@kinesin/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
+import type { UiRequest } from './handleRequest.js'
 import { handleUiRequest } from './handleRequest.js'
+
+function jsonPost(url: string, body: string): UiRequest {
+  return { method: 'POST', url, contentType: 'application/json', body }
+}
+
+function getRequest(url: string): UiRequest {
+  return { method: 'GET', url, contentType: '', body: '' }
+}
 
 interface RecordedQuery {
   text: string
@@ -58,11 +67,55 @@ describe('handleUiRequest', () => {
     const pool = fakePool(connectCalls, client)
     const kinesin = fakeKinesin([])
 
-    const response = await handleUiRequest(deps(pool, kinesin), { method: 'POST', url: '/orders', body: '{}' })
+    const response = await handleUiRequest(deps(pool, kinesin), jsonPost('/orders', '{}'))
 
     expect(response.status).toBe(400)
     const parsed: { error: string } = JSON.parse(response.body)
     expect(parsed.error).toContain('tenantId')
+    expect(connectCalls).toEqual([])
+  })
+
+  it('rejects malformed JSON with 400 and never opens a connection', async () => {
+    const connectCalls: number[] = []
+    const client = fakeClient([])
+    const pool = fakePool(connectCalls, client)
+    const kinesin = fakeKinesin([])
+
+    const response = await handleUiRequest(deps(pool, kinesin), jsonPost('/orders', '{not json'))
+
+    expect(response.status).toBe(400)
+    const parsed: { error: string } = JSON.parse(response.body)
+    expect(parsed.error).toContain('invalid JSON body')
+    expect(connectCalls).toEqual([])
+  })
+
+  it('rejects a body over 64KiB with 413 and never opens a connection', async () => {
+    const connectCalls: number[] = []
+    const client = fakeClient([])
+    const pool = fakePool(connectCalls, client)
+    const kinesin = fakeKinesin([])
+    const oversizedBody = `{"tenantId":"${'a'.repeat(70 * 1024)}"}`
+
+    const response = await handleUiRequest(deps(pool, kinesin), jsonPost('/orders', oversizedBody))
+
+    expect(response.status).toBe(413)
+    expect(connectCalls).toEqual([])
+  })
+
+  it('rejects a non-JSON content type with 415 and never opens a connection', async () => {
+    const connectCalls: number[] = []
+    const client = fakeClient([])
+    const pool = fakePool(connectCalls, client)
+    const kinesin = fakeKinesin([])
+
+    const response = await handleUiRequest(deps(pool, kinesin), {
+      method: 'POST',
+      url: '/orders',
+      contentType: 'text/plain',
+      body: JSON.stringify({ tenantId: '018f0000-0000-7000-8000-000000000001' }),
+    })
+
+    expect(response.status).toBe(415)
     expect(connectCalls).toEqual([])
   })
 
@@ -76,11 +129,10 @@ describe('handleUiRequest', () => {
     const tenantId = '018f0000-0000-7000-8000-000000000001'
     const customerId = '018f0000-0000-7000-8000-000000000002'
 
-    const response = await handleUiRequest(deps(pool, kinesin), {
-      method: 'POST',
-      url: '/orders',
-      body: JSON.stringify({ tenantId, customerId }),
-    })
+    const response = await handleUiRequest(
+      deps(pool, kinesin),
+      jsonPost('/orders', JSON.stringify({ tenantId, customerId })),
+    )
 
     expect(response.status).toBe(201)
     const parsed: { orderId: string; invoiceId: string; orderPlacedEnvelopeId: string; sendInvoiceEnvelopeId: string } =
@@ -104,11 +156,10 @@ describe('handleUiRequest', () => {
     const tenantId = '018f0000-0000-7000-8000-000000000001'
     const orderId = '018f0000-0000-7000-8000-000000000003'
 
-    const response = await handleUiRequest(deps(pool, kinesin), {
-      method: 'POST',
-      url: '/shipments',
-      body: JSON.stringify({ tenantId, orderId, carrier: 'dhl' }),
-    })
+    const response = await handleUiRequest(
+      deps(pool, kinesin),
+      jsonPost('/shipments', JSON.stringify({ tenantId, orderId, carrier: 'dhl' })),
+    )
 
     expect(response.status).toBe(201)
     const parsed: { orderId: string; envelopeId: string } = JSON.parse(response.body)
@@ -122,11 +173,10 @@ describe('handleUiRequest', () => {
     const pool = fakePool([], client)
     const kinesin = fakeKinesin([])
 
-    const response = await handleUiRequest(deps(pool, kinesin), {
-      method: 'POST',
-      url: '/shipments',
-      body: JSON.stringify({ tenantId: '018f0000-0000-7000-8000-000000000001' }),
-    })
+    const response = await handleUiRequest(
+      deps(pool, kinesin),
+      jsonPost('/shipments', JSON.stringify({ tenantId: '018f0000-0000-7000-8000-000000000001' })),
+    )
 
     expect(response.status).toBe(400)
     const parsed: { error: string } = JSON.parse(response.body)
@@ -138,7 +188,7 @@ describe('handleUiRequest', () => {
     const pool = fakePool([], client)
     const kinesin = fakeKinesin([])
 
-    const response = await handleUiRequest(deps(pool, kinesin), { method: 'GET', url: '/', body: '' })
+    const response = await handleUiRequest(deps(pool, kinesin), getRequest('/'))
 
     expect(response.status).toBe(200)
     expect(response.contentType).toBe('text/html')
@@ -152,7 +202,7 @@ describe('handleUiRequest', () => {
     const pool = fakePool([], client)
     const kinesin = fakeKinesin([])
 
-    const response = await handleUiRequest(deps(pool, kinesin), { method: 'GET', url: '/nope', body: '' })
+    const response = await handleUiRequest(deps(pool, kinesin), getRequest('/nope'))
 
     expect(response.status).toBe(404)
   })
