@@ -15,7 +15,8 @@
     "migrate": "node dist/bin/migrate.js",
     "relay": "node dist/relay.js",
     "worker": "node dist/worker.js",
-    "publish-cli": "node dist/bin/publish.js"
+    "publish-cli": "node dist/bin/publish.js",
+    "ui": "node dist/ui.js"
   },
   "dependencies": {
     "@kinesin/sdk": "workspace:*",

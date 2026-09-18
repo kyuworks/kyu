@@ -39,6 +39,16 @@ Each command commits one transaction and prints the ids it created as one JSON l
 `--tenant` (or `--order` for `ship-order`) prints an error and exits 1; an unknown command does
 the same.
 
+## Web page
+
+```bash
+pnpm --filter @kinesin/playground ui
+```
+
+Serves the same two forms on `http://127.0.0.1:3333` (`KINESIN_EXAMPLE_UI_PORT` to change the
+port). The page sends ids and shows the ids it got back; it does not read handler logs or run
+status. Watch what happens next in the Hatchet dashboard.
+
 ## Environment variables
 
 | Variable | Required | Default | Purpose |
@@ -48,6 +58,7 @@ the same.
 | `KINESIN_EXAMPLE_LOG_LEVEL` | no | `info` | One of `debug`, `info`, `warn`, `error`. |
 | `KINESIN_EXAMPLE_WATCH_TIMEOUT` | no | `3m` | `watch-shipping`'s correlated wait timeout; an h/m/s duration string. |
 | `KINESIN_EXAMPLE_RELAY_BATCH_SIZE` | no | the SDK's default | Read only by `relay`; rows claimed per tick. |
+| `KINESIN_EXAMPLE_UI_PORT` | no | `3333` | Read only by `ui`; the local port the web page binds to. |
 | `HATCHET_CLIENT_TOKEN` | yes | — | Read by the engine client directly, same as the SDK's own integration lane. |
 | `HATCHET_CLIENT_TLS_STRATEGY` | yes | — | Read by the engine client directly. |
 

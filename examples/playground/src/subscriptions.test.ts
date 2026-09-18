@@ -38,6 +38,7 @@ function fakeConfig(): PlaygroundConfig {
     namespace: 'test_',
     logLevel: 'info',
     watchShippingTimeout: '3m',
+    uiPort: 3333,
   }
 }
 
