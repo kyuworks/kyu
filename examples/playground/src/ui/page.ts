@@ -1,7 +1,7 @@
 const STYLE = `
   body { font: 14px/1.4 monospace; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
   form { display: grid; gap: 0.5rem; margin: 0.5rem 0; }
-  label { display: grid; gap: 0.2rem; }
+  label { display: grid; gap: 0.2rem; color: inherit; }
   pre { background: #f2f2f2; padding: 0.5rem; min-height: 1.2rem; white-space: pre-wrap; }
 `
 
@@ -27,22 +27,38 @@ const SCRIPT = `
   document.addEventListener('DOMContentLoaded', function () {
     var placeForm = document.getElementById('place-order-form')
     var shipForm = document.getElementById('ship-order-form')
-    field(placeForm, 'tenantId').value = crypto.randomUUID()
-    field(shipForm, 'tenantId').value = crypto.randomUUID()
+    var placeResult = document.getElementById('place-order-result')
+    var shipResult = document.getElementById('ship-order-result')
 
+    // Listeners first: if the prefill below throws (e.g. randomUUID outside a
+    // secure context), the forms still submit through fetch, not a plain GET.
     placeForm.addEventListener('submit', async function (event) {
       event.preventDefault()
-      var outcome = await submitForm(placeForm, document.getElementById('place-order-result'), placeForm.action)
-      if (outcome.ok && outcome.json.orderId) {
-        field(shipForm, 'tenantId').value = field(placeForm, 'tenantId').value
-        field(shipForm, 'orderId').value = outcome.json.orderId
+      try {
+        var outcome = await submitForm(placeForm, placeResult, placeForm.action)
+        if (outcome.ok && outcome.json.orderId) {
+          field(shipForm, 'tenantId').value = field(placeForm, 'tenantId').value
+          field(shipForm, 'orderId').value = outcome.json.orderId
+        }
+      } catch (error) {
+        placeResult.textContent = 'request failed: ' + error.message
       }
     })
 
-    shipForm.addEventListener('submit', function (event) {
+    shipForm.addEventListener('submit', async function (event) {
       event.preventDefault()
-      submitForm(shipForm, document.getElementById('ship-order-result'), shipForm.action)
+      try {
+        await submitForm(shipForm, shipResult, shipForm.action)
+      } catch (error) {
+        shipResult.textContent = 'request failed: ' + error.message
+      }
     })
+
+    // One id for both forms, so an order placed under it can be shipped
+    // from the other form without retyping.
+    var tenantId = crypto.randomUUID()
+    field(placeForm, 'tenantId').value = tenantId
+    field(shipForm, 'tenantId').value = tenantId
   })
 `
 
@@ -62,7 +78,7 @@ export function renderUiPage(dashboardUrl: string): string {
 
 <section>
 <h2>Place order</h2>
-<form id="place-order-form" action="/orders">
+<form id="place-order-form" method="post" action="/orders">
 <label>Tenant id <input name="tenantId" required /></label>
 <label>Customer id (optional) <input name="customerId" /></label>
 <button type="submit">Place order</button>
@@ -72,7 +88,7 @@ export function renderUiPage(dashboardUrl: string): string {
 
 <section>
 <h2>Ship order</h2>
-<form id="ship-order-form" action="/shipments">
+<form id="ship-order-form" method="post" action="/shipments">
 <label>Tenant id <input name="tenantId" required /></label>
 <label>Order id <input name="orderId" required /></label>
 <label>Carrier (optional) <input name="carrier" /></label>
