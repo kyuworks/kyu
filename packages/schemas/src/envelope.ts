@@ -40,13 +40,13 @@ export type Envelope<TData extends MessageDataShape = EnvelopeData> = Omit<z.inf
   data: TData
 }
 
-// The string map Hatchet carries beside the payload; CEL reads these keys. `kinesin_`-prefixed
+// The string map Hatchet carries beside the payload; CEL reads these keys. `qtaxis_`-prefixed
 // keys avoid colliding with a producer's own metadata.
 export const envelopeMetadataSchema = z.object({
   envelopeId: z.uuidv7(),
-  kinesin_name: messageNameSchema,
-  kinesin_version: z.string().regex(/^[1-9]\d{0,8}$/, 'kinesin_version must be a positive integer string'),
-  kinesin_kind: messageKindSchema,
+  qtaxis_name: messageNameSchema,
+  qtaxis_version: z.string().regex(/^[1-9]\d{0,8}$/, 'qtaxis_version must be a positive integer string'),
+  qtaxis_kind: messageKindSchema,
   tenantId: z.uuid().optional(),
   orgUnitId: z.uuid().optional(),
   actorUserId: z.uuid().optional(),
@@ -61,9 +61,9 @@ export type EnvelopeMetadata = z.infer<typeof envelopeMetadataSchema>
 export function toEnvelopeMetadata<TData extends MessageDataShape>(envelope: Envelope<TData>) {
   const metadata: Record<string, string> = {}
   metadata['envelopeId'] = envelope.id
-  metadata['kinesin_name'] = envelope.name
-  metadata['kinesin_version'] = String(envelope.version)
-  metadata['kinesin_kind'] = envelope.kind
+  metadata['qtaxis_name'] = envelope.name
+  metadata['qtaxis_version'] = String(envelope.version)
+  metadata['qtaxis_kind'] = envelope.kind
   metadata['correlationId'] = envelope.correlationId
   metadata['source'] = envelope.source
   if (envelope.tenantId !== null) metadata['tenantId'] = envelope.tenantId
@@ -85,9 +85,9 @@ export function fromEnvelopeMetadata(record: Record<string, string>): EnvelopeMe
   const parsed = result.data
   const fields: EnvelopeMetadataFields = {
     envelopeId: parsed.envelopeId,
-    name: parsed.kinesin_name,
-    version: Number.parseInt(parsed.kinesin_version, 10),
-    kind: parsed.kinesin_kind,
+    name: parsed.qtaxis_name,
+    version: Number.parseInt(parsed.qtaxis_version, 10),
+    kind: parsed.qtaxis_kind,
     tenantId: parsed.tenantId ?? null,
     correlationId: parsed.correlationId,
     source: parsed.source,

@@ -1,4 +1,4 @@
-import { envelopeSchema } from '@kinesin/schemas'
+import { envelopeSchema } from '@qtaxis/schemas'
 import { z } from 'zod'
 
 // Shapes as `pg` returns them: timestamptz columns decode to Date, uuid to

@@ -1,11 +1,11 @@
-# Hatchet, self-hosted, is the engine under Kinesin
+# Hatchet, self-hosted, is the engine under Qtaxis
 
 **Status:** accepted
 **Date:** 2026-09-16
-**Parent:** [design document](../../design/kinesin-requirements-and-design.md)
+**Parent:** [design document](../../design/qtaxis-requirements-and-design.md)
 **This is not** a decision about the outbox, which Hatchet does not provide and the SDK owns.
 
-Kinesin's delivery, retries, ordering, rate limits, timers, durable waits and run history come from a self-hosted Hatchet control plane. The SDK wraps it; consumers never call it directly for bus work.
+Qtaxis's delivery, retries, ordering, rate limits, timers, durable waits and run history come from a self-hosted Hatchet control plane. The SDK wraps it; consumers never call it directly for bus work.
 
 ---
 
@@ -34,7 +34,7 @@ The requirements (design document § 4) need fan-out to many subscribers, single
 1. **Hatchet Lite on Fly with a dedicated Postgres** per environment is release one. The Compose or Helm topology is the scaling path, with no SDK change.
 2. **One Hatchet tenant per company project per environment.** Tokens are per tenant. Cross-project traffic is an explicit relay.
 3. **The SDK owns what Hatchet lacks:** the transactional outbox and relay, the envelope, idempotency on envelope id, and the company contract.
-4. **Consumers do not call the Hatchet SDK directly for bus work.** A gap in the Kinesin SDK is filled in the Kinesin SDK.
+4. **Consumers do not call the Hatchet SDK directly for bus work.** A gap in the Qtaxis SDK is filled in the Qtaxis SDK.
 
 ---
 

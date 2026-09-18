@@ -32,7 +32,7 @@ importers:
 
   examples/playground:
     dependencies:
-      '@kinesin/sdk':
+      '@qtaxis/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
       pg:
@@ -91,7 +91,7 @@ importers:
       '@hatchet-dev/typescript-sdk':
         specifier: ^1.32.0
         version: 1.32.0(@grpc/grpc-js@1.14.4)(debug@4.4.3)(zod@4.5.4)
-      '@kinesin/schemas':
+      '@qtaxis/schemas':
         specifier: workspace:*
         version: link:../schemas
       zod:

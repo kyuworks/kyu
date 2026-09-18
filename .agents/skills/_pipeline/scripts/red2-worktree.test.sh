@@ -34,11 +34,11 @@ assert_output_contains "a bare pnpm script that exists nowhere is rejected" \
 # A leading flag is not a script name. -F is the short form of --filter, which
 # the usage block tells the operator to use.
 assert_eq "the short form of --filter is not read as a script name" "" \
-  "$(rejection_from "pnpm -F @kinesin/sdk test")"
+  "$(rejection_from "pnpm -F @qtaxis/sdk test")"
 
 # The hint must point at a package that exists in this workspace.
 assert_output_contains "the rejection names the sdk package filter" \
-  "pnpm --filter @kinesin/sdk" preflight "pnpm no-such-script-anywhere"
+  "pnpm --filter @qtaxis/sdk" preflight "pnpm no-such-script-anywhere"
 
 assert_eq "a recursive run is not read as a script name" "" \
   "$(rejection_from "pnpm -r run test")"

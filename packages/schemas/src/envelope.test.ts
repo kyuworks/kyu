@@ -81,9 +81,9 @@ describe('toEnvelopeMetadata', () => {
 
     expect(metadata).toEqual({
       envelopeId: envelope.id,
-      kinesin_name: envelope.name,
-      kinesin_version: '1',
-      kinesin_kind: 'event',
+      qtaxis_name: envelope.name,
+      qtaxis_version: '1',
+      qtaxis_kind: 'event',
       tenantId: envelope.tenantId,
       correlationId: envelope.correlationId,
       source: envelope.source,
@@ -140,21 +140,21 @@ describe('fromEnvelopeMetadata', () => {
     expect(fields.tenantId).toBeNull()
   })
 
-  it.each(['0', 'abc', '01'])('rejects a kinesin_version of %s', (kinesin_version) => {
+  it.each(['0', 'abc', '01'])('rejects a qtaxis_version of %s', (qtaxis_version) => {
     const envelope: Envelope = envelopeSchema.parse(validEnvelope)
-    const metadata = { ...toEnvelopeMetadata(envelope), kinesin_version }
+    const metadata = { ...toEnvelopeMetadata(envelope), qtaxis_version }
     expect(() => fromEnvelopeMetadata(metadata)).toThrow()
   })
 
-  it('rejects a kinesin_version so large it parses to a float, instead of letting it through as 1e20', () => {
+  it('rejects a qtaxis_version so large it parses to a float, instead of letting it through as 1e20', () => {
     const envelope: Envelope = envelopeSchema.parse(validEnvelope)
-    const metadata = { ...toEnvelopeMetadata(envelope), kinesin_version: '99999999999999999999' }
+    const metadata = { ...toEnvelopeMetadata(envelope), qtaxis_version: '99999999999999999999' }
     try {
       fromEnvelopeMetadata(metadata)
       expect.unreachable('fromEnvelopeMetadata should have thrown')
     } catch (error) {
       if (!(error instanceof EnvelopeMetadataError)) throw error
-      expect(error.issues.some((issue) => issue.path === 'kinesin_version')).toBe(true)
+      expect(error.issues.some((issue) => issue.path === 'qtaxis_version')).toBe(true)
     }
   })
 

@@ -1,14 +1,14 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import path from 'node:path'
-import type { HatchetClient, Kinesin } from '@kinesin/sdk'
-import { createHatchetClient, uuidv7 } from '@kinesin/sdk'
+import type { HatchetClient, Qtaxis } from '@qtaxis/sdk'
+import { createHatchetClient, uuidv7 } from '@qtaxis/sdk'
 import { Client } from 'pg'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { PlaygroundConfig } from '../config.js'
 import { readConfig } from '../config.js'
 import { createPool, withTransaction } from '../db/pool.js'
-import { createPlaygroundKinesin } from '../kinesin.js'
+import { createPlaygroundQtaxis } from '../qtaxis.js'
 import { sendInvoice } from '../messages.js'
 import { placeOrder } from '../producer/placeOrder.js'
 import { shipOrder } from '../producer/shipOrder.js'
@@ -23,7 +23,7 @@ const namespace = `lp${randomBytes(3).toString('hex')}_`
 
 let config: PlaygroundConfig
 let pool: Pool
-let kinesin: Kinesin
+let qtaxis: Qtaxis
 let admin: Client
 let engine: HatchetClient
 let relay: SpawnedProcess
@@ -33,7 +33,7 @@ let worker: SpawnedProcess
 const placedOrderEnvelopeIds: string[] = []
 
 function childEnv(): NodeJS.ProcessEnv {
-  return { ...process.env, KINESIN_EXAMPLE_DATABASE_URL: config.databaseUrl, KINESIN_EXAMPLE_NAMESPACE: namespace }
+  return { ...process.env, QTAXIS_EXAMPLE_DATABASE_URL: config.databaseUrl, QTAXIS_EXAMPLE_NAMESPACE: namespace }
 }
 
 // Throws with `describe()`'s last-observed value on timeout instead of
@@ -74,7 +74,7 @@ async function handlerLogRows(envelopeIds: readonly string[]): Promise<LogRow[]>
 // Ship the order so its watch-shipping run finishes; a parked run makes the
 // shared worker's stop() wait up to 30s per eviction ack.
 async function shipAndAwaitWatchShipping(tenantId: string, orderId: string): Promise<void> {
-  await shipOrder(pool, kinesin, { tenantId, orderId, carrier: 'ups' })
+  await shipOrder(pool, qtaxis, { tenantId, orderId, carrier: 'ups' })
   await waitUntil(
     async () => {
       const result = await admin.query(
@@ -92,7 +92,7 @@ beforeAll(async () => {
   const base = readConfig()
   config = { ...base, namespace }
   pool = createPool(config.databaseUrl)
-  kinesin = createPlaygroundKinesin(config)
+  qtaxis = createPlaygroundQtaxis(config)
   admin = new Client({ connectionString: config.databaseUrl })
   await admin.connect()
   engine = createHatchetClient({ namespace })
@@ -113,7 +113,7 @@ afterAll(async () => {
 describe('loop: relay and worker against the local engine', () => {
   it('an order reaches both subscribers and the command handler, tenant id unchanged (mandatory)', async () => {
     const tenantId = randomUUID()
-    const placed = await placeOrder(pool, kinesin, { tenantId, customerId: randomUUID() })
+    const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
     placedOrderEnvelopeIds.push(placed.envelopeIds.orderPlaced)
 
     let recordedAt: unknown
@@ -167,7 +167,7 @@ describe('loop: relay and worker against the local engine', () => {
 
   it('a re-shipped outbox row runs record-order once (mandatory)', async () => {
     const tenantId = randomUUID()
-    const placed = await placeOrder(pool, kinesin, { tenantId, customerId: randomUUID() })
+    const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
     placedOrderEnvelopeIds.push(placed.envelopeIds.orderPlaced)
     const envelopeId = placed.envelopeIds.orderPlaced
 
@@ -188,19 +188,19 @@ describe('loop: relay and worker against the local engine', () => {
     const runsBefore = before.rows.length
 
     await admin.query(
-      'UPDATE kinesin_outbox SET published_at = NULL, claimed_at = NULL, claimed_by = NULL WHERE id = $1',
+      'UPDATE qtaxis_outbox SET published_at = NULL, claimed_at = NULL, claimed_by = NULL WHERE id = $1',
       [envelopeId],
     )
 
     let publishedAt: unknown
     await waitUntil(
       async () => {
-        const result = await admin.query('SELECT published_at FROM kinesin_outbox WHERE id = $1', [envelopeId])
+        const result = await admin.query('SELECT published_at FROM qtaxis_outbox WHERE id = $1', [envelopeId])
         publishedAt = result.rows[0]?.published_at
         return publishedAt != null
       },
       30_000,
-      () => `kinesin_outbox ${envelopeId} published_at is ${String(publishedAt)}`,
+      () => `qtaxis_outbox ${envelopeId} published_at is ${String(publishedAt)}`,
     )
 
     let runsAfter: Awaited<ReturnType<typeof engine.runs.list>>['rows'] = []
@@ -220,7 +220,7 @@ describe('loop: relay and worker against the local engine', () => {
     )
 
     const processed = await admin.query(
-      'SELECT count(*)::text AS count FROM kinesin_processed WHERE envelope_id = $1 AND handler = $2',
+      'SELECT count(*)::text AS count FROM qtaxis_processed WHERE envelope_id = $1 AND handler = $2',
       [envelopeId, 'record-order'],
     )
     expect(processed.rows[0]?.count).toBe('1')
@@ -256,7 +256,7 @@ describe('loop: relay and worker against the local engine', () => {
     // orders only by created_at with no tiebreaker, so five rows sharing one
     // transaction's created_at would leave their relative order undefined.
     for (const invoiceId of invoiceIds) {
-      await withTransaction(pool, (tx) => kinesin.publish(tx, sendInvoice, { orderId, invoiceId }, { tenantId }))
+      await withTransaction(pool, (tx) => qtaxis.publish(tx, sendInvoice, { orderId, invoiceId }, { tenantId }))
     }
 
     let sendInvoiceCount = -1
@@ -288,7 +288,7 @@ describe('loop: relay and worker against the local engine', () => {
     const missingInvoiceId = uuidv7()
 
     const envelope = await withTransaction(pool, (tx) =>
-      kinesin.publish(tx, sendInvoice, { orderId, invoiceId: missingInvoiceId }, { tenantId }),
+      qtaxis.publish(tx, sendInvoice, { orderId, invoiceId: missingInvoiceId }, { tenantId }),
     )
 
     let lastStatus: string | undefined
@@ -328,8 +328,8 @@ describe('loop: relay and worker against the local engine', () => {
 
     const tenantA = randomUUID()
     const tenantB = randomUUID()
-    const placedA = await placeOrder(pool, kinesin, { tenantId: tenantA, customerId: randomUUID() })
-    const placedB = await placeOrder(pool, kinesin, { tenantId: tenantB, customerId: randomUUID() })
+    const placedA = await placeOrder(pool, qtaxis, { tenantId: tenantA, customerId: randomUUID() })
+    const placedB = await placeOrder(pool, qtaxis, { tenantId: tenantB, customerId: randomUUID() })
     placedOrderEnvelopeIds.push(placedA.envelopeIds.orderPlaced, placedB.envelopeIds.orderPlaced)
     const envelopeIds = [
       placedA.envelopeIds.orderPlaced,
@@ -341,7 +341,7 @@ describe('loop: relay and worker against the local engine', () => {
     let publishedCount = 0
     await waitUntil(
       async () => {
-        const result = await admin.query('SELECT published_at FROM kinesin_outbox WHERE id = ANY($1)', [envelopeIds])
+        const result = await admin.query('SELECT published_at FROM qtaxis_outbox WHERE id = ANY($1)', [envelopeIds])
         publishedCount = result.rows.filter((row) => row.published_at != null).length
         return result.rows.length === envelopeIds.length && publishedCount === envelopeIds.length
       },

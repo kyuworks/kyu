@@ -1,11 +1,11 @@
-import { KinesinError, NonRetryableError } from './hatchet.js'
+import { NonRetryableError, QtaxisError } from './hatchet.js'
 
-export { EnvelopeMetadataError, EnvelopeOptionsError, MessageDataError, MessageDefinitionError } from '@kinesin/schemas'
-export type { EnvelopeOptionIssue, MessageDataIssue } from '@kinesin/schemas'
-export { KinesinError } from './hatchet.js'
+export { EnvelopeMetadataError, EnvelopeOptionsError, MessageDataError, MessageDefinitionError } from '@qtaxis/schemas'
+export type { EnvelopeOptionIssue, MessageDataIssue } from '@qtaxis/schemas'
+export { QtaxisError } from './hatchet.js'
 
 /** `createWorker` refuses two subscriptions to the same command name. */
-export class CommandHasTwoSubscribersError extends KinesinError {
+export class CommandHasTwoSubscribersError extends QtaxisError {
   readonly commandName: string
   readonly firstSubscriptionName: string
   readonly secondSubscriptionName: string

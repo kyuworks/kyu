@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Source this file — do not execute it. Defines resolve_base.
 #
-# Kinesin has one long-lived branch: main. PRs land on main and there is no
+# Qtaxis has one long-lived branch: main. PRs land on main and there is no
 # develop. Both detect-stage.sh and red2-worktree.sh need the same answer to
 # "what do I measure this branch against?", so it lives in one function and
 # cannot drift twice.

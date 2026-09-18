@@ -1,4 +1,4 @@
-import { createEnvelope, uuidv7 } from '@kinesin/sdk'
+import { createEnvelope, uuidv7 } from '@qtaxis/sdk'
 import { describe, expect, it } from 'vitest'
 import { orderPlaced, orderShipped, sendInvoice } from './messages.js'
 

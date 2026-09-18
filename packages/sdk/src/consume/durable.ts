@@ -6,8 +6,8 @@ import type {
   MessageDefinition,
   MessageSchema,
   Unparsed,
-} from '@kinesin/schemas'
-import { EnvelopeRejectedError, KinesinError } from '../errors.js'
+} from '@qtaxis/schemas'
+import { EnvelopeRejectedError, QtaxisError } from '../errors.js'
 import { eventScope } from '../eventScope.js'
 import { Or, SleepCondition, UserEventCondition, durationToMs } from '../hatchet.js'
 import type { CreateDurableTaskWorkflowOpts, Duration, DurableContext, HatchetClient, JsonObject } from '../hatchet.js'
@@ -54,12 +54,12 @@ const FIELD_PATH_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/
 
 function celEquals(field: string, equals: string): string {
   if (!FIELD_PATH_PATTERN.test(field)) {
-    throw new KinesinError(`waitFor: where.field "${field}" is not a dotted identifier path`)
+    throw new QtaxisError(`waitFor: where.field "${field}" is not a dotted identifier path`)
   }
   // `where.field` is relative to the payload already; a leading "input." would
   // splice into `input.input....`, a silent never-match.
   if (field === 'input' || field.startsWith('input.')) {
-    throw new KinesinError(`waitFor: where.field "${field}" is relative to the payload; drop the leading "input."`)
+    throw new QtaxisError(`waitFor: where.field "${field}" is relative to the payload; drop the leading "input."`)
   }
   return `input.${field} == ${JSON.stringify(equals)}`
 }
@@ -129,7 +129,7 @@ export async function waitForMessage<S extends MessageSchema>(
     return { kind: 'timeout' }
   }
 
-  throw new KinesinError(`waitFor: unexpected engine result shape: ${JSON.stringify(raw)}`)
+  throw new QtaxisError(`waitFor: unexpected engine result shape: ${JSON.stringify(raw)}`)
 }
 
 function buildDurableHandlerContext<TData extends MessageDataShape>(

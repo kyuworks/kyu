@@ -7,8 +7,8 @@ import type {
   MessageDefinition,
   MessageInput,
   MessageSchema,
-} from '@kinesin/schemas'
-import { createEnvelope } from '@kinesin/schemas'
+} from '@qtaxis/schemas'
+import { createEnvelope } from '@qtaxis/schemas'
 import type { Queryable } from '../db/queryable.js'
 import { insertOutboxRow } from './outboxRepository.js'
 

@@ -4,8 +4,8 @@
 #
 # Blocked in packages/*/src and examples/*/src:
 #   from '../../<other-package>/...'     relative path out of the package
-#   from '@kinesin/<pkg>/src/...'        deep import past the exports map
-#   from '@kinesin/<pkg>/dist/...'
+#   from '@qtaxis/<pkg>/src/...'        deep import past the exports map
+#   from '@qtaxis/<pkg>/dist/...'
 #
 # Blocked in examples/*/ only (the whole package, not just src/): examples
 # are the SDK's consumer proof, not another package internal to the bus. A
@@ -13,8 +13,8 @@
 # size gate already counts it as production. Every import form counts —
 # `from`, bare `import '...'`, dynamic `import('...')`, `require('...')` —
 # and so does the dependency itself in examples/*/package.json:
-#   @hatchet-dev/...                     examples consume @kinesin/sdk only
-#   @kinesin/schemas                     examples consume @kinesin/sdk only
+#   @hatchet-dev/...                     examples consume @qtaxis/sdk only
+#   @qtaxis/schemas                     examples consume @qtaxis/sdk only
 #
 # Includes examples/*/src/**/*.test.ts: an example's tests are part of the
 # consumer proof, unlike check-no-escape-hatches.sh, which exempts test
@@ -56,7 +56,7 @@ check_relative_escapes() {
 check_deep_imports() {
   local glob="$1"
   local deep
-  deep="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --exclude-dir=node_modules --exclude-dir=dist "from ['\"]@kinesin/[a-z0-9-]+/(src|dist)/" ${glob}src 2>/dev/null || true)"
+  deep="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --exclude-dir=node_modules --exclude-dir=dist "from ['\"]@qtaxis/[a-z0-9-]+/(src|dist)/" ${glob}src 2>/dev/null || true)"
   if [ -n "${deep}" ]; then
     printf '%s\n' "${deep}" | sed 's/^/FAIL: deep import past the exports map: /' >&2
     FAIL=1
@@ -71,11 +71,11 @@ check_deep_imports() {
 if [ -d examples ]; then
   # A banned module specifier, however it is pulled in: `from '...'`, a bare
   # side-effect `import '...'`, dynamic `import('...')`, or `require('...')`.
-  MODSPEC="@hatchet-dev/[^'\"]*|@kinesin/schemas([^'\"]*)?"
+  MODSPEC="@hatchet-dev/[^'\"]*|@qtaxis/schemas([^'\"]*)?"
   BANNED_PATTERN="(from|import)[[:space:]]+['\"](${MODSPEC})['\"]|(import|require)[[:space:]]*\([[:space:]]*['\"](${MODSPEC})['\"]"
   BANNED="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --exclude-dir=node_modules --exclude-dir=dist "${BANNED_PATTERN}" examples/*/ 2>/dev/null || true)"
   if [ -n "${BANNED}" ]; then
-    printf '%s\n' "${BANNED}" | sed 's/^/FAIL: examples consume @kinesin\/sdk only: /' >&2
+    printf '%s\n' "${BANNED}" | sed 's/^/FAIL: examples consume @qtaxis\/sdk only: /' >&2
     FAIL=1
   fi
 
@@ -91,7 +91,7 @@ for (const dir of fs.readdirSync(examplesDir)) {
   const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   for (const name of Object.keys(deps)) {
-    if (name.startsWith("@hatchet-dev/") || name === "@kinesin/schemas") {
+    if (name.startsWith("@hatchet-dev/") || name === "@qtaxis/schemas") {
       hits.push(`examples/${dir}/package.json: ${name}`);
     }
   }
@@ -100,7 +100,7 @@ process.stdout.write(hits.join("\n"));
 EOF
 )"
   if [ -n "${BANNED_DEPS}" ]; then
-    printf '%s\n' "${BANNED_DEPS}" | sed 's/^/FAIL: examples consume @kinesin\/sdk only: /' >&2
+    printf '%s\n' "${BANNED_DEPS}" | sed 's/^/FAIL: examples consume @qtaxis\/sdk only: /' >&2
     FAIL=1
   fi
 fi

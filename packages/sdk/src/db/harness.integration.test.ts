@@ -2,13 +2,13 @@ import { Client } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 // Proves the integration global setup (vitest.integration.setup.ts) did its
-// job: `kinesin_test` exists, is reachable, and has the migrations applied
+// job: `qtaxis_test` exists, is reachable, and has the migrations applied
 // before any suite's tests run.
 
 let client: Client
 
 beforeAll(async () => {
-  client = new Client({ connectionString: process.env['KINESIN_TEST_DATABASE_URL'] })
+  client = new Client({ connectionString: process.env['QTAXIS_TEST_DATABASE_URL'] })
   await client.connect()
 })
 
@@ -17,7 +17,7 @@ afterAll(async () => {
 })
 
 const databaseName = decodeURIComponent(
-  new URL(process.env['KINESIN_TEST_DATABASE_URL'] ?? '').pathname.replace(/^\//, ''),
+  new URL(process.env['QTAXIS_TEST_DATABASE_URL'] ?? '').pathname.replace(/^\//, ''),
 )
 
 describe('integration test harness', () => {
@@ -31,6 +31,6 @@ describe('integration test harness', () => {
       "SELECT tablename FROM pg_tables WHERE schemaname = 'public'",
     )
     const tableNames = result.rows.map((row) => row.tablename).sort()
-    expect(tableNames).toEqual(['kinesin_outbox', 'kinesin_processed'])
+    expect(tableNames).toEqual(['qtaxis_outbox', 'qtaxis_processed'])
   })
 })

@@ -99,11 +99,11 @@ export function renderBusPage(dashboardUrl: string): string {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Kinesin playground: bus</title>
+<title>Qtaxis playground: bus</title>
 <style>${STYLE}</style>
 </head>
 <body>
-<h1>Kinesin playground: the bus</h1>
+<h1>Qtaxis playground: the bus</h1>
 <p><a href="/">Back to the forms</a> &middot;
 <a href="${dashboardUrl}" target="_blank" rel="noreferrer">Hatchet dashboard</a></p>
 <p id="status"></p>

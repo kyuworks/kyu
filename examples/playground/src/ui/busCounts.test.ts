@@ -1,4 +1,4 @@
-import type { Queryable, QueryParam, Unparsed } from '@kinesin/sdk'
+import type { Queryable, QueryParam, Unparsed } from '@qtaxis/sdk'
 import { describe, expect, it } from 'vitest'
 import type { BusTopology } from './busTopology.js'
 import { readBusCounts } from './busCounts.js'

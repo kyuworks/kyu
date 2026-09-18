@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { defineEvent, envelopeSchema } from '@kinesin/schemas'
+import { defineEvent, envelopeSchema } from '@qtaxis/schemas'
 import { Client, DatabaseError } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -9,7 +9,7 @@ import { createPublisher, publishEnvelope } from './publish.js'
 // back is never delivered (rollback-never-delivers).
 
 const thingHappened = defineEvent({
-  name: 'kinesin.outbox_test.happened',
+  name: 'qtaxis.outbox_test.happened',
   version: 1,
   data: z.object({ n: z.number() }),
 })
@@ -17,7 +17,7 @@ const thingHappened = defineEvent({
 let client: Client
 
 beforeAll(async () => {
-  client = new Client({ connectionString: process.env['KINESIN_TEST_DATABASE_URL'] })
+  client = new Client({ connectionString: process.env['QTAXIS_TEST_DATABASE_URL'] })
   await client.connect()
 })
 
@@ -26,7 +26,7 @@ afterAll(async () => {
 })
 
 afterEach(async () => {
-  await client.query('TRUNCATE kinesin_outbox')
+  await client.query('TRUNCATE qtaxis_outbox')
 })
 
 describe('publish via the outbox', () => {
@@ -38,14 +38,14 @@ describe('publish via the outbox', () => {
 
     // Positive control: the row exists on the same client before rollback,
     // so this test cannot pass a publish() that silently writes nothing.
-    const beforeRollback = await client.query('SELECT count(*)::text AS count FROM kinesin_outbox WHERE id = $1', [
+    const beforeRollback = await client.query('SELECT count(*)::text AS count FROM qtaxis_outbox WHERE id = $1', [
       envelope.id,
     ])
     expect(Number(beforeRollback.rows[0]?.count)).toBe(1)
 
     await client.query('ROLLBACK')
 
-    const result = await client.query('SELECT count(*)::text AS count FROM kinesin_outbox WHERE id = $1', [envelope.id])
+    const result = await client.query('SELECT count(*)::text AS count FROM qtaxis_outbox WHERE id = $1', [envelope.id])
     expect(Number(result.rows[0]?.count)).toBe(0)
   })
 
@@ -57,7 +57,7 @@ describe('publish via the outbox', () => {
     const envelope = await publisher.publish(client, thingHappened, { n: 2 }, { tenantId })
     await client.query('COMMIT')
 
-    const result = await client.query('SELECT name, tenant_id, envelope FROM kinesin_outbox WHERE id = $1', [
+    const result = await client.query('SELECT name, tenant_id, envelope FROM qtaxis_outbox WHERE id = $1', [
       envelope.id,
     ])
     expect(result.rows).toHaveLength(1)

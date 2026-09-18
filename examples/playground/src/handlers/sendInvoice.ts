@@ -1,5 +1,5 @@
-import type { HandlerContext, Kinesin, MessageData, Subscription } from '@kinesin/sdk'
-import { NonRetryableError } from '@kinesin/sdk'
+import type { HandlerContext, Qtaxis, MessageData, Subscription } from '@qtaxis/sdk'
+import { NonRetryableError } from '@qtaxis/sdk'
 import type { Pool } from 'pg'
 import { withTransaction } from '../db/pool.js'
 import { sendInvoice } from '../messages.js'
@@ -9,12 +9,12 @@ type SendInvoiceContext = HandlerContext<MessageData<typeof sendInvoice>>
 
 // Exported so the unit test can drive it directly against a fake pool,
 // without reaching into the opaque Hatchet workflow subscribe() builds.
-export async function handleSendInvoice(pool: Pool, kinesin: Kinesin, ctx: SendInvoiceContext): Promise<void> {
+export async function handleSendInvoice(pool: Pool, qtaxis: Qtaxis, ctx: SendInvoiceContext): Promise<void> {
   const tenantId = requireTenant('send-invoice', ctx)
   const { orderId, invoiceId } = ctx.envelope.data
 
   await withTransaction(pool, (tx) =>
-    kinesin.onceById(tx, ctx.envelope.id, 'send-invoice', async () => {
+    qtaxis.onceById(tx, ctx.envelope.id, 'send-invoice', async () => {
       const updated = await tx.query(
         'UPDATE shop_invoice SET sent_at = now() WHERE id = $1 AND order_id = $2 RETURNING id',
         [invoiceId, orderId],
@@ -32,11 +32,11 @@ export async function handleSendInvoice(pool: Pool, kinesin: Kinesin, ctx: SendI
   )
 }
 
-export function sendInvoiceSubscription(kinesin: Kinesin, pool: Pool): Subscription {
-  return kinesin.subscribe(sendInvoice, {
+export function sendInvoiceSubscription(qtaxis: Qtaxis, pool: Pool): Subscription {
+  return qtaxis.subscribe(sendInvoice, {
     name: 'send-invoice',
     concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'fifo' },
     retries: 0,
-    handler: (ctx) => handleSendInvoice(pool, kinesin, ctx),
+    handler: (ctx) => handleSendInvoice(pool, qtaxis, ctx),
   })
 }

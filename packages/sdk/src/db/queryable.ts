@@ -1,4 +1,4 @@
-import type { Unparsed } from '@kinesin/schemas'
+import type { Unparsed } from '@qtaxis/schemas'
 
 export type QueryParam = string | number | boolean | null | Date
 

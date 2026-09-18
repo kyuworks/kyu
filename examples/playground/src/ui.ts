@@ -3,13 +3,13 @@ import nodeProcess from 'node:process'
 import type { Pool } from 'pg'
 import { readConfig } from './config.js'
 import { createPool } from './db/pool.js'
-import { createPlaygroundKinesin } from './kinesin.js'
+import { createPlaygroundQtaxis } from './qtaxis.js'
 import { describeError, exitAfterLog, log } from './log.js'
 import { buildSubscriptions } from './subscriptions.js'
 import { describeBusTopology } from './ui/busTopology.js'
 import { handleUiRequest } from './ui/handleRequest.js'
 
-// The engine's own dashboard, not one Kinesin ships (see infra/hatchet/compose.yaml).
+// The engine's own dashboard, not one Qtaxis ships (see infra/hatchet/compose.yaml).
 const DASHBOARD_URL = 'http://localhost:8888'
 
 function readBody(req: http.IncomingMessage): Promise<string> {
@@ -38,16 +38,16 @@ function onShutdownSignal(server: http.Server, pool: Pool): void {
 async function main(): Promise<void> {
   const config = readConfig()
   const pool = createPool(config.databaseUrl)
-  const kinesin = createPlaygroundKinesin(config)
+  const qtaxis = createPlaygroundQtaxis(config)
   // Built once from the same registry the worker uses, so the diagram at
   // /bus can never name a subscription the worker does not run.
-  const topology = describeBusTopology(buildSubscriptions(kinesin, pool, config))
+  const topology = describeBusTopology(buildSubscriptions(qtaxis, pool, config))
 
   const server = http.createServer((req, res) => {
     readBody(req)
       .then((body) =>
         handleUiRequest(
-          { pool, kinesin, dashboardUrl: DASHBOARD_URL, topology },
+          { pool, qtaxis, dashboardUrl: DASHBOARD_URL, topology },
           { method: req.method ?? '', url: req.url ?? '', contentType: req.headers['content-type'] ?? '', body },
         ),
       )

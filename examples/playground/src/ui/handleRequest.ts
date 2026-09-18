@@ -1,5 +1,5 @@
-import type { Kinesin } from '@kinesin/sdk'
-import { uuidv7 } from '@kinesin/sdk'
+import type { Qtaxis } from '@qtaxis/sdk'
+import { uuidv7 } from '@qtaxis/sdk'
 import type { Pool } from 'pg'
 import type { z } from 'zod'
 import { describeError, log } from '../log.js'
@@ -14,7 +14,7 @@ import { placeOrderRequestSchema, shipOrderRequestSchema } from './requests.js'
 
 export interface UiRequestDeps {
   pool: Pool
-  kinesin: Kinesin
+  qtaxis: Qtaxis
   dashboardUrl: string
   topology: BusTopology
 }
@@ -89,7 +89,7 @@ async function handlePlaceOrder(deps: UiRequestDeps, body: string): Promise<UiRe
   const parsed = parseBody<PlaceOrderRequest>(placeOrderRequestSchema, body)
   if (!parsed.ok) return errorResponse(400, parsed.error)
   try {
-    const placed = await placeOrder(deps.pool, deps.kinesin, {
+    const placed = await placeOrder(deps.pool, deps.qtaxis, {
       tenantId: parsed.value.tenantId,
       customerId: parsed.value.customerId ?? uuidv7(),
     })
@@ -109,7 +109,7 @@ async function handleShipOrder(deps: UiRequestDeps, body: string): Promise<UiRes
   const parsed = parseBody<ShipOrderRequest>(shipOrderRequestSchema, body)
   if (!parsed.ok) return errorResponse(400, parsed.error)
   try {
-    const envelopeId = await shipOrder(deps.pool, deps.kinesin, {
+    const envelopeId = await shipOrder(deps.pool, deps.qtaxis, {
       tenantId: parsed.value.tenantId,
       orderId: parsed.value.orderId,
       carrier: parsed.value.carrier ?? 'unspecified',

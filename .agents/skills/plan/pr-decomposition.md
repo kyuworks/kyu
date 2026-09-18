@@ -72,7 +72,7 @@ A "flag" in this repository is an SDK option that defaults off, or a config valu
 **Shape A — option-gated feature.** The PR Plan **ends with an integration PR, then a flip-readiness gate**, after the feature PRs —
 
 - **Integration PR** — implement integration tests (`*.integration.test.ts`, run against the local Hatchet stack) for the *assembled* feature (happy path + key edges), run with the option ON. Depends on all feature PRs.
-- **Flip-readiness gate** (the final step) — run the full integration suite (`pnpm --filter @kinesin/sdk test:integration`) + a **manual flip-readiness pass + Matt's signoff** against the whole feature *behind the option*, and fix what surfaces. This produces a **GO to flip** — a deliberate, separate release step (a PR that changes the default, or a config change), **not** one of the feature's code PRs. Depends on every feature PR **and** the integration PR. When the option lives in this one repository, the integration and flip gates **collapse** into one combined gate.
+- **Flip-readiness gate** (the final step) — run the full integration suite (`pnpm --filter @qtaxis/sdk test:integration`) + a **manual flip-readiness pass + Matt's signoff** against the whole feature *behind the option*, and fix what surfaces. This produces a **GO to flip** — a deliberate, separate release step (a PR that changes the default, or a config change), **not** one of the feature's code PRs. Depends on every feature PR **and** the integration PR. When the option lives in this one repository, the integration and flip gates **collapse** into one combined gate.
 
 Building behind an option is *why* the feature PRs can each be larger (dark code can't affect live consumers).
 

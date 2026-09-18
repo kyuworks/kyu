@@ -1,7 +1,7 @@
 {
-  "name": "@kinesin/sdk",
+  "name": "@qtaxis/sdk",
   "version": "0.0.0",
-  "description": "Kinesin client SDK: publish through a transactional outbox, subscribe with Hatchet, run durable handlers.",
+  "description": "Qtaxis client SDK: publish through a transactional outbox, subscribe with Hatchet, run durable handlers.",
   "type": "module",
   "license": "UNLICENSED",
   "main": "./dist/index.js",
@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@hatchet-dev/typescript-sdk": "^1.32.0",
-    "@kinesin/schemas": "workspace:*",
+    "@qtaxis/schemas": "workspace:*",
     "zod": "^4.0.0"
   },
   "devDependencies": {

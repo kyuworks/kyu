@@ -1,6 +1,6 @@
-import type { Subscription } from '@kinesin/sdk'
+import type { Subscription } from '@qtaxis/sdk'
 import { WATCH_SHIPPING_COMPLETED, WATCH_SHIPPING_TIMEOUT, WATCH_SHIPPING_WAITING } from '../handlers/watchShipping.js'
-import { PLAYGROUND_SOURCE } from '../kinesin.js'
+import { PLAYGROUND_SOURCE } from '../qtaxis.js'
 
 export interface TopologySubscription {
   name: string

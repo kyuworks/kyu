@@ -1,8 +1,8 @@
 import nodeProcess from 'node:process'
-import type { KinesinRelayOptions, Relay } from '@kinesin/sdk'
+import type { QtaxisRelayOptions, Relay } from '@qtaxis/sdk'
 import { Client } from 'pg'
 import { readConfig } from './config.js'
-import { createPlaygroundKinesin } from './kinesin.js'
+import { createPlaygroundQtaxis } from './qtaxis.js'
 import { describeError, exitAfterLog, log } from './log.js'
 
 // SIGTERM/SIGINT both drain the relay before exiting; a supervisor sends
@@ -31,8 +31,8 @@ async function main(): Promise<void> {
     exitAfterLog(1, 'relay', 'db-error', { message: describeError(error) })
   })
 
-  const kinesin = createPlaygroundKinesin(config)
-  const relayOptions: KinesinRelayOptions = {
+  const qtaxis = createPlaygroundQtaxis(config)
+  const relayOptions: QtaxisRelayOptions = {
     db,
     workerId: `playground-relay-${nodeProcess.pid}`,
     // A relay killed without SIGTERM (a crash, a supervisor SIGKILL) leaves
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
     },
   }
   if (config.relayBatchSize !== undefined) relayOptions.batchSize = config.relayBatchSize
-  const relay = kinesin.startRelay(relayOptions)
+  const relay = qtaxis.startRelay(relayOptions)
 
   nodeProcess.on('SIGTERM', () => onShutdownSignal(relay, db))
   nodeProcess.on('SIGINT', () => onShutdownSignal(relay, db))

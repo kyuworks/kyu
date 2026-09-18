@@ -1,9 +1,9 @@
-import { defineEvent } from '@kinesin/schemas'
+import { defineEvent } from '@qtaxis/schemas'
 import { describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { z } from 'zod'
-import { createKinesin } from './createKinesin.js'
-import type { KinesinRelayOptions } from './createKinesin.js'
+import { createQtaxis } from './createQtaxis.js'
+import type { QtaxisRelayOptions } from './createQtaxis.js'
 import type { Queryable, QueryParam, QueryRows } from './db/queryable.js'
 import type {
   CreateDurableTaskWorkflowOpts,
@@ -121,26 +121,26 @@ function fakeRelayDb(row: OutboxRow): Queryable {
   }
 }
 
-describe('createKinesin', () => {
+describe('createQtaxis', () => {
   it('returns every member', () => {
     const { client } = fakeHatchetClient()
-    const kinesin = createKinesin({ hatchet: client, source: 'shop-service' })
+    const qtaxis = createQtaxis({ hatchet: client, source: 'shop-service' })
 
-    expect(Object.keys(kinesin).sort()).toEqual(
+    expect(Object.keys(qtaxis).sort()).toEqual(
       ['durable', 'onceById', 'publish', 'startRelay', 'subscribe', 'worker'].sort(),
     )
   })
 
   it('publish uses the given source', async () => {
     const { client } = fakeHatchetClient()
-    const kinesin = createKinesin({ hatchet: client, source: 'shop-service' })
+    const qtaxis = createQtaxis({ hatchet: client, source: 'shop-service' })
     const db: Queryable = {
       query(_text: string, _params: readonly QueryParam[]): Promise<QueryRows> {
         return Promise.resolve({ rows: [], rowCount: 1 })
       },
     }
 
-    const envelope = await kinesin.publish(
+    const envelope = await qtaxis.publish(
       db,
       orderPlaced,
       { orderId: '018f0000-0000-7000-8000-000000000002' },
@@ -154,9 +154,9 @@ describe('createKinesin', () => {
 
   it('subscribe forwards to the underlying function with the bound client', () => {
     const { client, capturedTaskOptions } = fakeHatchetClient()
-    const kinesin = createKinesin({ hatchet: client, source: 'shop-service' })
+    const qtaxis = createQtaxis({ hatchet: client, source: 'shop-service' })
 
-    const subscription = kinesin.subscribe(orderPlaced, { name: 'invoice-recorder', handler: () => undefined })
+    const subscription = qtaxis.subscribe(orderPlaced, { name: 'invoice-recorder', handler: () => undefined })
 
     expect(subscription).toEqual({
       name: 'invoice-recorder',
@@ -170,9 +170,9 @@ describe('createKinesin', () => {
 
   it('durable forwards to the underlying function with the bound client', () => {
     const { client, capturedDurableOptions } = fakeHatchetClient()
-    const kinesin = createKinesin({ hatchet: client, source: 'shop-service' })
+    const qtaxis = createQtaxis({ hatchet: client, source: 'shop-service' })
 
-    kinesin.durable(orderPlaced, { name: 'follow-up', handler: () => undefined })
+    qtaxis.durable(orderPlaced, { name: 'follow-up', handler: () => undefined })
 
     expect(capturedDurableOptions()?.name).toBe('follow-up')
     expect(capturedDurableOptions()?.onEvents).toEqual(['shop.order.placed'])
@@ -180,24 +180,24 @@ describe('createKinesin', () => {
 
   it('worker forwards to the underlying function with the bound client', async () => {
     const { client, capturedWorkerOptions, workerCallCount } = fakeHatchetClient()
-    const kinesin = createKinesin({ hatchet: client, source: 'shop-service' })
-    const subscription = kinesin.subscribe(orderPlaced, { name: 'invoice-recorder', handler: () => undefined })
+    const qtaxis = createQtaxis({ hatchet: client, source: 'shop-service' })
+    const subscription = qtaxis.subscribe(orderPlaced, { name: 'invoice-recorder', handler: () => undefined })
 
-    await kinesin.worker('shop-worker', { subscriptions: [subscription] })
+    await qtaxis.worker('shop-worker', { subscriptions: [subscription] })
 
     expect(workerCallCount()).toBe(1)
     expect(capturedWorkerOptions()?.workflows).toEqual([subscription.workflow])
   })
 })
 
-describe('createKinesin: startRelay', () => {
-  it('binds startRelay to the same hatchet client given to createKinesin', async () => {
+describe('createQtaxis: startRelay', () => {
+  it('binds startRelay to the same hatchet client given to createQtaxis', async () => {
     const bulkPush = vi.fn<BulkPushProcedure>(async (_name, items) => ({ events: items.map(() => ({})) }))
     const hatchet = { events: fakeEvents(bulkPush) } as HatchetClient
-    const kinesin = createKinesin({ hatchet, source: 'shop-service' })
+    const qtaxis = createQtaxis({ hatchet, source: 'shop-service' })
     const db = fakeRelayDb(claimedRow())
 
-    const relay = kinesin.startRelay({ db, workerId: 'worker-1', pollIntervalMs: 60_000 })
+    const relay = qtaxis.startRelay({ db, workerId: 'worker-1', pollIntervalMs: 60_000 })
     try {
       await relay.tick()
       expect(bulkPush).toHaveBeenCalledTimes(1)
@@ -211,7 +211,7 @@ describe('createKinesin: startRelay', () => {
     const bound = { events: fakeEvents(boundBulkPush) } as HatchetClient
     const otherBulkPush = vi.fn<BulkPushProcedure>(async (_name, items) => ({ events: items.map(() => ({})) }))
     const other = { events: fakeEvents(otherBulkPush) } as HatchetClient
-    const kinesin = createKinesin({ hatchet: bound, source: 'shop-service' })
+    const qtaxis = createQtaxis({ hatchet: bound, source: 'shop-service' })
     const db = fakeRelayDb(claimedRow())
 
     // Stands in for a caller holding a value already typed `RelayOptions`
@@ -223,9 +223,9 @@ describe('createKinesin: startRelay', () => {
       workerId: 'worker-1',
       pollIntervalMs: 60_000,
       hatchet: other,
-    } as KinesinRelayOptions
+    } as QtaxisRelayOptions
 
-    const relay = kinesin.startRelay(relayOptions)
+    const relay = qtaxis.startRelay(relayOptions)
     try {
       await relay.tick()
       expect(boundBulkPush).toHaveBeenCalledTimes(1)

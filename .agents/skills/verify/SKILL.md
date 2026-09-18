@@ -25,9 +25,9 @@ breaks four integration tests should be found in two seconds, not two minutes.
 | Order | Loop | Command | Move on when |
 |---|---|---|---|
 | 1 | Unit | `pnpm --filter <pkg> test` | exit 0, count matches the coverage matrix, zero unexplained skips |
-| 2 | Integration | `pnpm hatchet:up` once, then `pnpm --filter @kinesin/sdk test:integration` | same |
+| 2 | Integration | `pnpm hatchet:up` once, then `pnpm --filter @qtaxis/sdk test:integration` | same |
 
-`<pkg>` is `@kinesin/schemas` or `@kinesin/sdk`. Vitest is installed per package; bare
+`<pkg>` is `@qtaxis/schemas` or `@qtaxis/sdk`. Vitest is installed per package; bare
 `pnpm vitest` from the root does not work. Integration tests are `*.integration.test.ts`
 and run against the local Hatchet Lite + Postgres stack from `infra/hatchet/compose.yaml`.
 If the stack is not up, the failure is a setup problem, not a red test — start it and
@@ -84,12 +84,12 @@ Now prove the tests depend on the implementation.
 
 ```bash
 .agents/skills/_pipeline/scripts/red2-worktree.sh \
-  --cmd "pnpm --filter @kinesin/sdk test" \
-  --cmd "pnpm --filter @kinesin/sdk test:integration" \
+  --cmd "pnpm --filter @qtaxis/sdk test" \
+  --cmd "pnpm --filter @qtaxis/sdk test:integration" \
   --base main
 ```
 
-The filter names the package the feature touched — `@kinesin/sdk` or `@kinesin/schemas` —
+The filter names the package the feature touched — `@qtaxis/sdk` or `@qtaxis/schemas` —
 and both commands must name the same package. Bare `pnpm vitest run` and
 `pnpm test:integration` fail from the root: vitest is installed per package, and
 `test:integration` only does real work in `packages/sdk`. The integration command needs

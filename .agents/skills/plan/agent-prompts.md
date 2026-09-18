@@ -22,7 +22,7 @@ Also search for:
 Report back with:
 1. **Files read** — full path list
 2. **Patterns found** — how does the codebase handle {similar functionality}?
-3. **Dependencies** — what imports what? Map the dependency chain, including which package (`@kinesin/schemas`, `@kinesin/sdk`) each symbol lives in.
+3. **Dependencies** — what imports what? Map the dependency chain, including which package (`@qtaxis/schemas`, `@qtaxis/sdk`) each symbol lives in.
 4. **Constraints** — types, Zod schemas, the envelope shape, the outbox SQL, the SDK public API — anything the plan must respect
 5. **Conventions** — naming, folder structure, error handling patterns in this area
 
@@ -45,10 +45,10 @@ Draft your section of the plan following the Plan Document Structure (see plan-d
 - For each file you propose changing, explain WHAT changes and WHY
 - Produce **Work Units** (WU-N) for your domain — each WU maps to one implementation agent
 - Each WU MUST include: domain, agent scope, files, dependencies, acceptance criteria, audit focus, integration concerns, test requirements
-- Acceptance criteria MUST be specific and testable (not "works correctly" — instead "`publish()` inside a rolled-back transaction leaves no `kinesin_outbox` row")
+- Acceptance criteria MUST be specific and testable (not "works correctly" — instead "`publish()` inside a rolled-back transaction leaves no `qtaxis_outbox` row")
 - Identify risks and propose mitigations
 - List tests that need updating or creating, and say which level each is (unit, integration against the local Hatchet stack, or manual with a reason)
-- Trace impacts: what other files/packages are affected by your changes? Does a consumer of `@kinesin/sdk` see a different public API or envelope shape?
+- Trace impacts: what other files/packages are affected by your changes? Does a consumer of `@qtaxis/sdk` see a different public API or envelope shape?
 - Estimate LOC and file count per WU so the PR Decomposition phase has real numbers to work with
 
 Do NOT propose changes that contradict existing codebase patterns unless you explain why the deviation is justified.

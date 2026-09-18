@@ -1,4 +1,4 @@
-import type { QueryParam, QueryRows } from '@kinesin/sdk'
+import type { QueryParam, QueryRows } from '@qtaxis/sdk'
 import { z } from 'zod'
 import type { BusTopology } from './busTopology.js'
 
@@ -14,7 +14,7 @@ export interface BusCounts {
   subscriptions: SubscriptionCounts[]
 }
 
-// @kinesin/sdk's Queryable rejects a Pool by design (db/queryable.ts's
+// @qtaxis/sdk's Queryable rejects a Pool by design (db/queryable.ts's
 // `totalCount?: never`); a Pool, PoolClient and Queryable all satisfy this.
 export interface CountsSource {
   query(text: string, params: readonly QueryParam[]): Promise<QueryRows>
@@ -48,10 +48,10 @@ function doneHandlerLiterals(topology: BusTopology): DoneHandlerLiterals {
   return { handlers: textArrayLiteral(handlers), owners: textArrayLiteral(owners) }
 }
 
-// The playground relay never prunes kinesin_outbox, so its row count is the
+// The playground relay never prunes qtaxis_outbox, so its row count is the
 // total ever published (design decided in issue #56).
 async function readPublishedCount(db: CountsSource): Promise<number> {
-  const result = await db.query('SELECT count(*)::int AS count FROM kinesin_outbox', [])
+  const result = await db.query('SELECT count(*)::int AS count FROM qtaxis_outbox', [])
   return countRowSchema.parse(result.rows[0]).count
 }
 
@@ -127,7 +127,7 @@ async function readInFlightCount(db: CountsSource, topology: BusTopology): Promi
        SELECT * FROM unnest($3::text[], $4::text[]) AS t(handler, name)
      )
      SELECT count(DISTINCT o.id)::int AS count
-     FROM kinesin_outbox o
+     FROM qtaxis_outbox o
      JOIN subs s ON s.message_name = o.name
      WHERE NOT EXISTS (
        SELECT 1

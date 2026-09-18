@@ -20,21 +20,21 @@ init_fixture() {
     "${root}/packages/notests/src" "${root}/scripts/lib"
   cat > "${root}/packages/schemas/package.json" <<'JSON'
 {
-  "name": "@kinesin/schemas",
+  "name": "@qtaxis/schemas",
   "scripts": { "lint": "true", "typecheck": "true", "typecheck:tests": "true", "test": "true" }
 }
 JSON
   cat > "${root}/packages/sdk/package.json" <<'JSON'
 {
-  "name": "@kinesin/sdk",
-  "dependencies": { "@kinesin/schemas": "workspace:*" },
+  "name": "@qtaxis/sdk",
+  "dependencies": { "@qtaxis/schemas": "workspace:*" },
   "scripts": { "lint": "true", "typecheck": "true", "typecheck:tests": "true", "test": "true" }
 }
 JSON
   cat > "${root}/examples/playground/package.json" <<'JSON'
 {
-  "name": "@kinesin/example-playground",
-  "dependencies": { "@kinesin/sdk": "workspace:*" },
+  "name": "@qtaxis/example-playground",
+  "dependencies": { "@qtaxis/sdk": "workspace:*" },
   "scripts": { "lint": "true", "typecheck": "true", "typecheck:tests": "true", "test": "true" }
 }
 JSON
@@ -43,7 +43,7 @@ JSON
   # green suite when nothing exercises a package missing the script).
   cat > "${root}/packages/notests/package.json" <<'JSON'
 {
-  "name": "@kinesin/notests",
+  "name": "@qtaxis/notests",
   "scripts": { "lint": "true", "typecheck": "true", "test": "true" }
 }
 JSON
@@ -75,16 +75,16 @@ git -C "${REPO}" add examples/playground/src/c.ts
 git -C "${REPO}" commit -qm "touch example"
 
 assert_output_contains "example change selects lint" \
-  $'lint:examples/playground\tpnpm --filter @kinesin/example-playground lint' \
+  $'lint:examples/playground\tpnpm --filter @qtaxis/example-playground lint' \
   run_select "${REPO}" "HEAD~1...HEAD"
 assert_output_contains "example change selects typecheck" \
-  $'typecheck:examples/playground\tpnpm --filter @kinesin/example-playground typecheck' \
+  $'typecheck:examples/playground\tpnpm --filter @qtaxis/example-playground typecheck' \
   run_select "${REPO}" "HEAD~1...HEAD"
 assert_output_contains "example change selects typecheck:tests" \
-  $'typecheck-tests:examples/playground\tpnpm --filter @kinesin/example-playground typecheck:tests' \
+  $'typecheck-tests:examples/playground\tpnpm --filter @qtaxis/example-playground typecheck:tests' \
   run_select "${REPO}" "HEAD~1...HEAD"
 assert_output_contains "example change selects test" \
-  $'test:examples/playground\tpnpm --filter @kinesin/example-playground test' \
+  $'test:examples/playground\tpnpm --filter @qtaxis/example-playground test' \
   run_select "${REPO}" "HEAD~1...HEAD"
 assert_output_lacks "example change does not select an unrelated package" \
   "packages/schemas" \

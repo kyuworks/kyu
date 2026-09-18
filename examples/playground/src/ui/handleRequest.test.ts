@@ -1,5 +1,5 @@
-import type { Kinesin, Queryable, QueryParam, Unparsed } from '@kinesin/sdk'
-import { createEnvelope } from '@kinesin/sdk'
+import type { Qtaxis, Queryable, QueryParam, Unparsed } from '@qtaxis/sdk'
+import { createEnvelope } from '@qtaxis/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
 import type { BusTopology } from './busTopology.js'
@@ -47,14 +47,14 @@ interface RecordedPublish {
   tenantId: string | null
 }
 
-function fakeKinesin(publishes: RecordedPublish[]): Kinesin {
-  const publish: Kinesin['publish'] = async (_tx: Queryable, definition, data, options) => {
+function fakeQtaxis(publishes: RecordedPublish[]): Qtaxis {
+  const publish: Qtaxis['publish'] = async (_tx: Queryable, definition, data, options) => {
     const name: string = definition.name
     publishes.push({ name, tenantId: options.tenantId })
     return createEnvelope(definition, data, { tenantId: options.tenantId, source: 'test' })
   }
-  const stub: Pick<Kinesin, 'publish'> = { publish }
-  return stub as Kinesin
+  const stub: Pick<Qtaxis, 'publish'> = { publish }
+  return stub as Qtaxis
 }
 
 const fakeTopology: BusTopology = {
@@ -71,8 +71,8 @@ const fakeTopology: BusTopology = {
   ],
 }
 
-function deps(pool: Pool, kinesin: Kinesin, topology: BusTopology = fakeTopology) {
-  return { pool, kinesin, dashboardUrl: 'http://localhost:8888', topology }
+function deps(pool: Pool, qtaxis: Qtaxis, topology: BusTopology = fakeTopology) {
+  return { pool, qtaxis, dashboardUrl: 'http://localhost:8888', topology }
 }
 
 // readBusCounts calls deps.pool.query() directly (no transaction), so this
@@ -94,9 +94,9 @@ describe('handleUiRequest', () => {
     const connectCalls: number[] = []
     const client = fakeClient([])
     const pool = fakePool(connectCalls, client)
-    const kinesin = fakeKinesin([])
+    const qtaxis = fakeQtaxis([])
 
-    const response = await handleUiRequest(deps(pool, kinesin), jsonPost('/orders', '{}'))
+    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/orders', '{}'))
 
     expect(response.status).toBe(400)
     const parsed: { error: string } = JSON.parse(response.body)
@@ -108,9 +108,9 @@ describe('handleUiRequest', () => {
     const connectCalls: number[] = []
     const client = fakeClient([])
     const pool = fakePool(connectCalls, client)
-    const kinesin = fakeKinesin([])
+    const qtaxis = fakeQtaxis([])
 
-    const response = await handleUiRequest(deps(pool, kinesin), jsonPost('/orders', '{not json'))
+    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/orders', '{not json'))
 
     expect(response.status).toBe(400)
     const parsed: { error: string } = JSON.parse(response.body)
@@ -122,10 +122,10 @@ describe('handleUiRequest', () => {
     const connectCalls: number[] = []
     const client = fakeClient([])
     const pool = fakePool(connectCalls, client)
-    const kinesin = fakeKinesin([])
+    const qtaxis = fakeQtaxis([])
     const oversizedBody = `{"tenantId":"${'a'.repeat(70 * 1024)}"}`
 
-    const response = await handleUiRequest(deps(pool, kinesin), jsonPost('/orders', oversizedBody))
+    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/orders', oversizedBody))
 
     expect(response.status).toBe(413)
     expect(connectCalls).toEqual([])
@@ -135,9 +135,9 @@ describe('handleUiRequest', () => {
     const connectCalls: number[] = []
     const client = fakeClient([])
     const pool = fakePool(connectCalls, client)
-    const kinesin = fakeKinesin([])
+    const qtaxis = fakeQtaxis([])
 
-    const response = await handleUiRequest(deps(pool, kinesin), {
+    const response = await handleUiRequest(deps(pool, qtaxis), {
       method: 'POST',
       url: '/orders',
       contentType: 'text/plain',
@@ -154,12 +154,12 @@ describe('handleUiRequest', () => {
     const client = fakeClient(queries)
     const pool = fakePool(connectCalls, client)
     const publishes: RecordedPublish[] = []
-    const kinesin = fakeKinesin(publishes)
+    const qtaxis = fakeQtaxis(publishes)
     const tenantId = '018f0000-0000-7000-8000-000000000001'
     const customerId = '018f0000-0000-7000-8000-000000000002'
 
     const response = await handleUiRequest(
-      deps(pool, kinesin),
+      deps(pool, qtaxis),
       jsonPost('/orders', JSON.stringify({ tenantId, customerId })),
     )
 
@@ -181,12 +181,12 @@ describe('handleUiRequest', () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
     const publishes: RecordedPublish[] = []
-    const kinesin = fakeKinesin(publishes)
+    const qtaxis = fakeQtaxis(publishes)
     const tenantId = '018f0000-0000-7000-8000-000000000001'
     const orderId = '018f0000-0000-7000-8000-000000000003'
 
     const response = await handleUiRequest(
-      deps(pool, kinesin),
+      deps(pool, qtaxis),
       jsonPost('/shipments', JSON.stringify({ tenantId, orderId, carrier: 'dhl' })),
     )
 
@@ -200,10 +200,10 @@ describe('handleUiRequest', () => {
   it('rejects a ship-order body missing the order id', async () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
-    const kinesin = fakeKinesin([])
+    const qtaxis = fakeQtaxis([])
 
     const response = await handleUiRequest(
-      deps(pool, kinesin),
+      deps(pool, qtaxis),
       jsonPost('/shipments', JSON.stringify({ tenantId: '018f0000-0000-7000-8000-000000000001' })),
     )
 
@@ -215,9 +215,9 @@ describe('handleUiRequest', () => {
   it('serves the page with both form actions and the dashboard link', async () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
-    const kinesin = fakeKinesin([])
+    const qtaxis = fakeQtaxis([])
 
-    const response = await handleUiRequest(deps(pool, kinesin), getRequest('/'))
+    const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/'))
 
     expect(response.status).toBe(200)
     expect(response.contentType).toBe('text/html')
@@ -229,9 +229,9 @@ describe('handleUiRequest', () => {
   it('returns 404 for an unknown route', async () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
-    const kinesin = fakeKinesin([])
+    const qtaxis = fakeQtaxis([])
 
-    const response = await handleUiRequest(deps(pool, kinesin), getRequest('/nope'))
+    const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/nope'))
 
     expect(response.status).toBe(404)
   })
@@ -239,9 +239,9 @@ describe('handleUiRequest', () => {
   it('serves the bus page with the producer box, the bus box, and a container for the subscription columns', async () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
-    const kinesin = fakeKinesin([])
+    const qtaxis = fakeQtaxis([])
 
-    const response = await handleUiRequest(deps(pool, kinesin), getRequest('/bus'))
+    const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/bus'))
 
     expect(response.status).toBe(200)
     expect(response.contentType).toBe('text/html')
@@ -254,7 +254,7 @@ describe('handleUiRequest', () => {
   })
 
   it('returns the topology and counts for /bus.json', async () => {
-    const kinesin = fakeKinesin([])
+    const qtaxis = fakeQtaxis([])
     const pool = fakeQueryPool([
       [{ count: 7 }],
       [
@@ -265,7 +265,7 @@ describe('handleUiRequest', () => {
       [{ count: 4 }],
     ])
 
-    const response = await handleUiRequest(deps(pool, kinesin), getRequest('/bus.json'))
+    const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/bus.json'))
 
     expect(response.status).toBe(200)
     expect(response.contentType).toBe('application/json')

@@ -1,8 +1,8 @@
-# Agent notes — Kinesin
+# Agent notes — Qtaxis
 
-This repository is **Kinesin** (`Camba-nz/kinesin`): the company message bus, built on self-hosted Hatchet. It is a TypeScript library plus deployment config, consumed by every company project through its SDK. Do not open issues, PRs or automation against any other repository from here.
+This repository is **Qtaxis** (`Camba-nz/qtaxis`): the company message bus, built on self-hosted Hatchet. It is a TypeScript library plus deployment config, consumed by every company project through its SDK. Do not open issues, PRs or automation against any other repository from here.
 
-Read this file in full before any task. It applies to every harness, not only Claude Code. Shared words: [`CONTEXT.md`](CONTEXT.md). The design: [`docs/design/kinesin-requirements-and-design.md`](docs/design/kinesin-requirements-and-design.md). Decisions: [`docs/architecture/adr/`](docs/architecture/adr/).
+Read this file in full before any task. It applies to every harness, not only Claude Code. Shared words: [`CONTEXT.md`](CONTEXT.md). The design: [`docs/design/qtaxis-requirements-and-design.md`](docs/design/qtaxis-requirements-and-design.md). Decisions: [`docs/architecture/adr/`](docs/architecture/adr/).
 
 ## Current mission
 
@@ -75,8 +75,8 @@ Before writing code, stop at the first rung that holds:
 
 **Packages**
 
-- `packages/schemas` (`@kinesin/schemas`): the envelope, naming rules, Standard Schema adapter. Zod only. No Hatchet, no I/O.
-- `packages/sdk` (`@kinesin/sdk`): `publish()` and the outbox, the relay, `subscribe()` / `durable()` over the Hatchet SDK, `onceById()`, the worker. Ships `migrations/` SQL for consumers.
+- `packages/schemas` (`@qtaxis/schemas`): the envelope, naming rules, Standard Schema adapter. Zod only. No Hatchet, no I/O.
+- `packages/sdk` (`@qtaxis/sdk`): `publish()` and the outbox, the relay, `subscribe()` / `durable()` over the Hatchet SDK, `onceById()`, the worker. Ships `migrations/` SQL for consumers.
 - `infra/hatchet`: the local engine stack and, later, the Fly deployment.
 - Consumers never call the Hatchet SDK directly for bus work. If the SDK lacks something, add it to the SDK.
 - `examples/*`: test applications that consume the SDK the way a real project would. They are the proof, not the product.
@@ -94,7 +94,7 @@ Before writing code, stop at the first rung that holds:
 ## Migrations
 
 - `packages/sdk/migrations/<YYYYMMDDHHMMSS>_<slug>.sql`. Consumers apply them with their own runner.
-- Write new files only; never edit, rename, or delete a file that exists on `main`. Revert with a new file. Gate: `check-migration-immutability.sh`.
+- Write new files only; never edit, rename, or delete a file that exists on `main`. Revert with a new file. Gate: `check-migration-immutability.sh`. Disarmed until the first consumer applies a migration (#59); until then treat the rule as policy, not as enforced.
 - Timestamp with `date +%Y%m%d%H%M%S`, greater than the latest file.
 
 ## Lint
@@ -105,7 +105,7 @@ Before writing code, stop at the first rung that holds:
 
 ## Package boundaries
 
-A package reaches another only through its package name and exports map. No relative import out of a package; no `@kinesin/<pkg>/src/...`. Gate: `check-package-boundaries.sh`. `packages/schemas` depends on nothing in the workspace. `packages/sdk` depends on `@kinesin/schemas`. An example under `examples/*` imports `@kinesin/sdk` only, never `@hatchet-dev/` or `@kinesin/schemas` directly; the same gate fails any import form (`from`, bare `import '...'`, dynamic `import('...')`, `require('...')`) and the dependency itself in `package.json`, not just one spelling of it. Add a package only with an ADR.
+A package reaches another only through its package name and exports map. No relative import out of a package; no `@qtaxis/<pkg>/src/...`. Gate: `check-package-boundaries.sh`. `packages/schemas` depends on nothing in the workspace. `packages/sdk` depends on `@qtaxis/schemas`. An example under `examples/*` imports `@qtaxis/sdk` only, never `@hatchet-dev/` or `@qtaxis/schemas` directly; the same gate fails any import form (`from`, bare `import '...'`, dynamic `import('...')`, `require('...')`) and the dependency itself in `package.json`, not just one spelling of it. Add a package only with an ADR.
 
 ## Running commands
 
@@ -114,10 +114,10 @@ pnpm check:changed          # normal loop (silent on success)
 pnpm check                  # exhaustive backstop
 pnpm hatchet:up             # local engine (Docker): http://localhost:8888, gRPC :7077
 bash infra/hatchet/token.sh # worker token for the local engine
-pnpm --filter @kinesin/sdk test:integration   # needs the engine, HATCHET_CLIENT_TOKEN and KINESIN_TEST_DATABASE_URL
+pnpm --filter @qtaxis/sdk test:integration   # needs the engine, HATCHET_CLIENT_TOKEN and QTAXIS_TEST_DATABASE_URL
 ```
 
-Integration tests read `HATCHET_CLIENT_TOKEN`, `HATCHET_CLIENT_TLS_STRATEGY=none`, and `KINESIN_TEST_DATABASE_URL` (e.g. `postgresql://hatchet:hatchet@localhost:15432/kinesin_test`). They fail loudly when the engine or database is missing. They never skip.
+Integration tests read `HATCHET_CLIENT_TOKEN`, `HATCHET_CLIENT_TLS_STRATEGY=none`, and `QTAXIS_TEST_DATABASE_URL` (e.g. `postgresql://hatchet:hatchet@localhost:15432/qtaxis_test`). They fail loudly when the engine or database is missing. They never skip.
 
 ## Who runs which tests
 
@@ -130,7 +130,7 @@ The commit is the verification checkpoint. `.husky/pre-commit` runs `scripts/che
 | Every PR | Lint, Type Check, Unit Tests, Integration Tests, Gate Self Tests | Hosted Actions ([`REQUIRED.md`](.github/workflows/REQUIRED.md)) |
 | Push to `main` | The same five plus Build | Hosted Actions |
 
-**Do not run `check:changed` as a final "am I done" step** — the commit runs it on staged files. **Do not run a full suite locally**; CI owns exhaustive coverage. Iterating on one test file is feedback, not verification: `pnpm --filter @kinesin/sdk exec vitest run <file>`.
+**Do not run `check:changed` as a final "am I done" step** — the commit runs it on staged files. **Do not run a full suite locally**; CI owns exhaustive coverage. Iterating on one test file is feedback, not verification: `pnpm --filter @qtaxis/sdk exec vitest run <file>`.
 
 ## Test-driven changes
 

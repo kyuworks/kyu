@@ -69,11 +69,11 @@ export function renderUiPage(dashboardUrl: string): string {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Kinesin playground</title>
+<title>Qtaxis playground</title>
 <style>${STYLE}</style>
 </head>
 <body>
-<h1>Kinesin playground</h1>
+<h1>Qtaxis playground</h1>
 <p>Sends messages onto the bus and shows the ids it got back. Watch what happens next in the
 <a href="${dashboardUrl}" target="_blank" rel="noreferrer">Hatchet dashboard</a> or on the
 <a href="/bus">bus diagram</a>.</p>

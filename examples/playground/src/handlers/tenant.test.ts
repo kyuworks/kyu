@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import type { HandlerContext, MessageData } from '@kinesin/sdk'
-import { NonRetryableError, createEnvelope } from '@kinesin/sdk'
+import type { HandlerContext, MessageData } from '@qtaxis/sdk'
+import { NonRetryableError, createEnvelope } from '@qtaxis/sdk'
 import { describe, expect, it } from 'vitest'
 import { orderPlaced } from '../messages.js'
 import { requireTenant } from './tenant.js'

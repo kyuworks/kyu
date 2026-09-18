@@ -1,5 +1,5 @@
-import type { HatchetClient, Kinesin } from '@kinesin/sdk'
-import { CommandHasTwoSubscribersError, createKinesin } from '@kinesin/sdk'
+import type { HatchetClient, Qtaxis } from '@qtaxis/sdk'
+import { CommandHasTwoSubscribersError, createQtaxis } from '@qtaxis/sdk'
 import type { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
 import type { PlaygroundConfig } from './config.js'
@@ -10,9 +10,9 @@ import { buildSubscriptions } from './subscriptions.js'
 // assertSingleCommandSubscriber throws before createWorker touches the
 // client, and buildSubscriptions never calls worker() at all. A single
 // indexed-type cast per method — the same unchained-cast idiom
-// packages/sdk/src/createKinesin.test.ts uses for its own fakeHatchetClient
+// packages/sdk/src/createQtaxis.test.ts uses for its own fakeHatchetClient
 // — since CreateTaskWorkflowOpts/CreateWorkerOpts are the engine SDK's own
-// types and are not part of @kinesin/sdk's public exports.
+// types and are not part of @qtaxis/sdk's public exports.
 function fakeHatchetClient(): HatchetClient {
   const stub: Pick<HatchetClient, 'task' | 'durableTask' | 'worker'> = {
     task: (_options: Parameters<HatchetClient['task']>[0]) => ({}) as ReturnType<HatchetClient['task']>,
@@ -28,8 +28,8 @@ function fakePool(): Pool {
   return stub as Pool
 }
 
-function buildKinesin(): Kinesin {
-  return createKinesin({ hatchet: fakeHatchetClient(), source: 'subscriptions-test' })
+function buildQtaxis(): Qtaxis {
+  return createQtaxis({ hatchet: fakeHatchetClient(), source: 'subscriptions-test' })
 }
 
 function fakeConfig(): PlaygroundConfig {
@@ -44,7 +44,7 @@ function fakeConfig(): PlaygroundConfig {
 
 describe('buildSubscriptions', () => {
   it('registers record-order, audit-order, send-invoice and watch-shipping', () => {
-    const subscriptions = buildSubscriptions(buildKinesin(), fakePool(), fakeConfig())
+    const subscriptions = buildSubscriptions(buildQtaxis(), fakePool(), fakeConfig())
 
     expect(subscriptions.map((subscription) => subscription.name)).toEqual([
       'record-order',
@@ -55,14 +55,14 @@ describe('buildSubscriptions', () => {
   })
 })
 
-describe('createWorker via kinesin.worker', () => {
+describe('createWorker via qtaxis.worker', () => {
   it('throws CommandHasTwoSubscribersError when a command is subscribed twice', async () => {
-    const kinesin = buildKinesin()
+    const qtaxis = buildQtaxis()
     const pool = fakePool()
     const config = fakeConfig()
-    const subscriptions = [...buildSubscriptions(kinesin, pool, config), sendInvoiceSubscription(kinesin, pool)]
+    const subscriptions = [...buildSubscriptions(qtaxis, pool, config), sendInvoiceSubscription(qtaxis, pool)]
 
-    await expect(kinesin.worker('duplicate-worker', { subscriptions })).rejects.toBeInstanceOf(
+    await expect(qtaxis.worker('duplicate-worker', { subscriptions })).rejects.toBeInstanceOf(
       CommandHasTwoSubscribersError,
     )
   })

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import { createEnvelope, defineCommand, defineEvent, toEnvelopeMetadata } from '@kinesin/schemas'
-import type { Envelope, EnvelopeMetadataFields } from '@kinesin/schemas'
+import { createEnvelope, defineCommand, defineEvent, toEnvelopeMetadata } from '@qtaxis/schemas'
+import type { Envelope, EnvelopeMetadataFields } from '@qtaxis/schemas'
 import { z } from 'zod'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { eventScope } from '../eventScope.js'
@@ -10,7 +10,7 @@ import type { HandlerContext } from './handlerContext.js'
 import { subscribe } from './subscribe.js'
 import type { Subscription } from './subscribe.js'
 import { createWorker } from './worker.js'
-import type { KinesinWorker } from './worker.js'
+import type { QtaxisWorker } from './worker.js'
 
 // Every flow in this file pushes a hand-built envelope straight at
 // `hatchet.events.push` — there is no relay or outbox in this chain (PR-6
@@ -91,13 +91,13 @@ async function waitForTerminalStatus(envelopeId: string, timeoutMs: number): Pro
 
 describe('subscribe: tenant id', () => {
   const definition = defineEvent({
-    name: 'kinesin.subscribe.tenanted',
+    name: 'qtaxis.subscribe.tenanted',
     version: 1,
     data: z.object({ seq: z.number() }),
   })
 
   const received: Array<{ envelope: Envelope<{ seq: number }>; metadata: EnvelopeMetadataFields }> = []
-  let worker: KinesinWorker | undefined
+  let worker: QtaxisWorker | undefined
 
   beforeAll(async () => {
     const subscription = subscribe(hatchet, definition, {
@@ -106,7 +106,7 @@ describe('subscribe: tenant id', () => {
         received.push({ envelope: ctx.envelope, metadata: ctx.metadata })
       },
     })
-    worker = await createWorker(hatchet, 'kinesin-subscribe-tenant', { subscriptions: [subscription] })
+    worker = await createWorker(hatchet, 'qtaxis-subscribe-tenant', { subscriptions: [subscription] })
     void worker.start()
     await worker.waitUntilReady()
   }, 60_000)
@@ -172,13 +172,13 @@ describe('subscribe: tenant id', () => {
 
 describe('subscribe: fifo concurrency', () => {
   const definition = defineEvent({
-    name: 'kinesin.subscribe.ordered',
+    name: 'qtaxis.subscribe.ordered',
     version: 1,
     data: z.object({ orderId: z.string(), seq: z.number() }),
   })
 
   const seen: number[] = []
-  let worker: KinesinWorker | undefined
+  let worker: QtaxisWorker | undefined
 
   beforeAll(async () => {
     const subscription = subscribe(hatchet, definition, {
@@ -191,7 +191,7 @@ describe('subscribe: fifo concurrency', () => {
         seen.push(ctx.envelope.data.seq)
       },
     })
-    worker = await createWorker(hatchet, 'kinesin-subscribe-fifo', { subscriptions: [subscription], slots: 5 })
+    worker = await createWorker(hatchet, 'qtaxis-subscribe-fifo', { subscriptions: [subscription], slots: 5 })
     void worker.start()
     await worker.waitUntilReady()
   }, 60_000)
@@ -217,13 +217,13 @@ describe('subscribe: fifo concurrency', () => {
 
 describe('subscribe: coalescing', () => {
   const definition = defineEvent({
-    name: 'kinesin.subscribe.coalesced',
+    name: 'qtaxis.subscribe.coalesced',
     version: 1,
     data: z.object({ seq: z.number() }),
   })
 
   const completed: number[] = []
-  let worker: KinesinWorker | undefined
+  let worker: QtaxisWorker | undefined
 
   beforeAll(async () => {
     // A constant CEL string literal groups every run together regardless of
@@ -241,7 +241,7 @@ describe('subscribe: coalescing', () => {
         completed.push(ctx.envelope.data.seq)
       },
     })
-    worker = await createWorker(hatchet, 'kinesin-subscribe-coalesce', { subscriptions: [subscription], slots: 5 })
+    worker = await createWorker(hatchet, 'qtaxis-subscribe-coalesce', { subscriptions: [subscription], slots: 5 })
     void worker.start()
     await worker.waitUntilReady()
   }, 60_000)
@@ -277,24 +277,24 @@ describe('subscribe: coalescing', () => {
 
 describe('subscribe: malformed payload and version mismatch', () => {
   const malformed = defineEvent({
-    name: 'kinesin.subscribe.malformed',
+    name: 'qtaxis.subscribe.malformed',
     version: 1,
     data: z.object({ seq: z.number() }),
   })
   const versionedV1 = defineEvent({
-    name: 'kinesin.subscribe.versioned',
+    name: 'qtaxis.subscribe.versioned',
     version: 1,
     data: z.object({ seq: z.number() }),
   })
   const versionedV2 = defineEvent({
-    name: 'kinesin.subscribe.versioned',
+    name: 'qtaxis.subscribe.versioned',
     version: 2,
     data: z.object({ seq: z.number() }),
   })
 
   const malformedCalls: unknown[] = []
   const versionedCalls: unknown[] = []
-  let worker: KinesinWorker | undefined
+  let worker: QtaxisWorker | undefined
   let malformedSubscription: Subscription
   let versionedSubscription: Subscription
 
@@ -315,7 +315,7 @@ describe('subscribe: malformed payload and version mismatch', () => {
         versionedCalls.push(ctx.envelope.id)
       },
     })
-    worker = await createWorker(hatchet, 'kinesin-subscribe-rejects', {
+    worker = await createWorker(hatchet, 'qtaxis-subscribe-rejects', {
       subscriptions: [malformedSubscription, versionedSubscription],
     })
     void worker.start()
@@ -358,13 +358,13 @@ describe('subscribe: malformed payload and version mismatch', () => {
 
 describe('subscribe: retries', () => {
   const definition = defineEvent({
-    name: 'kinesin.subscribe.retried',
+    name: 'qtaxis.subscribe.retried',
     version: 1,
     data: z.object({ seq: z.number() }),
   })
 
   const retryCounts: number[] = []
-  let worker: KinesinWorker | undefined
+  let worker: QtaxisWorker | undefined
 
   beforeAll(async () => {
     const subscription = subscribe(hatchet, definition, {
@@ -375,7 +375,7 @@ describe('subscribe: retries', () => {
         if (ctx.retryCount < 2) throw new Error('not there yet')
       },
     })
-    worker = await createWorker(hatchet, 'kinesin-subscribe-retries', { subscriptions: [subscription] })
+    worker = await createWorker(hatchet, 'qtaxis-subscribe-retries', { subscriptions: [subscription] })
     void worker.start()
     await worker.waitUntilReady()
   }, 60_000)
@@ -400,13 +400,13 @@ describe('subscribe: retries', () => {
 
 describe('subscribe: non-retryable errors', () => {
   const definition = defineEvent({
-    name: 'kinesin.subscribe.nonretryable',
+    name: 'qtaxis.subscribe.nonretryable',
     version: 1,
     data: z.object({ seq: z.number() }),
   })
 
   const calls: number[] = []
-  let worker: KinesinWorker | undefined
+  let worker: QtaxisWorker | undefined
 
   beforeAll(async () => {
     const subscription = subscribe(hatchet, definition, {
@@ -417,7 +417,7 @@ describe('subscribe: non-retryable errors', () => {
         throw new NonRetryableError('fails at once')
       },
     })
-    worker = await createWorker(hatchet, 'kinesin-subscribe-nonretryable', { subscriptions: [subscription] })
+    worker = await createWorker(hatchet, 'qtaxis-subscribe-nonretryable', { subscriptions: [subscription] })
     void worker.start()
     await worker.waitUntilReady()
   }, 60_000)
@@ -445,13 +445,13 @@ describe('subscribe: non-retryable errors', () => {
 
 describe('subscribe: command', () => {
   const definition = defineCommand({
-    name: 'kinesin.subscribe.commanded',
+    name: 'qtaxis.subscribe.commanded',
     version: 1,
     data: z.object({ seq: z.number() }),
   })
 
   const received: Array<Envelope<{ seq: number }>> = []
-  let worker: KinesinWorker | undefined
+  let worker: QtaxisWorker | undefined
 
   beforeAll(async () => {
     const subscription = subscribe(hatchet, definition, {
@@ -460,7 +460,7 @@ describe('subscribe: command', () => {
         received.push(ctx.envelope)
       },
     })
-    worker = await createWorker(hatchet, 'kinesin-subscribe-command', { subscriptions: [subscription] })
+    worker = await createWorker(hatchet, 'qtaxis-subscribe-command', { subscriptions: [subscription] })
     void worker.start()
     await worker.waitUntilReady()
   }, 60_000)

@@ -1,10 +1,10 @@
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Queryable } from '@kinesin/sdk'
+import type { Queryable } from '@qtaxis/sdk'
 import { Client } from 'pg'
 import { z } from 'zod'
 
-const PLAYGROUND_DATABASE_NAME_PATTERN = /^kinesin_playground[a-z0-9_]*$/
+const PLAYGROUND_DATABASE_NAME_PATTERN = /^qtaxis_playground[a-z0-9_]*$/
 
 // Computed the same way the SDK locates its own shipped migrations/: two
 // levels up from this file, whether running from src/ (vitest) or dist/ (built).

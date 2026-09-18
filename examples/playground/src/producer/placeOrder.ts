@@ -1,5 +1,5 @@
-import type { Kinesin } from '@kinesin/sdk'
-import { uuidv7 } from '@kinesin/sdk'
+import type { Qtaxis } from '@qtaxis/sdk'
+import { uuidv7 } from '@qtaxis/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { withTransaction } from '../db/pool.js'
 import { orderPlaced, sendInvoice } from '../messages.js'
@@ -22,7 +22,7 @@ export interface PlacedOrder {
 
 // Interior: runs on a caller-supplied client without opening or closing a
 // transaction, so an integration test can drive it inside its own BEGIN/ROLLBACK.
-export async function placeOrderOn(client: PoolClient, kinesin: Kinesin, input: PlaceOrderInput): Promise<PlacedOrder> {
+export async function placeOrderOn(client: PoolClient, qtaxis: Qtaxis, input: PlaceOrderInput): Promise<PlacedOrder> {
   const orderId = uuidv7()
   const invoiceId = uuidv7()
 
@@ -37,13 +37,13 @@ export async function placeOrderOn(client: PoolClient, kinesin: Kinesin, input: 
     input.tenantId,
   ])
 
-  const orderPlacedEnvelope = await kinesin.publish(
+  const orderPlacedEnvelope = await qtaxis.publish(
     client,
     orderPlaced,
     { orderId, customerId: input.customerId },
     { tenantId: input.tenantId },
   )
-  const sendInvoiceEnvelope = await kinesin.publish(
+  const sendInvoiceEnvelope = await qtaxis.publish(
     client,
     sendInvoice,
     { orderId, invoiceId },
@@ -58,6 +58,6 @@ export async function placeOrderOn(client: PoolClient, kinesin: Kinesin, input: 
 }
 
 /** One transaction: two INSERTs then two publishes, committed together. */
-export function placeOrder(pool: Pool, kinesin: Kinesin, input: PlaceOrderInput): Promise<PlacedOrder> {
-  return withTransaction(pool, (client) => placeOrderOn(client, kinesin, input))
+export function placeOrder(pool: Pool, qtaxis: Qtaxis, input: PlaceOrderInput): Promise<PlacedOrder> {
+  return withTransaction(pool, (client) => placeOrderOn(client, qtaxis, input))
 }

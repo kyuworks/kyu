@@ -12,10 +12,10 @@ Written to `planning-gitignored/plans/{slug}-testing.md`. Owns red-green-red for
 
 | Level | Command |
 |---|---|
-| Unit | `pnpm --filter @kinesin/sdk test` (or `@kinesin/schemas`) |
-| Integration | `pnpm --filter @kinesin/sdk test:integration` — needs `pnpm hatchet:up` first |
+| Unit | `pnpm --filter @qtaxis/sdk test` (or `@qtaxis/schemas`) |
+| Integration | `pnpm --filter @qtaxis/sdk test:integration` — needs `pnpm hatchet:up` first |
 | Shell suites | `bash <path>.test.sh` |
-| Typecheck | `pnpm --filter @kinesin/sdk typecheck` |
+| Typecheck | `pnpm --filter @qtaxis/sdk typecheck` |
 
 ## 1. Level assignment
 

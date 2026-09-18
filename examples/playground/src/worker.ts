@@ -1,15 +1,15 @@
 import nodeProcess from 'node:process'
-import type { KinesinWorker } from '@kinesin/sdk'
+import type { QtaxisWorker } from '@qtaxis/sdk'
 import type { Pool } from 'pg'
 import { readConfig } from './config.js'
 import { createPool } from './db/pool.js'
-import { createPlaygroundKinesin } from './kinesin.js'
+import { createPlaygroundQtaxis } from './qtaxis.js'
 import { describeError, exitAfterLog, log } from './log.js'
 import { buildSubscriptions } from './subscriptions.js'
 
 // SIGTERM/SIGINT both stop the worker before exiting. stop() evicts parked
 // durable runs (up to 30s ack each), so the duration is logged; processes.ts sizes its grace window from it.
-async function shutdown(worker: KinesinWorker, pool: Pool): Promise<void> {
+async function shutdown(worker: QtaxisWorker, pool: Pool): Promise<void> {
   const startedAt = Date.now()
   await worker.stop()
   log('worker', 'stopped', { durationMs: Date.now() - startedAt })
@@ -17,7 +17,7 @@ async function shutdown(worker: KinesinWorker, pool: Pool): Promise<void> {
   nodeProcess.exit(0)
 }
 
-function onShutdownSignal(worker: KinesinWorker, pool: Pool): void {
+function onShutdownSignal(worker: QtaxisWorker, pool: Pool): void {
   shutdown(worker, pool).catch((error) => {
     exitAfterLog(1, 'worker', 'shutdown-failed', { message: describeError(error) })
   })
@@ -26,10 +26,10 @@ function onShutdownSignal(worker: KinesinWorker, pool: Pool): void {
 async function main(): Promise<void> {
   const config = readConfig()
   const pool = createPool(config.databaseUrl)
-  const kinesin = createPlaygroundKinesin(config)
+  const qtaxis = createPlaygroundQtaxis(config)
 
-  const worker = await kinesin.worker('playground-worker', {
-    subscriptions: buildSubscriptions(kinesin, pool, config),
+  const worker = await qtaxis.worker('playground-worker', {
+    subscriptions: buildSubscriptions(qtaxis, pool, config),
     slots: 5,
     durableSlots: 5,
   })

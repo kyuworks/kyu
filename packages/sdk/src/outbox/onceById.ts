@@ -11,7 +11,7 @@ export async function onceById<T>(
   fn: () => Promise<T>,
 ): Promise<OnceResult<T>> {
   const inserted = await tx.query(
-    'INSERT INTO kinesin_processed (envelope_id, handler) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING envelope_id',
+    'INSERT INTO qtaxis_processed (envelope_id, handler) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING envelope_id',
     [envelopeId, handlerName],
   )
   if (inserted.rows.length === 0) return { ran: false }
