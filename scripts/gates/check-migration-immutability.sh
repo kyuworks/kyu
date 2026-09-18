@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${ROOT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 MIGRATIONS_DIR="${MIGRATIONS_DIR:-${ROOT_DIR}/packages/sdk/migrations}"
 
-# Applied files are immutable. Tests may set this to 0.
+# Default 0 until #59 re-arms; tests set it explicitly.
 ARMED=0
 ARMED="${MIGRATION_IMMUTABILITY_ARMED:-${ARMED}}"
 

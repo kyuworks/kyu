@@ -62,9 +62,9 @@ export {
   CommandHasTwoSubscribersError,
   EnvelopeOptionsError,
   EnvelopeRejectedError,
-  QtaxisError,
   MessageDataError,
   MessageDefinitionError,
+  QtaxisError,
 } from './errors.js'
 export type { EnvelopeOptionIssue, MessageDataIssue } from './errors.js'
 

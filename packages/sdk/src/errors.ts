@@ -1,4 +1,4 @@
-import { QtaxisError, NonRetryableError } from './hatchet.js'
+import { NonRetryableError, QtaxisError } from './hatchet.js'
 
 export { EnvelopeMetadataError, EnvelopeOptionsError, MessageDataError, MessageDefinitionError } from '@qtaxis/schemas'
 export type { EnvelopeOptionIssue, MessageDataIssue } from '@qtaxis/schemas'

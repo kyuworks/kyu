@@ -9,6 +9,12 @@ Every file under `packages/sdk/migrations/` is applied by consumers to databases
 
 ---
 
+## Status
+
+On 2026-09-18 the owner rewrote the one existing migration in place as part of the rename to Qtaxis, because no consumer had applied it to a real database, and disarmed `scripts/gates/check-migration-immutability.sh` (`ARMED=0`) until the first consumer does. Issue #59 tracks re-arming it. Once re-armed, every rule below applies again.
+
+---
+
 ## Context
 
 The SDK's outbox and processed-id tables live in each producer's and consumer's own database. The SDK ships the SQL; the consumer's migration runner applies it and records the file name. A changed file would leave two databases that both believe they applied "the same" migration with different results, and a renamed file would make a runner apply it twice.
