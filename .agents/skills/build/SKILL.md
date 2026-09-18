@@ -66,8 +66,8 @@ Number of implementation agents = number of work units. Number of review agents 
 
 | Domain | Paths |
 |---|---|
-| `schemas` | `packages/schemas/` — the `@kinesin/schemas` package: envelope, event and command schemas (Zod) |
-| `sdk` | `packages/sdk/` — the `@kinesin/sdk` package: publish, outbox, relay, subscribe, and the outbox migration under `packages/sdk/migrations/` |
+| `schemas` | `packages/schemas/` — the `@qtaxis/schemas` package: envelope, event and command schemas (Zod) |
+| `sdk` | `packages/sdk/` — the `@qtaxis/sdk` package: publish, outbox, relay, subscribe, and the outbox migration under `packages/sdk/migrations/` |
 | `infra` | `infra/` (the Hatchet compose stack), `.github/` (CI) |
 | `scripts` | `scripts/` (check, gates, hooks), `oxlint-rules/`, `.agents/` (skills) |
 | `docs` | `docs/` (design, architecture, ADRs) |
@@ -91,13 +91,13 @@ If a single WU touches multiple domains, count each domain it touches. The revie
 
 Before spawning any agents, set the verification commands for the packages the WUs touch. ALL agent prompts MUST use these commands instead of hardcoded values.
 
-This is a pnpm workspace. Commands target one package by filter. `<pkg>` is the package the WU touched: `@kinesin/schemas` or `@kinesin/sdk`.
+This is a pnpm workspace. Commands target one package by filter. `<pkg>` is the package the WU touched: `@qtaxis/schemas` or `@qtaxis/sdk`.
 
 | Variable | Command | Notes |
 |---|---|---|
 | `{compile_check}` | `pnpm --filter <pkg> typecheck` | `tsc --noEmit` for that package |
 | `{lint_check}` | `pnpm --filter <pkg> lint` | oxlint; every rule is `error` |
-| `{test_check}` | `pnpm --filter <pkg> test` | vitest unit tests. Integration tests are `pnpm --filter @kinesin/sdk test:integration` and need the Hatchet stack (`pnpm hatchet:up`) |
+| `{test_check}` | `pnpm --filter <pkg> test` | vitest unit tests. Integration tests are `pnpm --filter @qtaxis/sdk test:integration` and need the Hatchet stack (`pnpm hatchet:up`) |
 | whole tree | `pnpm check:changed` | quiet, scoped to changed files. Silent on success; on failure prints `FAILED`, the first error, and a log path under `.artifacts/check/` |
 
 Vitest is installed per package. Bare `pnpm vitest` from the repo root does not work. For a WU outside the packages (`scripts/`, `infra/`, `docs/`), `{test_check}` is `pnpm gates` (runs `scripts/gates/*.sh` self-tests) and `{compile_check}` is `pnpm check:changed`.

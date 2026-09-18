@@ -134,7 +134,7 @@ Never write a plausible-looking path you did not open. This is the single most c
 way a plan wastes a build.
 
 **Non-goals name the shortcut, not the category.** Not "do not over-engineer" but "do
-not add a `published` boolean to `kinesin_outbox` — `published_at` already carries it,
+not add a `published` boolean to `qtaxis_outbox` — `published_at` already carries it,
 and a second source of truth will drift."
 
 **The user-flow inventory is the load-bearing section.** Walk every axis in the template.
@@ -160,8 +160,8 @@ required path is a failed plan. Do not implement it.
   again on consume, where the payload comes back from Hatchet.
 - Interior functions take the validated envelope and typed `data`.
 - Re-parsing a value the layer above already validated is a failed plan — do not implement it.
-- Side effects name the real ones (`kinesin_outbox` insert, `events.bulkPush`,
-  `kinesin_processed` write, HTTP). `none` is allowed.
+- Side effects name the real ones (`qtaxis_outbox` insert, `events.bulkPush`,
+  `qtaxis_processed` write, HTTP). `none` is allowed.
 
 Copy the table into the engineering plan
 ([template](../_pipeline/templates/engineering-plan.md)).

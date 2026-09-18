@@ -26,7 +26,7 @@ the typed envelope.
 
 | Consumer or entry point | Call stack and owners | Input → output | Errors | Side effects and transaction boundary | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Example | caller → `kinesin.publish` → outbox row → relay → Hatchet → handler | typed payload → envelope → handler effect | schema invalid, non-retryable | outbox row in the caller's transaction; no network call in that transaction; handler idempotent on envelope id | `path:line` |
+| Example | caller → `qtaxis.publish` → outbox row → relay → Hatchet → handler | typed payload → envelope → handler effect | schema invalid, non-retryable | outbox row in the caller's transaction; no network call in that transaction; handler idempotent on envelope id | `path:line` |
 
 ## Existing decisions and live documentation
 

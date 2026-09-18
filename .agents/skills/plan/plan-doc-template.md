@@ -167,7 +167,7 @@ Each work unit maps 1:1 to one implementation agent in **build**. Acceptance cri
 - If a file appears in multiple WUs, the WUs MUST have a dependency (second WU depends on first)
 - Every WU MUST be assigned to exactly one PR via the `**PR:**` field
 - A WU cannot span two PRs — split the WU if needed
-- Acceptance criteria MUST be specific enough to verify programmatically (not "works correctly" — instead "`publish()` inside a rolled-back transaction leaves no `kinesin_outbox` row")
+- Acceptance criteria MUST be specific enough to verify programmatically (not "works correctly" — instead "`publish()` inside a rolled-back transaction leaves no `qtaxis_outbox` row")
 - Every WU MUST have at least 2 acceptance criteria
 - "Audit focus" and "Integration concerns" give auditors targeted guidance beyond the generic dimensions
 
@@ -209,7 +209,7 @@ Each work unit maps 1:1 to one implementation agent in **build**. Acceptance cri
 
 **PR-1 proof:**
 1. Before state: {what to run and what its output shows before the change — the RED₁ output}
-2. Action: {the command that exercises the change, e.g. `pnpm --filter @kinesin/sdk test:integration`}
+2. Action: {the command that exercises the change, e.g. `pnpm --filter @qtaxis/sdk test:integration`}
 3. After state: {the pasted output that shows the assertion passing}
 
 **PR-2 proof:**

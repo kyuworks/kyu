@@ -107,7 +107,7 @@ Write a test this repo already runs (`AGENTS.md` § Who runs which tests):
 
 - colocated `*.test.ts` next to the code, run with `pnpm --filter <pkg> test`
 - `*.integration.test.ts` if it needs a real Hatchet or Postgres, run with
-  `pnpm --filter @kinesin/sdk test:integration` against the local stack from
+  `pnpm --filter @qtaxis/sdk test:integration` against the local stack from
   `infra/hatchet/compose.yaml` (`pnpm hatchet:up`)
 
 Do not add a runner. Do not add an SDK. Do not write a check that only

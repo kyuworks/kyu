@@ -2,7 +2,7 @@
 
 **Status:** accepted
 **Date:** 2026-09-16
-**Parent:** [design document](../../design/kinesin-requirements-and-design.md) § 8
+**Parent:** [design document](../../design/qtaxis-requirements-and-design.md) § 8
 **This is not** a decision about how a consumer runs migrations; that is the consumer's own runner.
 
 Every file under `packages/sdk/migrations/` is applied by consumers to databases the bus does not control. Once a file is on `main` it is never edited, renamed or deleted.

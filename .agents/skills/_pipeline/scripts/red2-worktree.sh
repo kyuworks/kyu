@@ -10,12 +10,12 @@
 # it impossible to lose anything if this script dies half way.
 #
 # Usage:
-#   red2-worktree.sh --cmd "pnpm --filter @kinesin/sdk test" \
-#                    [--cmd "pnpm --filter @kinesin/sdk test:integration"] \
+#   red2-worktree.sh --cmd "pnpm --filter @qtaxis/sdk test" \
+#                    [--cmd "pnpm --filter @qtaxis/sdk test:integration"] \
 #                    [--base main] [--tests "glob,glob"] [--install] [--keep]
 #
-# The filter names the package the feature touched — @kinesin/sdk or
-# @kinesin/schemas — and every --cmd must name the same package. Bare
+# The filter names the package the feature touched — @qtaxis/sdk or
+# @qtaxis/schemas — and every --cmd must name the same package. Bare
 # `pnpm vitest` fails from the root: vitest is installed per package. The
 # integration suite (`test:integration`) is a script in packages/sdk and needs
 # the local Hatchet stack from infra/hatchet/compose.yaml to be up
@@ -74,7 +74,7 @@ for cmd in "${CMDS[@]}"; do
   fi
   [ -x "$REPO/node_modules/.bin/$S" ] && continue
   echo "red2: '$S' is not a script in the root package.json and not in node_modules/.bin" >&2
-  echo "      Name the package: pnpm --filter @kinesin/sdk $S" >&2
+  echo "      Name the package: pnpm --filter @qtaxis/sdk $S" >&2
   exit 2
 done
 
@@ -116,7 +116,7 @@ CHANGED=$(git diff --name-only "$MERGE_BASE" HEAD)
 if [ -n "$TEST_GLOBS" ]; then
   PATTERN=$(printf '%s' "$TEST_GLOBS" | sed 's/,/|/g')
 else
-  # Kinesin test files: colocated *.test.ts, *.integration.test.ts, and the
+  # Qtaxis test files: colocated *.test.ts, *.integration.test.ts, and the
   # shell suites (*.test.sh) next to the gates and skill scripts.
   PATTERN='(^|/)(tests?|__tests__|spec)/|\.(test|spec)\.[jt]sx?$|\.integration\.test\.[jt]s$|\.test\.sh$'
 fi

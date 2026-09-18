@@ -1,6 +1,6 @@
-# Contributing to Kinesin
+# Contributing to Qtaxis
 
-Kinesin is the company message bus ([`Camba-nz/kinesin`](https://github.com/Camba-nz/kinesin)). Rules for agents and people are in [`AGENTS.md`](AGENTS.md); shared words in [`CONTEXT.md`](CONTEXT.md); the design in [`docs/design/kinesin-requirements-and-design.md`](docs/design/kinesin-requirements-and-design.md); decisions in [`docs/architecture/adr/`](docs/architecture/adr/).
+Qtaxis is the company message bus ([`Camba-nz/qtaxis`](https://github.com/Camba-nz/qtaxis)). Rules for agents and people are in [`AGENTS.md`](AGENTS.md); shared words in [`CONTEXT.md`](CONTEXT.md); the design in [`docs/design/qtaxis-requirements-and-design.md`](docs/design/qtaxis-requirements-and-design.md); decisions in [`docs/architecture/adr/`](docs/architecture/adr/).
 
 ## People
 
@@ -23,7 +23,7 @@ pnpm install
 pnpm hatchet:up                      # local engine: http://localhost:8888 (admin@example.com / Admin123!!)
 export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/token.sh)"
 export HATCHET_CLIENT_TLS_STRATEGY=none
-export KINESIN_TEST_DATABASE_URL=postgresql://hatchet:hatchet@localhost:15432/kinesin_test
+export QTAXIS_TEST_DATABASE_URL=postgresql://hatchet:hatchet@localhost:15432/qtaxis_test
 pnpm check                           # exhaustive local check
 ```
 
@@ -44,8 +44,8 @@ Agents follow the fuller pipeline in [`.agents/skills/`](.agents/skills/): `/shi
 
 | Path | What |
 | --- | --- |
-| `packages/schemas` | `@kinesin/schemas`: envelope, naming rules, schema adapters. Zod only. |
-| `packages/sdk` | `@kinesin/sdk`: publish + outbox, relay, subscribe, durable handlers, worker. Ships `migrations/` for consumers. |
+| `packages/schemas` | `@qtaxis/schemas`: envelope, naming rules, schema adapters. Zod only. |
+| `packages/sdk` | `@qtaxis/sdk`: publish + outbox, relay, subscribe, durable handlers, worker. Ships `migrations/` for consumers. |
 | `infra/hatchet` | Local engine stack (Docker Compose) and, later, the Fly deployment. |
 | `scripts/` | `check.sh`, `check-changed.sh`, `verify-gates.sh`, `gates/*` with their `*.test.sh`, `hooks/` (agent guard). |
 | `oxlint-rules/` | Shared lint presets, including the anti-slop plugin. |
@@ -67,4 +67,4 @@ A gate is a script under `scripts/gates/` that fails the commit or the PR. Each 
 
 ## Releases
 
-The SDK publishes under the `@kinesin` npm scope from `main` on a tag. Not wired yet; tracked as an issue.
+The SDK publishes under the `@qtaxis` npm scope from `main` on a tag. Not wired yet; tracked as an issue.

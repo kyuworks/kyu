@@ -6,12 +6,12 @@
 
 | Word | Meaning |
 | --- | --- |
-| Kinesin | This system: the company message bus. Named for the motor protein that carries cargo along tracks inside a cell. |
-| engine | Hatchet, self-hosted. Kinesin's control plane. Never exposed to consumer code directly; the SDK wraps it. |
+| Qtaxis | This system: the company message bus. Q for queue plus taxis, the biology term for directed movement toward a stimulus. Formerly Kinesin; renamed on 2026-09-18. |
+| engine | Hatchet, self-hosted. Qtaxis's control plane. Never exposed to consumer code directly; the SDK wraps it. |
 | message | One envelope on the bus. Either an event or a command. |
 | event | A fact that happened in a producer, fanned out to every subscriber. Named in past tense: `shop.order.placed`. |
 | command | Work for exactly one handler, retried until it succeeds or is parked. Named in imperative: `shop.invoice.send`. |
-| envelope | The company-standard wrapper around every message: id, name, version, kind, occurredAt, tenantId, correlationId, causationId, source, data. Defined once in `@kinesin/schemas`. |
+| envelope | The company-standard wrapper around every message: id, name, version, kind, occurredAt, tenantId, correlationId, causationId, source, data. Defined once in `@qtaxis/schemas`. |
 | name | `<project>.<aggregate>.<verb>`, lower case, dots only. |
 | producer | A project that publishes messages. |
 | consumer | A project that runs a worker and subscribes to messages. |
@@ -23,10 +23,10 @@
 
 | Word | Meaning |
 | --- | --- |
-| outbox | The `kinesin_outbox` table in a producer's own database. `publish()` writes there inside the caller's transaction. |
+| outbox | The `qtaxis_outbox` table in a producer's own database. `publish()` writes there inside the caller's transaction. |
 | relay | The loop in the producer process that ships outbox rows to the engine and marks them published. |
 | at-least-once | The only delivery guarantee. A handler may see the same envelope id twice. |
-| processed table | `kinesin_processed` in a consumer's database. `onceById()` records handled ids there, inside the handler's transaction. |
+| processed table | `qtaxis_processed` in a consumer's database. `onceById()` records handled ids there, inside the handler's transaction. |
 | concurrency key | A CEL expression on the payload or metadata that groups runs. `maxRuns: 1` per key gives FIFO per key. |
 | coalescing | `CANCEL_IN_PROGRESS` (only the newest run matters) or `CANCEL_NEWEST` (drop if one is already running). |
 | failed run | The dead letter. Alerted on, replayable from the dashboard, never silently dropped. |

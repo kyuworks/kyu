@@ -85,7 +85,7 @@ from producing one report twice. Give each the shared brief below plus exactly o
 | Agent | Angle | Starts from |
 |---|---|---|
 | **ground** → `report-ground.md` | Bottom-up. What the code actually does today | The repository. Grep, read call sites, run things. No outside sources until the repo is exhausted |
-| **frame** → `report-frame.md` | Top-down. What the constraints admit | The problem statement's constraints, the design document (`docs/design/kinesin-requirements-and-design.md`) and Hatchet's documented behaviour. Reads the repo only to check a claim |
+| **frame** → `report-frame.md` | Top-down. What the constraints admit | The problem statement's constraints, the design document (`docs/design/qtaxis-requirements-and-design.md`) and Hatchet's documented behaviour. Reads the repo only to check a claim |
 
 Neither angle is the right one. The pair exists so a wrong answer has to survive both.
 

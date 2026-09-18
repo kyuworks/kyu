@@ -2,7 +2,7 @@
 
 **Status:** proposed | accepted | deprecated | superseded by [title](YYYYMMDD-slug.md)
 **Date:** YYYY-MM-DD
-**Parent:** [#N](https://github.com/Camba-nz/kinesin/issues/N)
+**Parent:** [#N](https://github.com/Camba-nz/qtaxis/issues/N)
 **This is not** the neighbouring decisions this record does not make.
 
 One or two sentences: the single choice this record makes, and the next

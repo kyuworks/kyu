@@ -94,7 +94,7 @@ Usually Medium.
 - An outbox row written outside the caller's transaction, or a publish that
   can succeed while the caller's transaction rolls back. (High)
 - Consumer code calling the Hatchet SDK directly in a way that bypasses the
-  Kinesin SDK helpers (`publish`, `subscribe`, `durable`, `worker`). (High)
+  Qtaxis SDK helpers (`publish`, `subscribe`, `durable`, `worker`). (High)
 - Any edit to an existing file under `packages/sdk/migrations/`. Those SQL
   files ship to consumers and are immutable; add a new file instead
   (`scripts/gates/check-migration-immutability.sh`). (High)
