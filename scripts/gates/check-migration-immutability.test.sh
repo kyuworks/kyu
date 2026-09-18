@@ -66,11 +66,13 @@ assert_output_contains "armed edit names the file" "20260101000000_base.sql" \
 assert_exit "armed edit still fails with GIT_DIR exported" 1 \
   run_repo "${EDIT}" GIT_DIR=.git MIGRATION_IMMUTABILITY_ARMED=1 BASE_SHA="${EDIT_BASE}"
 
-# Pins today's default (ARMED unset -> disarmed). #59 flips this expectation
-# to armed-by-default once a consumer has applied a migration.
-assert_exit "unset ARMED defaults to disarmed on an edited migration" 0 \
+# Pins the default: armed. Re-armed under #59 after the rename rewrote the
+# migration.
+assert_exit "unset ARMED defaults to armed on an edited migration" 1 \
   run_repo "${EDIT}" BASE_SHA="${EDIT_BASE}"
-assert_output_contains "unset ARMED default prints SKIP" "SKIP" \
+assert_output_contains "unset ARMED default prints FAIL" "FAIL" \
+  run_repo "${EDIT}" BASE_SHA="${EDIT_BASE}"
+assert_output_contains "unset ARMED default names the file" "20260101000000_base.sql" \
   run_repo "${EDIT}" BASE_SHA="${EDIT_BASE}"
 
 CLEAN="${WORK}/clean"
