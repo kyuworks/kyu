@@ -52,8 +52,9 @@ describe('durable: sleepFor', () => {
     data: z.object({ marker: z.string() }),
   })
 
-  // Only the completion instant is read from the handler: a reassignment
-  // re-runs its body, so an in-handler start point would understate the gap.
+  // Last-write-wins on both maps: a reassignment re-runs the handler body, so
+  // the latest entry pairs with the sleep that actually completes.
+  const enteredAt = new Map<string, number>()
   const completedAt = new Map<string, number>()
   let worker: QtaxisWorker | undefined
 
@@ -61,9 +62,11 @@ describe('durable: sleepFor', () => {
     const subscription = durable(hatchet, trigger, {
       name: 'sleep-then-continue',
       handler: async (ctx: DurableHandlerContext<{ marker: string }>) => {
-        // The 24h default executionTimeout that lets a sleep outlive the engine's
-        // 60s default is pinned in durable.test.ts; this only proves the sleep
-        // resumes after the requested duration.
+        // Recorded before the sleep so the assertion measures the sleep itself,
+        // not push-to-pickup lag. The 24h default executionTimeout that lets a
+        // sleep outlive the engine's 60s default is pinned in durable.test.ts;
+        // this only proves the sleep resumes after the requested duration.
+        enteredAt.set(ctx.envelope.id, Date.now())
         await ctx.sleepFor('8s')
         completedAt.set(ctx.envelope.id, Date.now())
       },
@@ -79,16 +82,19 @@ describe('durable: sleepFor', () => {
 
   it('resumes after at least the requested duration', async () => {
     const envelope = await createEnvelope(trigger, { marker: 'go' }, { tenantId: null, source: 'sdk.test' })
-    const pushedAt = Date.now()
     await hatchet.events.push(trigger.name, envelope, {
       additionalMetadata: toEnvelopeMetadata(envelope),
       scope: eventScope(envelope),
     })
 
+    // Wait for pickup before reading the entry instant: a starved worker
+    // delays entry, and that delay is not part of the 8s sleep under test.
+    await waitUntil(() => enteredAt.has(envelope.id), 60_000)
     await waitUntil(() => completedAt.has(envelope.id), 60_000)
+    const enteredInstant = enteredAt.get(envelope.id)
     const completedInstant = completedAt.get(envelope.id)
     expect(completedInstant).toBeDefined()
-    expect((completedInstant ?? 0) - pushedAt).toBeGreaterThanOrEqual(8_000)
+    expect((completedInstant ?? 0) - (enteredInstant ?? 0)).toBeGreaterThanOrEqual(8_000)
   }, 90_000)
 })
 
