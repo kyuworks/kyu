@@ -6,4 +6,5 @@ Lint
 Type Check
 Unit Tests
 Integration Tests
+Integration Tests (playground)
 Gate Self Tests

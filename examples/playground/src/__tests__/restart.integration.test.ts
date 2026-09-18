@@ -168,7 +168,7 @@ describe('restart: the durable watch-shipping handler', () => {
 
   it('records a timeout when nothing ships', async () => {
     const tenantId = randomUUID()
-    const playground = await startPlayground('20s')
+    const playground = await startPlayground('8s')
     try {
       await playground.spawnWorker()
 
@@ -188,7 +188,7 @@ describe('restart: the durable watch-shipping handler', () => {
   it('a wrong-tenant shipment never matches; the wait times out', async () => {
     const tenantId = randomUUID()
     const otherTenantId = randomUUID()
-    const playground = await startPlayground('20s')
+    const playground = await startPlayground('8s')
     try {
       await playground.spawnWorker()
 
