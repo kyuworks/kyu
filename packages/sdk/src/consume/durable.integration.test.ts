@@ -61,9 +61,10 @@ describe('durable: sleepFor', () => {
     const subscription = durable(hatchet, trigger, {
       name: 'sleep-then-continue',
       handler: async (ctx: DurableHandlerContext<{ marker: string }>) => {
-        // Longer than the engine's 60s default execution timeout: proves
-        // durable()'s own 24h default keeps the wait alive past that point.
-        await ctx.sleepFor('75s')
+        // The 24h default executionTimeout that lets a sleep outlive the engine's
+        // 60s default is pinned in durable.test.ts; this only proves the sleep
+        // resumes after the requested duration.
+        await ctx.sleepFor('8s')
         completedAt.set(ctx.envelope.id, Date.now())
       },
     })
@@ -84,11 +85,11 @@ describe('durable: sleepFor', () => {
       scope: eventScope(envelope),
     })
 
-    await waitUntil(() => completedAt.has(envelope.id), 150_000)
+    await waitUntil(() => completedAt.has(envelope.id), 60_000)
     const completedInstant = completedAt.get(envelope.id)
     expect(completedInstant).toBeDefined()
-    expect((completedInstant ?? 0) - pushedAt).toBeGreaterThanOrEqual(75_000)
-  }, 180_000)
+    expect((completedInstant ?? 0) - pushedAt).toBeGreaterThanOrEqual(8_000)
+  }, 90_000)
 })
 
 describe('durable: correlated waitFor', () => {
