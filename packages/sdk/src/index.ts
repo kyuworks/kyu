@@ -82,5 +82,8 @@ export type { RateLimitOption, SharedTaskOptions } from './consume/taskOptions.j
 export { durable } from './consume/durable.js'
 export type { DurableHandlerContext, DurableOptions, WaitForOptions, WaitForResult } from './consume/durable.js'
 
+export { readRunOutcomes } from './consume/runOutcomes.js'
+export type { QtaxisRuns, ReadRunOutcomesOptions, RunOutcome, RunStatus } from './consume/runOutcomes.js'
+
 export { createWorker } from './consume/worker.js'
 export type { CreateWorkerOptions, QtaxisWorker } from './consume/worker.js'

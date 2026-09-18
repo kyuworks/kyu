@@ -1,6 +1,8 @@
 import type { MessageData, MessageDefinition, MessageSchema } from '@qtaxis/schemas'
 import { durable } from './consume/durable.js'
 import type { DurableOptions } from './consume/durable.js'
+import { readRunOutcomes } from './consume/runOutcomes.js'
+import type { QtaxisRuns } from './consume/runOutcomes.js'
 import { subscribe } from './consume/subscribe.js'
 import type { SubscribeOptions, Subscription } from './consume/subscribe.js'
 import { createWorker } from './consume/worker.js'
@@ -35,6 +37,7 @@ export interface Qtaxis {
     definition: MessageDefinition<S>,
     options: DurableOptions<MessageData<MessageDefinition<S>>>,
   ): Subscription
+  runs: QtaxisRuns
   worker(name: string, options: CreateWorkerOptions): Promise<QtaxisWorker>
   startRelay(options: QtaxisRelayOptions): Relay
 }
@@ -48,6 +51,7 @@ export function createQtaxis(options: CreateQtaxisOptions): Qtaxis {
     onceById,
     subscribe: (definition, subscribeOptions) => subscribe(hatchet, definition, subscribeOptions),
     durable: (definition, durableOptions) => durable(hatchet, definition, durableOptions),
+    runs: { forEnvelope: (envelopeId, runOptions) => readRunOutcomes(hatchet, envelopeId, runOptions) },
     worker: (name, workerOptions) => createWorker(hatchet, name, workerOptions),
     startRelay: (relayOptions) => startRelay({ ...relayOptions, hatchet }),
   }

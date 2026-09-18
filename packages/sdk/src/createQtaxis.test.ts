@@ -1,4 +1,4 @@
-import { defineEvent } from '@qtaxis/schemas'
+import { defineEvent, uuidv7 } from '@qtaxis/schemas'
 import { describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { z } from 'zod'
@@ -38,17 +38,26 @@ interface FakeHatchetClient {
   capturedTaskOptions: () => CreateTaskWorkflowOpts | undefined
   capturedDurableOptions: () => CreateDurableTaskWorkflowOpts<JsonObject, void> | undefined
   capturedWorkerOptions: () => CreateWorkerOpts | undefined
+  capturedRunsListOptions: () => Parameters<HatchetClient['runs']['list']>[0]
   workerCallCount: () => number
 }
 
-// One stub covering task, durableTask and worker: subscribe, durable and
-// worker each reach a different engine method through the same client.
+// One stub covering task, durableTask, worker and runs.list: subscribe,
+// durable, worker and runs.forEnvelope each reach a different engine method
+// through the same client.
 function fakeHatchetClient(): FakeHatchetClient {
   let taskOptions: CreateTaskWorkflowOpts | undefined
   let durableOptions: CreateDurableTaskWorkflowOpts<JsonObject, void> | undefined
   let workerOptions: CreateWorkerOpts | undefined
+  let runsListOptions: Parameters<HatchetClient['runs']['list']>[0]
   let workerCalls = 0
-  const stub: Pick<HatchetClient, 'durableTask' | 'task' | 'worker'> = {
+  const runs: Pick<HatchetClient['runs'], 'list'> = {
+    list: (options) => {
+      runsListOptions = options
+      return Promise.resolve({ pagination: {}, rows: [] })
+    },
+  }
+  const stub: Pick<HatchetClient, 'config' | 'durableTask' | 'task' | 'worker'> = {
     task: (options: CreateTaskWorkflowOpts) => {
       taskOptions = options
       return {} as TaskWorkflowDeclaration
@@ -62,12 +71,14 @@ function fakeHatchetClient(): FakeHatchetClient {
       workerOptions = options
       return Promise.resolve(fakeWorker())
     },
+    config: { namespace: 'shop_' } as HatchetClient['config'],
   }
   return {
-    client: stub as HatchetClient,
+    client: { ...stub, runs } as HatchetClient,
     capturedTaskOptions: () => taskOptions,
     capturedDurableOptions: () => durableOptions,
     capturedWorkerOptions: () => workerOptions,
+    capturedRunsListOptions: () => runsListOptions,
     workerCallCount: () => workerCalls,
   }
 }
@@ -127,7 +138,7 @@ describe('createQtaxis', () => {
     const qtaxis = createQtaxis({ hatchet: client, source: 'shop-service' })
 
     expect(Object.keys(qtaxis).sort()).toEqual(
-      ['durable', 'onceById', 'publish', 'startRelay', 'subscribe', 'worker'].sort(),
+      ['durable', 'onceById', 'publish', 'runs', 'startRelay', 'subscribe', 'worker'].sort(),
     )
   })
 
@@ -176,6 +187,17 @@ describe('createQtaxis', () => {
 
     expect(capturedDurableOptions()?.name).toBe('follow-up')
     expect(capturedDurableOptions()?.onEvents).toEqual(['shop.order.placed'])
+  })
+
+  it('runs.forEnvelope forwards to the underlying function with the bound client', async () => {
+    const { client, capturedRunsListOptions } = fakeHatchetClient()
+    const qtaxis = createQtaxis({ hatchet: client, source: 'shop-service' })
+    const envelopeId = uuidv7()
+
+    const outcomes = await qtaxis.runs.forEnvelope(envelopeId)
+
+    expect(outcomes).toEqual([])
+    expect(capturedRunsListOptions()?.additionalMetadata).toEqual({ envelopeId })
   })
 
   it('worker forwards to the underlying function with the bound client', async () => {
