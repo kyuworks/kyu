@@ -153,6 +153,34 @@ describe('readConfig', () => {
     ).toThrow('KINESIN_EXAMPLE_RELAY_BATCH_SIZE')
   })
 
+  it('defaults uiPort to 3333 when unset', () => {
+    const config = readConfig({ KINESIN_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db' })
+    expect(config.uiPort).toBe(3333)
+  })
+
+  it('reads uiPort when set to a valid port', () => {
+    const config = readConfig({
+      KINESIN_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
+      KINESIN_EXAMPLE_UI_PORT: '4000',
+    })
+    expect(config.uiPort).toBe(4000)
+  })
+
+  it('throws MissingConfigError naming the variable for an invalid uiPort', () => {
+    let error: MissingConfigError | undefined
+    try {
+      readConfig({
+        KINESIN_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
+        KINESIN_EXAMPLE_UI_PORT: '70000',
+      })
+    } catch (caught) {
+      if (caught instanceof MissingConfigError) error = caught
+      else throw caught
+    }
+    expect(error).toBeInstanceOf(MissingConfigError)
+    expect(error?.variable).toBe('KINESIN_EXAMPLE_UI_PORT')
+  })
+
   it('throws MissingConfigError naming the variable and the allowed values for an invalid log level', () => {
     let error: MissingConfigError | undefined
     try {
