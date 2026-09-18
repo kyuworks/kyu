@@ -3,7 +3,7 @@ const STYLE = `
   body { font: 14px/1.4 monospace; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; background: Canvas; color: CanvasText; }
   form { display: grid; gap: 0.5rem; margin: 0.5rem 0; }
   label { display: grid; gap: 0.2rem; }
-  pre { background: #f2f2f2; padding: 0.5rem; min-height: 1.2rem; white-space: pre-wrap; }
+  pre { background: color-mix(in srgb, CanvasText 8%, Canvas); border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas); padding: 0.5rem; min-height: 1.2rem; white-space: pre-wrap; }
 `
 
 const SCRIPT = `
