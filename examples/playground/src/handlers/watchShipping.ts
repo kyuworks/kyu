@@ -7,6 +7,11 @@ import { requireTenant } from './tenant.js'
 
 type OrderPlacedContext = DurableHandlerContext<MessageData<typeof orderPlaced>>
 
+// ui/busTopology.ts imports these so its handler list can't drift from what this file writes.
+export const WATCH_SHIPPING_WAITING = 'watch-shipping:waiting'
+export const WATCH_SHIPPING_COMPLETED = 'watch-shipping:completed'
+export const WATCH_SHIPPING_TIMEOUT = 'watch-shipping:timeout'
+
 async function logRow(
   tx: PoolClient,
   handler: string,
@@ -34,8 +39,8 @@ async function watchShipping(
   const { orderId } = ctx.envelope.data
 
   await withTransaction(pool, (tx) =>
-    kinesin.onceById(tx, ctx.envelope.id, 'watch-shipping:waiting', () =>
-      logRow(tx, 'watch-shipping:waiting', ctx.envelope.id, orderId, tenantId),
+    kinesin.onceById(tx, ctx.envelope.id, WATCH_SHIPPING_WAITING, () =>
+      logRow(tx, WATCH_SHIPPING_WAITING, ctx.envelope.id, orderId, tenantId),
     ),
   )
 
@@ -50,9 +55,9 @@ async function watchShipping(
     kinesin.onceById(tx, ctx.envelope.id, 'watch-shipping:done', async () => {
       if (result.kind === 'message') {
         await tx.query('UPDATE shop_order SET shipped_at = now() WHERE id = $1', [orderId])
-        await logRow(tx, 'watch-shipping:completed', ctx.envelope.id, orderId, tenantId, result.envelope.data.carrier)
+        await logRow(tx, WATCH_SHIPPING_COMPLETED, ctx.envelope.id, orderId, tenantId, result.envelope.data.carrier)
       } else {
-        await logRow(tx, 'watch-shipping:timeout', ctx.envelope.id, orderId, tenantId)
+        await logRow(tx, WATCH_SHIPPING_TIMEOUT, ctx.envelope.id, orderId, tenantId)
       }
     }),
   )

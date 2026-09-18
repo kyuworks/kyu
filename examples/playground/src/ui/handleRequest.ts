@@ -5,6 +5,9 @@ import type { z } from 'zod'
 import { describeError, log } from '../log.js'
 import { placeOrder } from '../producer/placeOrder.js'
 import { shipOrder } from '../producer/shipOrder.js'
+import type { BusTopology } from './busTopology.js'
+import { readBusCounts } from './busCounts.js'
+import { renderBusPage } from './busPage.js'
 import { renderUiPage } from './page.js'
 import type { PlaceOrderRequest, ShipOrderRequest } from './requests.js'
 import { placeOrderRequestSchema, shipOrderRequestSchema } from './requests.js'
@@ -13,6 +16,7 @@ export interface UiRequestDeps {
   pool: Pool
   kinesin: Kinesin
   dashboardUrl: string
+  topology: BusTopology
 }
 
 export interface UiRequest {
@@ -117,7 +121,17 @@ async function handleShipOrder(deps: UiRequestDeps, body: string): Promise<UiRes
   }
 }
 
-/** Routes the playground's local web page: `GET /`, `POST /orders`, `POST /shipments`. */
+async function handleBusJson(deps: UiRequestDeps): Promise<UiResponse> {
+  try {
+    const counts = await readBusCounts(deps.pool, deps.topology)
+    return jsonResponse(200, { topology: deps.topology, counts })
+  } catch (error) {
+    log('ui', 'failed', { message: describeError(error) })
+    return errorResponse(500, describeError(error))
+  }
+}
+
+/** Routes the playground's local web page: `GET /`, `POST /orders`, `POST /shipments`, `GET /bus`, `GET /bus.json`. */
 export async function handleUiRequest(deps: UiRequestDeps, request: UiRequest): Promise<UiResponse> {
   if (request.method === 'GET' && request.url === '/') {
     return { status: 200, contentType: 'text/html', body: renderUiPage(deps.dashboardUrl) }
@@ -127,6 +141,12 @@ export async function handleUiRequest(deps: UiRequestDeps, request: UiRequest): 
   }
   if (request.method === 'POST' && request.url === '/shipments') {
     return checkPostBody(request) ?? handleShipOrder(deps, request.body)
+  }
+  if (request.method === 'GET' && request.url === '/bus') {
+    return { status: 200, contentType: 'text/html', body: renderBusPage(deps.dashboardUrl) }
+  }
+  if (request.method === 'GET' && request.url === '/bus.json') {
+    return handleBusJson(deps)
   }
   return errorResponse(404, `no route for ${request.method} ${request.url}`)
 }

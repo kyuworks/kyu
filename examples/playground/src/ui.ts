@@ -5,6 +5,8 @@ import { readConfig } from './config.js'
 import { createPool } from './db/pool.js'
 import { createPlaygroundKinesin } from './kinesin.js'
 import { describeError, exitAfterLog, log } from './log.js'
+import { buildSubscriptions } from './subscriptions.js'
+import { describeBusTopology } from './ui/busTopology.js'
 import { handleUiRequest } from './ui/handleRequest.js'
 
 // The engine's own dashboard, not one Kinesin ships (see infra/hatchet/compose.yaml).
@@ -37,17 +39,25 @@ async function main(): Promise<void> {
   const config = readConfig()
   const pool = createPool(config.databaseUrl)
   const kinesin = createPlaygroundKinesin(config)
+  // Built once from the same registry the worker uses, so the diagram at
+  // /bus can never name a subscription the worker does not run.
+  const topology = describeBusTopology(buildSubscriptions(kinesin, pool, config))
 
   const server = http.createServer((req, res) => {
     readBody(req)
       .then((body) =>
         handleUiRequest(
-          { pool, kinesin, dashboardUrl: DASHBOARD_URL },
+          { pool, kinesin, dashboardUrl: DASHBOARD_URL, topology },
           { method: req.method ?? '', url: req.url ?? '', contentType: req.headers['content-type'] ?? '', body },
         ),
       )
       .then((response) => {
-        res.writeHead(response.status, { 'content-type': response.contentType })
+        // /bus.json is read every 2s; without this an intermediary could cache a stale count.
+        if (response.contentType === 'application/json') {
+          res.writeHead(response.status, { 'content-type': response.contentType, 'cache-control': 'no-store' })
+        } else {
+          res.writeHead(response.status, { 'content-type': response.contentType })
+        }
         res.end(response.body)
       })
       .catch((error) => {
