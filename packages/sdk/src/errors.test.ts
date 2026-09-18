@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { NonRetryableError } from './hatchet.js'
-import { CommandHasTwoSubscribersError, EnvelopeRejectedError, KinesinError } from './errors.js'
+import { CommandHasTwoSubscribersError, EnvelopeRejectedError, QtaxisError } from './errors.js'
 
-describe('KinesinError', () => {
+describe('QtaxisError', () => {
   it('is an Error identified by name', () => {
-    const error = new KinesinError('bad options')
+    const error = new QtaxisError('bad options')
 
     expect(error).toBeInstanceOf(Error)
-    expect(error.name).toBe('KinesinError')
+    expect(error.name).toBe('QtaxisError')
     expect(error.message).toBe('bad options')
   })
 })
@@ -16,7 +16,7 @@ describe('CommandHasTwoSubscribersError', () => {
   it('names the command and both subscriptions', () => {
     const error = new CommandHasTwoSubscribersError('shop.invoice.send', 'invoice-sender-a', 'invoice-sender-b')
 
-    expect(error).toBeInstanceOf(KinesinError)
+    expect(error).toBeInstanceOf(QtaxisError)
     expect(error).toBeInstanceOf(Error)
     expect(error.name).toBe('CommandHasTwoSubscribersError')
     expect(error.message).toContain('shop.invoice.send')

@@ -109,7 +109,7 @@ describe('createWorker', () => {
   })
 })
 
-describe('KinesinWorker.waitUntilReady', () => {
+describe('QtaxisWorker.waitUntilReady', () => {
   it('rejects with the start error, and never leaves an unhandled rejection', async () => {
     const unhandled: unknown[] = []
     const onUnhandledRejection: NodeJS.UnhandledRejectionListener = (reason) => {

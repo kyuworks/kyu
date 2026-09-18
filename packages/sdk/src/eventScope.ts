@@ -1,4 +1,4 @@
-import type { Envelope } from '@kinesin/schemas'
+import type { Envelope } from '@qtaxis/schemas'
 
 // Shared by the relay push (toEvents.ts) and durable waitFor's default
 // (consume/durable.ts) so the engine event scope never diverges between them.

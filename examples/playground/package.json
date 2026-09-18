@@ -1,5 +1,5 @@
 {
-  "name": "@kinesin/playground",
+  "name": "@qtaxis/playground",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -19,7 +19,7 @@
     "ui": "node dist/ui.js"
   },
   "dependencies": {
-    "@kinesin/sdk": "workspace:*",
+    "@qtaxis/sdk": "workspace:*",
     "pg": "^8.23.0",
     "zod": "^4.0.0"
   },

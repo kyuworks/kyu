@@ -1,7 +1,7 @@
 import nodeProcess from 'node:process'
-import { uuidv7 } from '@kinesin/sdk'
+import { uuidv7 } from '@qtaxis/sdk'
 import { createPool } from '../db/pool.js'
-import { createPlaygroundKinesin } from '../kinesin.js'
+import { createPlaygroundQtaxis } from '../qtaxis.js'
 import { readConfig } from '../config.js'
 import { log } from '../log.js'
 import { placeOrder } from '../producer/placeOrder.js'
@@ -12,10 +12,10 @@ async function main(): Promise<void> {
   const command = parseCommand(nodeProcess.argv.slice(2))
   const config = readConfig()
   const pool = createPool(config.databaseUrl)
-  const kinesin = createPlaygroundKinesin(config)
+  const qtaxis = createPlaygroundQtaxis(config)
   try {
     if (command.kind === 'place-order') {
-      const placed = await placeOrder(pool, kinesin, {
+      const placed = await placeOrder(pool, qtaxis, {
         tenantId: command.tenantId,
         customerId: command.customerId ?? uuidv7(),
       })
@@ -27,7 +27,7 @@ async function main(): Promise<void> {
       })
       return
     }
-    const envelopeId = await shipOrder(pool, kinesin, {
+    const envelopeId = await shipOrder(pool, qtaxis, {
       tenantId: command.tenantId,
       orderId: command.orderId,
       carrier: command.carrier,

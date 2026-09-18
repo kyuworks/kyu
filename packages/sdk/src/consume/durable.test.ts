@@ -1,8 +1,8 @@
-import { createEnvelope, defineEvent, toEnvelopeMetadata } from '@kinesin/schemas'
-import type { Envelope, MessageDataShape } from '@kinesin/schemas'
+import { createEnvelope, defineEvent, toEnvelopeMetadata } from '@qtaxis/schemas'
+import type { Envelope, MessageDataShape } from '@qtaxis/schemas'
 import { z } from 'zod'
 import { describe, expect, it, vi } from 'vitest'
-import { EnvelopeRejectedError, KinesinError } from '../errors.js'
+import { EnvelopeRejectedError, QtaxisError } from '../errors.js'
 import { ConcurrencyLimitStrategy, OrCondition, SleepCondition, UserEventCondition } from '../hatchet.js'
 import type {
   CreateDurableTaskWorkflowOpts,
@@ -68,7 +68,7 @@ describe('buildWaitForConditions', () => {
         { where: { field: 'data.orderId == "x" || true || input.data.y', equals: 'order-1' }, timeout: '30s' },
         now,
       ),
-    ).toThrow(KinesinError)
+    ).toThrow(QtaxisError)
   })
 
   it('rejects a where.field with a leading "input." segment', async () => {
@@ -81,7 +81,7 @@ describe('buildWaitForConditions', () => {
         { where: { field: 'input.data.orderId', equals: 'order-1' }, timeout: '30s' },
         now,
       ),
-    ).toThrow(KinesinError)
+    ).toThrow(QtaxisError)
   })
 
   it('appends the target definition version to the CEL expression', async () => {
@@ -305,7 +305,7 @@ describe('waitForMessage', () => {
     expect(result).toEqual({ kind: 'message', envelope: shipped })
   })
 
-  it('raises KinesinError when the engine result matches neither message nor timeout', async () => {
+  it('raises QtaxisError when the engine result matches neither message nor timeout', async () => {
     const { context } = fakeDurableContext({ CREATE: { unexpected: [] } })
     const envelope = await handlerEnvelope(null)
 
@@ -314,7 +314,7 @@ describe('waitForMessage', () => {
         where: { field: 'data.orderId', equals: 'order-1' },
         timeout: '30s',
       }),
-    ).rejects.toBeInstanceOf(KinesinError)
+    ).rejects.toBeInstanceOf(QtaxisError)
   })
 
   it('rejects a matched envelope from another tenant when scope was not given', async () => {

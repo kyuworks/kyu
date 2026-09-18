@@ -1,4 +1,4 @@
-import { defineCommand, defineEvent } from '@kinesin/sdk'
+import { defineCommand, defineEvent } from '@qtaxis/sdk'
 import { z } from 'zod'
 
 export const orderPlaced = defineEvent({

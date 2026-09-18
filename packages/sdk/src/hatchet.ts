@@ -54,14 +54,14 @@ export type {
 
 /**
  * Base for SDK-raised errors that are not envelope- or message-definition
- * errors from `@kinesin/schemas`. Defined here, not in `errors.ts`, because
+ * errors from `@qtaxis/schemas`. Defined here, not in `errors.ts`, because
  * `errors.ts` imports `NonRetryableError` from this file; defining it there
  * and importing it back would make the two files circular.
  */
-export class KinesinError extends Error {
+export class QtaxisError extends Error {
   constructor(message: string) {
     super(message)
-    this.name = 'KinesinError'
+    this.name = 'QtaxisError'
   }
 }
 
@@ -85,13 +85,13 @@ export interface HatchetClientOptions {
 export type HatchetClientConfig = NonNullable<Parameters<typeof HatchetClient.init>[0]>
 
 /**
- * Maps Kinesin's own option names to the engine SDK's `ClientConfig` shape.
+ * Maps Qtaxis's own option names to the engine SDK's `ClientConfig` shape.
  *
  * The engine loader treats `tls_config` as a set: once any TLS option is
  * given, it replaces the whole config (environment defaults included), not
  * just the given keys. So `tls_config` is built only when at least one TLS
  * option is present, and `tls_strategy` is always set on it — from
- * `options.tls`, or a thrown `KinesinError` if that was left out.
+ * `options.tls`, or a thrown `QtaxisError` if that was left out.
  */
 export function toHatchetClientConfig(options: HatchetClientOptions): HatchetClientConfig {
   const config: HatchetClientConfig = {}
@@ -106,7 +106,7 @@ export function toHatchetClientConfig(options: HatchetClientOptions): HatchetCli
     options.tlsServerName !== undefined
   if (hasTlsOption) {
     if (options.tls === undefined) {
-      throw new KinesinError(
+      throw new QtaxisError(
         'tls is required when tlsCertFile, tlsKeyFile, tlsRootCaFile or tlsServerName is set, because the engine ignores its environment defaults once any TLS option is given',
       )
     }
@@ -122,7 +122,7 @@ export function toHatchetClientConfig(options: HatchetClientOptions): HatchetCli
         missing.push('tlsRootCaFile')
       }
       if (missing.length > 0) {
-        throw new KinesinError(`tls: 'mtls' requires ${missing.join(', ')}`)
+        throw new QtaxisError(`tls: 'mtls' requires ${missing.join(', ')}`)
       }
     }
     config.tls_config = { tls_strategy: options.tls }

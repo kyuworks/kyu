@@ -1,5 +1,5 @@
-import type { HatchetClient, Kinesin } from '@kinesin/sdk'
-import { createKinesin } from '@kinesin/sdk'
+import type { HatchetClient, Qtaxis } from '@qtaxis/sdk'
+import { createQtaxis } from '@qtaxis/sdk'
 import type { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
 import type { PlaygroundConfig } from '../config.js'
@@ -35,13 +35,13 @@ function fakeConfig(): PlaygroundConfig {
   }
 }
 
-function fakeKinesin(): Kinesin {
-  return createKinesin({ hatchet: fakeHatchetClient(), source: 'bus-topology-test' })
+function fakeQtaxis(): Qtaxis {
+  return createQtaxis({ hatchet: fakeHatchetClient(), source: 'bus-topology-test' })
 }
 
 describe('describeBusTopology', () => {
   it('names the producer after the source every publish uses', () => {
-    const subscriptions = buildSubscriptions(fakeKinesin(), fakePool(), fakeConfig())
+    const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
 
@@ -49,7 +49,7 @@ describe('describeBusTopology', () => {
   })
 
   it('carries name, messageName and kind through unchanged for a plain subscription', () => {
-    const subscriptions = buildSubscriptions(fakeKinesin(), fakePool(), fakeConfig())
+    const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
 
@@ -63,7 +63,7 @@ describe('describeBusTopology', () => {
   })
 
   it('defaults doneHandlers to the subscription name with no waitingHandler', () => {
-    const subscriptions = buildSubscriptions(fakeKinesin(), fakePool(), fakeConfig())
+    const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
 
@@ -73,7 +73,7 @@ describe('describeBusTopology', () => {
   })
 
   it('overrides watch-shipping with its two finishing handlers and a waiting handler', () => {
-    const subscriptions = buildSubscriptions(fakeKinesin(), fakePool(), fakeConfig())
+    const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
 
@@ -88,7 +88,7 @@ describe('describeBusTopology', () => {
   })
 
   it('describes every subscription the worker registers, in order', () => {
-    const subscriptions = buildSubscriptions(fakeKinesin(), fakePool(), fakeConfig())
+    const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
 
@@ -107,7 +107,7 @@ describe('describeBusTopology', () => {
   ])
 
   it("ties every subscription's doneHandlers to the handler names its own module writes", () => {
-    const subscriptions = buildSubscriptions(fakeKinesin(), fakePool(), fakeConfig())
+    const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
 

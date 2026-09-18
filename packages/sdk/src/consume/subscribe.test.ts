@@ -1,4 +1,4 @@
-import { createEnvelope, defineCommand, defineEvent, toEnvelopeMetadata } from '@kinesin/schemas'
+import { createEnvelope, defineCommand, defineEvent, toEnvelopeMetadata } from '@qtaxis/schemas'
 import { z } from 'zod'
 import { describe, expect, it, vi } from 'vitest'
 import { EnvelopeRejectedError } from '../errors.js'

@@ -1,4 +1,4 @@
-import { EnvelopeMetadataError, fromEnvelopeMetadata, parseEnvelopeSafe, validateStandard } from '@kinesin/schemas'
+import { EnvelopeMetadataError, fromEnvelopeMetadata, parseEnvelopeSafe, validateStandard } from '@qtaxis/schemas'
 import type {
   Envelope,
   EnvelopeMetadataFields,
@@ -8,7 +8,7 @@ import type {
   MessageKind,
   MessageSchema,
   Unparsed,
-} from '@kinesin/schemas'
+} from '@qtaxis/schemas'
 import { EnvelopeRejectedError } from '../errors.js'
 import type { Context, CreateTaskWorkflowOpts, HatchetClient, JsonObject, TaskWorkflowDeclaration } from '../hatchet.js'
 import { buildHandlerContext } from './handlerContext.js'

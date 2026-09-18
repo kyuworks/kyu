@@ -10,7 +10,7 @@ export {
   messageNameSchema,
   parseEnvelope,
   uuidv7,
-} from '@kinesin/schemas'
+} from '@qtaxis/schemas'
 export type {
   CreateEnvelopeOptions,
   Envelope,
@@ -24,12 +24,12 @@ export type {
   MessageKind,
   MessageSchema,
   Unparsed,
-} from '@kinesin/schemas'
+} from '@qtaxis/schemas'
 export { SDK_VERSION } from './version.js'
 export { MIGRATIONS_DIRECTORY } from './migrations.js'
 
-export { createKinesin } from './createKinesin.js'
-export type { CreateKinesinOptions, Kinesin, KinesinRelayOptions } from './createKinesin.js'
+export { createQtaxis } from './createQtaxis.js'
+export type { CreateQtaxisOptions, Qtaxis, QtaxisRelayOptions } from './createQtaxis.js'
 
 export type { Queryable, QueryParam, QueryRows } from './db/queryable.js'
 
@@ -62,7 +62,7 @@ export {
   CommandHasTwoSubscribersError,
   EnvelopeOptionsError,
   EnvelopeRejectedError,
-  KinesinError,
+  QtaxisError,
   MessageDataError,
   MessageDefinitionError,
 } from './errors.js'
@@ -83,4 +83,4 @@ export { durable } from './consume/durable.js'
 export type { DurableHandlerContext, DurableOptions, WaitForOptions, WaitForResult } from './consume/durable.js'
 
 export { createWorker } from './consume/worker.js'
-export type { CreateWorkerOptions, KinesinWorker } from './consume/worker.js'
+export type { CreateWorkerOptions, QtaxisWorker } from './consume/worker.js'

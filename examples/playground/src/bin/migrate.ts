@@ -1,5 +1,5 @@
 import nodeProcess from 'node:process'
-import { MIGRATIONS_DIRECTORY } from '@kinesin/sdk'
+import { MIGRATIONS_DIRECTORY } from '@qtaxis/sdk'
 import { Client } from 'pg'
 import { APP_MIGRATIONS_DIRECTORY, applyPending, ensureDatabase } from '../db/migrate.js'
 import { readConfig } from '../config.js'

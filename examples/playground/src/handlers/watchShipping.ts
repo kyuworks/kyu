@@ -1,4 +1,4 @@
-import type { DurableHandlerContext, Kinesin, MessageData, Subscription } from '@kinesin/sdk'
+import type { DurableHandlerContext, Qtaxis, MessageData, Subscription } from '@qtaxis/sdk'
 import type { Pool, PoolClient } from 'pg'
 import type { PlaygroundConfig } from '../config.js'
 import { withTransaction } from '../db/pool.js'
@@ -31,7 +31,7 @@ async function logRow(
 // before the wait, the completed/timeout row after it.
 async function watchShipping(
   pool: Pool,
-  kinesin: Kinesin,
+  qtaxis: Qtaxis,
   config: PlaygroundConfig,
   ctx: OrderPlacedContext,
 ): Promise<void> {
@@ -39,7 +39,7 @@ async function watchShipping(
   const { orderId } = ctx.envelope.data
 
   await withTransaction(pool, (tx) =>
-    kinesin.onceById(tx, ctx.envelope.id, WATCH_SHIPPING_WAITING, () =>
+    qtaxis.onceById(tx, ctx.envelope.id, WATCH_SHIPPING_WAITING, () =>
       logRow(tx, WATCH_SHIPPING_WAITING, ctx.envelope.id, orderId, tenantId),
     ),
   )
@@ -52,7 +52,7 @@ async function watchShipping(
   })
 
   await withTransaction(pool, (tx) =>
-    kinesin.onceById(tx, ctx.envelope.id, 'watch-shipping:done', async () => {
+    qtaxis.onceById(tx, ctx.envelope.id, 'watch-shipping:done', async () => {
       if (result.kind === 'message') {
         await tx.query('UPDATE shop_order SET shipped_at = now() WHERE id = $1', [orderId])
         await logRow(tx, WATCH_SHIPPING_COMPLETED, ctx.envelope.id, orderId, tenantId, result.envelope.data.carrier)
@@ -63,13 +63,13 @@ async function watchShipping(
   )
 }
 
-export function watchShippingSubscription(kinesin: Kinesin, pool: Pool, config: PlaygroundConfig): Subscription {
-  return kinesin.durable(orderPlaced, {
+export function watchShippingSubscription(qtaxis: Qtaxis, pool: Pool, config: PlaygroundConfig): Subscription {
+  return qtaxis.durable(orderPlaced, {
     name: 'watch-shipping',
     executionTimeout: '1h',
     // A worker stopped while the body executes (not while parked in a wait)
     // fails that attempt; retrying is safe because every write goes through onceById.
     retries: 3,
-    handler: (ctx) => watchShipping(pool, kinesin, config, ctx),
+    handler: (ctx) => watchShipping(pool, qtaxis, config, ctx),
   })
 }

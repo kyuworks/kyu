@@ -1,5 +1,5 @@
-import type { Kinesin } from '@kinesin/sdk'
-import { createHatchetClient, createKinesin } from '@kinesin/sdk'
+import type { Qtaxis } from '@qtaxis/sdk'
+import { createHatchetClient, createQtaxis } from '@qtaxis/sdk'
 import type { PlaygroundConfig } from './config.js'
 
 // Every producer publishes under this source; ui/busTopology.ts reads it too,
@@ -7,7 +7,7 @@ import type { PlaygroundConfig } from './config.js'
 export const PLAYGROUND_SOURCE = 'playground'
 
 // One place builds the client, so migrate, relay, worker and the CLI all share the namespace rule.
-export function createPlaygroundKinesin(config: PlaygroundConfig): Kinesin {
+export function createPlaygroundQtaxis(config: PlaygroundConfig): Qtaxis {
   const hatchet = createHatchetClient({ namespace: config.namespace })
-  return createKinesin({ hatchet, source: PLAYGROUND_SOURCE })
+  return createQtaxis({ hatchet, source: PLAYGROUND_SOURCE })
 }

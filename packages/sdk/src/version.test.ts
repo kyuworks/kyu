@@ -6,18 +6,18 @@ describe('sdk entry point', () => {
     expect(SDK_VERSION).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
-  it('re-exports the envelope parser from @kinesin/schemas', () => {
+  it('re-exports the envelope parser from @qtaxis/schemas', () => {
     const parsed = parseEnvelope({
       id: '01923e4a-7b1c-7f3e-8a2d-3c4b5a6d7e8f',
-      name: 'kinesin.sdk.smoke_tested',
+      name: 'qtaxis.sdk.smoke_tested',
       version: 1,
       kind: 'event',
       occurredAt: '2026-09-16T10:00:00.000Z',
       tenantId: null,
       correlationId: '01923e4a-7b1c-7f3e-8a2d-3c4b5a6d7e90',
-      source: 'kinesin.sdk.test',
+      source: 'qtaxis.sdk.test',
       data: {},
     })
-    expect(parsed.name).toBe('kinesin.sdk.smoke_tested')
+    expect(parsed.name).toBe('qtaxis.sdk.smoke_tested')
   })
 })
