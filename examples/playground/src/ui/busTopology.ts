@@ -1,13 +1,30 @@
 import type { Subscription } from '@qtaxis/sdk'
 import { WATCH_SHIPPING_COMPLETED, WATCH_SHIPPING_TIMEOUT, WATCH_SHIPPING_WAITING } from '../handlers/watchShipping.js'
+import { orderShipped } from '../messages.js'
 import { PLAYGROUND_SOURCE } from '../qtaxis.js'
+
+/** One way a subscription can finish, under the handler name it writes to shop_handler_log. */
+export interface TopologyDoneOutcome {
+  handler: string
+  label: string
+}
+
+/** A second message that wakes a parked run of this subscription. */
+export interface TopologyWake {
+  messageName: string
+  label: string
+}
 
 export interface TopologySubscription {
   name: string
   messageName: string
   kind: Subscription['kind']
-  doneHandlers: string[]
+  /** Only when "done" splits into named domain outcomes this handler logs itself. */
+  doneOutcomes?: TopologyDoneOutcome[]
+  /** Only when the handler parks in a wait and logs a row before it. */
   waitingHandler?: string
+  /** Only when a correlated message wakes a parked run; a durable waitFor is invisible on Subscription. */
+  wakesOn?: TopologyWake
 }
 
 export interface BusTopology {
@@ -16,16 +33,24 @@ export interface BusTopology {
 }
 
 interface HandlerOverride {
-  doneHandlers: string[]
+  doneOutcomes: TopologyDoneOutcome[]
   waitingHandler: string
+  wakesOn: TopologyWake
 }
 
-// watch-shipping finishes under two handler names instead of one; every
-// other subscription finishes in one row under its own name.
+// watch-shipping parks in a wait and finishes under two handler names; every
+// other subscription's engine "completed" is the whole story for it.
 const HANDLER_OVERRIDES = new Map<string, HandlerOverride>([
   [
     'watch-shipping',
-    { doneHandlers: [WATCH_SHIPPING_COMPLETED, WATCH_SHIPPING_TIMEOUT], waitingHandler: WATCH_SHIPPING_WAITING },
+    {
+      doneOutcomes: [
+        { handler: WATCH_SHIPPING_COMPLETED, label: 'shipped' },
+        { handler: WATCH_SHIPPING_TIMEOUT, label: 'timed out' },
+      ],
+      waitingHandler: WATCH_SHIPPING_WAITING,
+      wakesOn: { messageName: orderShipped.name, label: `${orderShipped.name} wakes a parked run` },
+    },
   ],
 ])
 
@@ -35,9 +60,12 @@ function describeSubscription(subscription: Subscription): TopologySubscription 
     name: subscription.name,
     messageName: subscription.messageName,
     kind: subscription.kind,
-    doneHandlers: override?.doneHandlers ?? [subscription.name],
   }
-  if (override !== undefined) described.waitingHandler = override.waitingHandler
+  if (override !== undefined) {
+    described.doneOutcomes = override.doneOutcomes
+    described.waitingHandler = override.waitingHandler
+    described.wakesOn = override.wakesOn
+  }
   return described
 }
 

@@ -32,27 +32,25 @@ const SCRIPT = `
     var box = el('div', 'box subscription-box')
     box.id = 'subscription-' + subscription.name
     box.appendChild(el('h2', null, subscription.name))
-    box.appendChild(el('div', 'count processed', '–'))
-    box.appendChild(el('div', 'count-label', 'processed'))
-    if (subscription.waitingHandler) {
-      box.appendChild(el('div', 'count in-progress', '–'))
-      box.appendChild(el('div', 'count-label', 'in progress'))
-    }
+    box.appendChild(el('div', 'count done', '–'))
+    box.appendChild(el('div', 'count-label', 'done'))
+    box.appendChild(el('div', 'count failed', '–'))
+    box.appendChild(el('div', 'count-label', 'failed'))
     column.appendChild(box)
     return column
   }
 
   function applyCounts(counts) {
-    document.getElementById('producer-published').textContent = counts.producer.published
-    document.getElementById('bus-published').textContent = counts.bus.published
-    document.getElementById('bus-in-flight').textContent = counts.bus.inFlight
+    document.getElementById('producer-published').textContent = counts.outbox.published
+    document.getElementById('bus-published').textContent = counts.outbox.waitingForRelay
+    document.getElementById('bus-in-flight').textContent = counts.outbox.shipped
     counts.subscriptions.forEach(function (subscription) {
       var box = document.getElementById('subscription-' + subscription.name)
       if (!box) return
-      var processed = box.querySelector('.processed')
-      if (processed) processed.textContent = subscription.processed
-      var inProgress = box.querySelector('.in-progress')
-      if (inProgress && subscription.inProgress !== undefined) inProgress.textContent = subscription.inProgress
+      var done = box.querySelector('.done')
+      if (done) done.textContent = subscription.completed
+      var failed = box.querySelector('.failed')
+      if (failed) failed.textContent = subscription.failed
     })
   }
 
@@ -121,9 +119,9 @@ export function renderBusPage(dashboardUrl: string): string {
 <div class="box bus-box" id="bus-box">
 <h2>Message bus</h2>
 <div class="count" id="bus-published">&ndash;</div>
-<div class="count-label">published</div>
+<div class="count-label">waiting for relay</div>
 <div class="count" id="bus-in-flight">&ndash;</div>
-<div class="count-label">in flight</div>
+<div class="count-label">shipped</div>
 </div>
 </div>
 <div class="row columns-row" id="subscription-columns"></div>

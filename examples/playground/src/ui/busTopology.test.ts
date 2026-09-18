@@ -4,6 +4,7 @@ import type { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
 import type { PlaygroundConfig } from '../config.js'
 import { WATCH_SHIPPING_COMPLETED, WATCH_SHIPPING_TIMEOUT, WATCH_SHIPPING_WAITING } from '../handlers/watchShipping.js'
+import { orderShipped } from '../messages.js'
 import { buildSubscriptions } from '../subscriptions.js'
 import { describeBusTopology } from './busTopology.js'
 
@@ -54,25 +55,21 @@ describe('describeBusTopology', () => {
     const topology = describeBusTopology(subscriptions)
 
     const recordOrder = topology.subscriptions.find((subscription) => subscription.name === 'record-order')
-    expect(recordOrder).toEqual({
-      name: 'record-order',
-      messageName: 'shop.order.placed',
-      kind: 'event',
-      doneHandlers: ['record-order'],
-    })
+    expect(recordOrder).toEqual({ name: 'record-order', messageName: 'shop.order.placed', kind: 'event' })
   })
 
-  it('defaults doneHandlers to the subscription name with no waitingHandler', () => {
+  it('gives a plain subscription no doneOutcomes, waitingHandler or wakesOn', () => {
     const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
 
     const sendInvoice = topology.subscriptions.find((subscription) => subscription.name === 'send-invoice')
-    expect(sendInvoice?.doneHandlers).toEqual(['send-invoice'])
+    expect(sendInvoice?.doneOutcomes).toBeUndefined()
     expect(sendInvoice?.waitingHandler).toBeUndefined()
+    expect(sendInvoice?.wakesOn).toBeUndefined()
   })
 
-  it('overrides watch-shipping with its two finishing handlers and a waiting handler', () => {
+  it('overrides watch-shipping with its done outcomes, waiting handler and wake message', () => {
     const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
@@ -82,8 +79,12 @@ describe('describeBusTopology', () => {
       name: 'watch-shipping',
       messageName: 'shop.order.placed',
       kind: 'event',
-      doneHandlers: [WATCH_SHIPPING_COMPLETED, WATCH_SHIPPING_TIMEOUT],
+      doneOutcomes: [
+        { handler: WATCH_SHIPPING_COMPLETED, label: 'shipped' },
+        { handler: WATCH_SHIPPING_TIMEOUT, label: 'timed out' },
+      ],
       waitingHandler: WATCH_SHIPPING_WAITING,
+      wakesOn: { messageName: orderShipped.name, label: `${orderShipped.name} wakes a parked run` },
     })
   })
 
@@ -100,20 +101,25 @@ describe('describeBusTopology', () => {
     ])
   })
 
-  // A plain subscription's module logs its own name; only watch-shipping
-  // diverges, from watchShipping.ts's own exported constants (not a literal).
-  const EXPECTED_DONE_HANDLERS = new Map<string, string[]>([
-    ['watch-shipping', [WATCH_SHIPPING_COMPLETED, WATCH_SHIPPING_TIMEOUT]],
-  ])
-
-  it("ties every subscription's doneHandlers to the handler names its own module writes", () => {
+  // Only watch-shipping's own module names drive its optional fields; every
+  // other subscription carries none of them.
+  it("ties watch-shipping's optional fields to the handler names its own module writes, and no other subscription", () => {
     const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
 
     for (const subscription of topology.subscriptions) {
-      const expected = EXPECTED_DONE_HANDLERS.get(subscription.name) ?? [subscription.name]
-      expect(subscription.doneHandlers).toEqual(expected)
+      if (subscription.name === 'watch-shipping') {
+        expect(subscription.doneOutcomes?.map((outcome) => outcome.handler)).toEqual([
+          WATCH_SHIPPING_COMPLETED,
+          WATCH_SHIPPING_TIMEOUT,
+        ])
+        expect(subscription.waitingHandler).toBe(WATCH_SHIPPING_WAITING)
+      } else {
+        expect(subscription.doneOutcomes).toBeUndefined()
+        expect(subscription.waitingHandler).toBeUndefined()
+        expect(subscription.wakesOn).toBeUndefined()
+      }
     }
   })
 })

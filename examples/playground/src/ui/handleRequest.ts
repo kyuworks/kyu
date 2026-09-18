@@ -123,7 +123,7 @@ async function handleShipOrder(deps: UiRequestDeps, body: string): Promise<UiRes
 
 async function handleBusJson(deps: UiRequestDeps): Promise<UiResponse> {
   try {
-    const counts = await readBusCounts(deps.pool, deps.topology)
+    const counts = await readBusCounts(deps.pool, deps.qtaxis.runs, deps.topology)
     return jsonResponse(200, { topology: deps.topology, counts })
   } catch (error) {
     log('ui', 'failed', { message: describeError(error) })
