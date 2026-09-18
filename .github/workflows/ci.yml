@@ -66,12 +66,71 @@ jobs:
           build: 'false'
       - run: pnpm test
 
-  test-integration:
+  test-integration-sdk:
     name: Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       QTAXIS_TEST_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/qtaxis_test
+    services:
+      postgres:
+        image: postgres:15.6
+        env:
+          POSTGRES_USER: hatchet
+          POSTGRES_PASSWORD: hatchet
+          POSTGRES_DB: hatchet
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -d hatchet -U hatchet"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      hatchet-lite:
+        image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:latest
+        env:
+          DATABASE_URL: postgresql://hatchet:hatchet@postgres:5432/hatchet?sslmode=disable
+          SERVER_AUTH_COOKIE_DOMAIN: localhost
+          SERVER_AUTH_COOKIE_INSECURE: 't'
+          SERVER_GRPC_BIND_ADDRESS: 0.0.0.0
+          SERVER_GRPC_INSECURE: 't'
+          SERVER_GRPC_BROADCAST_ADDRESS: localhost:7077
+          SERVER_GRPC_PORT: '7077'
+          SERVER_URL: http://localhost:8888
+          SERVER_AUTH_SET_EMAIL_VERIFIED: 't'
+          SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS: localhost:7077
+        ports:
+          - 8888:8888
+          - 7077:7077
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+        with:
+          build: 'true'
+      - name: Wait for the engine
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8888/api/ready >/dev/null 2>&1; then echo ready; exit 0; fi
+            sleep 2
+          done
+          echo "hatchet-lite never became ready" >&2
+          docker logs "${{ job.services.hatchet-lite.id }}" | tail -50
+          exit 1
+      - name: Mint a worker token
+        run: |
+          TOKEN="$(docker exec "${{ job.services.hatchet-lite.id }}" /hatchet-admin token create --config /config --tenant-id 707d0855-80ab-4e1f-a156-f1c4546cbf52 | tr -d '\r\n')"
+          echo "::add-mask::${TOKEN}"
+          echo "HATCHET_CLIENT_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
+          echo "HATCHET_CLIENT_TLS_STRATEGY=none" >> "$GITHUB_ENV"
+      - run: pnpm --filter @qtaxis/sdk test:integration
+
+  # Own job, own engine: the sdk and playground lanes are independent and ran
+  # serially at about two minutes each.
+  test-integration-playground:
+    name: Integration Tests (playground)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
       # The example's own runner creates qtaxis_playground itself; this only names where to connect.
       QTAXIS_EXAMPLE_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/qtaxis_playground
     services:
@@ -124,7 +183,7 @@ jobs:
           echo "::add-mask::${TOKEN}"
           echo "HATCHET_CLIENT_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
           echo "HATCHET_CLIENT_TLS_STRATEGY=none" >> "$GITHUB_ENV"
-      - run: pnpm test:integration
+      - run: pnpm --filter @qtaxis/playground test:integration
 
   self-tests:
     name: Gate Self Tests
