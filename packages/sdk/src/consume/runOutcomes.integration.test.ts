@@ -47,7 +47,10 @@ async function waitForOutcomes(
   const deadline = Date.now() + timeoutMs
   for (;;) {
     const outcomes = await readRunOutcomes(hatchet, envelopeId)
-    if (predicate(outcomes) || Date.now() >= deadline) return outcomes
+    if (predicate(outcomes)) return outcomes
+    if (Date.now() >= deadline) {
+      throw new Error(`waitForOutcomes: timed out waiting for envelope ${envelopeId} to satisfy the predicate`)
+    }
     await sleep(200)
   }
 }
@@ -152,8 +155,8 @@ describe('runOutcomes: plain subscriptions', () => {
     expect(outcomes).toHaveLength(1)
     const outcome = outcomes.at(0)
     expect(outcome?.status).toBe('completed')
-    // Observed value, recorded in the PR body: the plan predicted 3
-    // ((retryCount 2) + 1) for a handler that fails on its first two tries.
+    // Observed value, recorded in the PR body: the engine's own `attempt`
+    // field reads 3 here, agreeing with `retryCount 2` + 1.
     expect(outcome?.attempts).toBe(3)
   }, 120_000)
 
@@ -168,10 +171,10 @@ describe('runOutcomes: plain subscriptions', () => {
 
     expect(outcomes).toHaveLength(2)
     const names = outcomes.map((o) => o.subscription).sort()
+    // Exact equality to the names given to subscribe(), not merely "no
+    // namespace prefix": a name that happened to start with the namespace
+    // would pass a startsWith check without actually matching.
     expect(names).toEqual(['fanned-out-first', 'fanned-out-second'])
-    for (const name of names) {
-      expect(name.startsWith(namespace)).toBe(false)
-    }
   }, 90_000)
 
   it('flow 6: a fresh envelope id that was never pushed reads an empty array', async () => {
@@ -232,4 +235,37 @@ describe('runOutcomes: durable parked run', () => {
     expect(completed).toHaveLength(1)
     expect(completed.at(0)?.status).toBe('completed')
   }, 60_000)
+})
+
+describe('runOutcomes: queued run', () => {
+  const neverStarted = defineEvent({
+    name: 'qtaxis.runoutcomes.queued',
+    version: 1,
+    data: z.object({ seq: z.number() }),
+  })
+  let worker: QtaxisWorker | undefined
+
+  beforeAll(async () => {
+    // Registered, never started: no slot ever picks the run up, so it stays
+    // QUEUED for the test to observe.
+    const subscription = subscribe(hatchet, neverStarted, { name: 'queued-recorder', handler: () => undefined })
+    worker = await createWorker(hatchet, 'qtaxis-run-outcomes-queued', { subscriptions: [subscription] })
+  }, 60_000)
+
+  afterAll(async () => {
+    await worker?.stop()
+  })
+
+  it('flow 7: a queued run reads the engine’s own attempt number, observed as 1', async () => {
+    const envelope = await push(neverStarted, { seq: 1 })
+
+    const outcomes = await waitForOutcomes(envelope.id, (o) => o.at(0)?.status === 'queued', 10_000)
+
+    expect(outcomes).toHaveLength(1)
+    const outcome = outcomes.at(0)
+    expect(outcome?.status).toBe('queued')
+    // Observed value, recorded in the PR body: the engine's own `attempt`
+    // field already reads 1 on a run no worker has picked up yet.
+    expect(outcome?.attempts).toBe(1)
+  }, 30_000)
 })

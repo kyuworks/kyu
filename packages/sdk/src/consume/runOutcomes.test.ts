@@ -16,6 +16,7 @@ type EngineRunRow = Awaited<ReturnType<HatchetClient['runs']['list']>>['rows'][n
 interface RowOverrides {
   status?: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED' | 'FAILED'
   retryCount?: number
+  attempt?: number
   errorMessage?: string
   workflowName?: string | undefined
   taskExternalId?: string
@@ -68,6 +69,7 @@ function fixtureRow(overrides: RowOverrides = {}): EngineRunRow {
     else row.finishedAt = finishedAt
   }
   if (overrides.retryCount !== undefined) row.retryCount = overrides.retryCount
+  if (overrides.attempt !== undefined) row.attempt = overrides.attempt
   if (overrides.errorMessage !== undefined) row.errorMessage = overrides.errorMessage
 
   return row
@@ -99,14 +101,19 @@ describe('toRunOutcome', () => {
     expect(toRunOutcome(row, 'ns_')?.attempts).toBe(1)
   })
 
-  it('retryCount 2 gives attempts 3', () => {
-    const row = fixtureRow({ retryCount: 2 })
-    expect(toRunOutcome(row, 'ns_')?.attempts).toBe(3)
-  })
-
   it('an absent retryCount gives attempts 1', () => {
     const row = fixtureRow()
     expect(toRunOutcome(row, 'ns_')?.attempts).toBe(1)
+  })
+
+  it('uses the engine’s own attempt when present, ignoring retryCount', () => {
+    const row = fixtureRow({ attempt: 4, retryCount: 0 })
+    expect(toRunOutcome(row, 'ns_')?.attempts).toBe(4)
+  })
+
+  it('falls back to retryCount + 1 when attempt is absent', () => {
+    const row = fixtureRow({ retryCount: 2 })
+    expect(toRunOutcome(row, 'ns_')?.attempts).toBe(3)
   })
 
   it('strips the namespace prefix off workflowName to get the subscription name', () => {
@@ -117,6 +124,14 @@ describe('toRunOutcome', () => {
   it('excludes a row from another namespace', () => {
     const row = fixtureRow({ workflowName: 'other_record-order' })
     expect(toRunOutcome(row, 'ns_')).toBeUndefined()
+  })
+
+  // Pinning current behaviour, not endorsing it: the prefix check alone
+  // cannot tell a sibling namespace from this one. One Hatchet tenant per
+  // project per environment is what keeps this from happening in production.
+  it('does not filter out a sibling namespace that extends this one as a prefix', () => {
+    const row = fixtureRow({ workflowName: 'shop_staging_record-order' })
+    expect(toRunOutcome(row, 'shop_')?.subscription).toBe('staging_record-order')
   })
 
   it('excludes a row with no workflowName', () => {
@@ -183,16 +198,18 @@ describe('readRunOutcomes', () => {
     expect(outcomes).toEqual([])
   })
 
-  it('defaults since to 60s before the envelope id’s own uuid v7 timestamp', async () => {
-    const envelopeId = uuidv7()
+  it('defaults since to 5 minutes before the envelope id’s own uuid v7 timestamp', async () => {
+    // A fixed id, not a fresh uuidv7(): its first 12 hex digits are the
+    // ms timestamp 1704067200000 (2024-01-01T00:00:00.000Z), computed here
+    // independently of the production code's own parsing, so this pins the
+    // value rather than re-deriving the same expression.
+    const envelopeId = '018cc251-f400-7000-8000-000000000000'
     const { reader, listCalls } = fakeRunsReader('ns_', [])
     await readRunOutcomes(reader, envelopeId)
 
     const since = listCalls()[0]?.since
     expect(since).toBeInstanceOf(Date)
-    const hex = envelopeId.replaceAll('-', '').slice(0, 12)
-    const mintedAt = Number.parseInt(hex, 16)
-    expect(since?.getTime()).toBe(mintedAt - 60_000)
+    expect(since?.getTime()).toBe(Date.UTC(2024, 0, 1, 0, 0, 0, 0) - 5 * 60_000)
   })
 
   it('passes the caller’s since through unchanged', async () => {

@@ -2,13 +2,15 @@ import { envelopeSchema } from '@qtaxis/schemas'
 import { QtaxisError } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
 
+// A durable run parked in `sleepFor`/`waitFor` reads as `running`: the
+// engine exposes no separate parked state.
 export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
 
 export interface RunOutcome {
-  /** The subscription's own `name`, as `subscribe()`/`durable()` was given it. */
+  /** The subscription's name as the engine registered it, lowercased. */
   subscription: string
   status: RunStatus
-  /** The first try is 1. A run that never retried reads 1. */
+  /** The engine's own attempt number, 1 on the first try; a queued run — none picked up yet — also reads 1. */
   attempts: number
   /** The engine's run id. The dashboard link and a future replay use it. */
   runId: string
@@ -21,7 +23,7 @@ export interface RunOutcome {
 }
 
 export interface ReadRunOutcomesOptions {
-  /** Ignore runs created before this. Default: 60s before the envelope id's own uuid v7 timestamp. */
+  /** Ignore runs created before this. Default: 5 minutes before the envelope id's own uuid v7 timestamp. */
   since?: Date
 }
 
@@ -50,18 +52,26 @@ const RUN_STATUS = {
 // reached without something being badly wrong.
 const RUN_PAGE_LIMIT = 100
 
-// Clock skew between the producer and the engine.
-const SINCE_MARGIN_MS = 60_000
+// Clock skew between the producer and the engine. Wider than a typical clock
+// drift: a producer more than a minute ahead would otherwise make every run
+// for its envelopes vanish, indistinguishable from an unknown envelope id.
+const SINCE_MARGIN_MS = 5 * 60_000
 
 /** A row outside this client's namespace belongs to another namespace in the same Hatchet tenant. */
 export function toRunOutcome(row: EngineRunRow, namespace: string): RunOutcome | undefined {
   const workflowName = row.workflowName
+  // A prefix match, not an exact namespace match: a sibling namespace that
+  // extends this one (`shop_` also matches `shop_staging_`) is not filtered
+  // out here. One Hatchet tenant per project per environment (design doc
+  // "Delivery rules") is what keeps that from happening in production.
   if (workflowName === undefined || !workflowName.startsWith(namespace)) return undefined
 
   const outcome: RunOutcome = {
     subscription: workflowName.slice(namespace.length),
     status: RUN_STATUS[row.status],
-    attempts: (row.retryCount ?? 0) + 1,
+    // The engine's own `attempt` is the source of truth; `retryCount + 1`
+    // is a fallback for the rare row where `attempt` itself is absent.
+    attempts: row.attempt ?? (row.retryCount ?? 0) + 1,
     runId: row.taskExternalId,
     createdAt: new Date(row.createdAt),
   }
@@ -98,6 +108,8 @@ export async function readRunOutcomes(
 
   let result: Awaited<ReturnType<RunsReader['runs']['list']>>
   try {
+    // `onlyTasks` is left unset (defaults false): every Qtaxis subscription
+    // is a single-task workflow, so the broader default returns the same rows.
     result = await hatchet.runs.list({
       additionalMetadata: { envelopeId },
       since,

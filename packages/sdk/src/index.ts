@@ -82,7 +82,9 @@ export type { RateLimitOption, SharedTaskOptions } from './consume/taskOptions.j
 export { durable } from './consume/durable.js'
 export type { DurableHandlerContext, DurableOptions, WaitForOptions, WaitForResult } from './consume/durable.js'
 
-export { readRunOutcomes } from './consume/runOutcomes.js'
+// readRunOutcomes/toRunOutcome are not exported: their RunsReader parameter
+// type is derived from HatchetClient and not exported either, so a consumer
+// could not name it. Reach this through qtaxis.runs.forEnvelope instead.
 export type { QtaxisRuns, ReadRunOutcomesOptions, RunOutcome, RunStatus } from './consume/runOutcomes.js'
 
 export { createWorker } from './consume/worker.js'

@@ -31,6 +31,8 @@ pnpm check
 | `@qtaxis/schemas` | The envelope contract, naming rules, schema adapters |
 | `@qtaxis/sdk` | Publish through a transactional outbox, subscribe with Hatchet, run durable handlers, read a run's outcome by envelope id |
 
+A durable run parked in `sleepFor`/`waitFor` reads as `running` in that outcome — the engine exposes no separate parked state.
+
 ## Examples
 
 [`examples/playground`](examples/playground) is a small app that uses `@qtaxis/sdk` the way a real project would.
