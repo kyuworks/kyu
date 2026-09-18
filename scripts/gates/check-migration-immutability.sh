@@ -2,8 +2,8 @@
 # check-migration-immutability.sh — refuse edits to a migration that already
 # existed on the base SHA (ADR 20260916-outbox-migrations-are-immutable).
 #
-# ARMED=0: disarmed until the first consumer applies a migration to a real
-# database. Issue #59 tracks re-arming.
+# ARMED=1: consumers apply these files to real databases. Flip to 0 only in
+# tests via MIGRATION_IMMUTABILITY_ARMED.
 #
 # When ARMED=0 the gate prints SKIP and exits 0.
 # When ARMED=1, a content change, rename, or delete of a packages/sdk/migrations/*.sql
@@ -28,8 +28,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${ROOT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 MIGRATIONS_DIR="${MIGRATIONS_DIR:-${ROOT_DIR}/packages/sdk/migrations}"
 
-# Default 0 until #59 re-arms; tests set it explicitly.
-ARMED=0
+# Applied files are immutable. Tests may set this to 0.
+ARMED=1
 ARMED="${MIGRATION_IMMUTABILITY_ARMED:-${ARMED}}"
 
 echo "=== migration immutability gate ==="
