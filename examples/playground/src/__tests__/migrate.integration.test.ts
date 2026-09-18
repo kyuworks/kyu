@@ -1,13 +1,13 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { MIGRATIONS_DIRECTORY, uuidv7 } from '@kinesin/sdk'
+import { MIGRATIONS_DIRECTORY, uuidv7 } from '@qtaxis/sdk'
 import { Client } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { readConfig } from '../config.js'
 import { APP_MIGRATIONS_DIRECTORY, applyPending } from '../db/migrate.js'
 
-const TABLES = ['shop_order', 'shop_invoice', 'shop_handler_log', 'kinesin_outbox', 'kinesin_processed']
+const TABLES = ['shop_order', 'shop_invoice', 'shop_handler_log', 'qtaxis_outbox', 'qtaxis_processed']
 
 describe('applyPending', () => {
   const { databaseUrl } = readConfig()
@@ -51,7 +51,7 @@ describe('applyPending transaction check', () => {
 
   beforeAll(async () => {
     await client.connect()
-    dir = await mkdtemp(path.join(tmpdir(), 'kinesin-playground-migrate-'))
+    dir = await mkdtemp(path.join(tmpdir(), 'qtaxis-playground-migrate-'))
   })
 
   afterAll(async () => {

@@ -1,4 +1,4 @@
-import { createEnvelope, defineEvent, uuidv7 } from '@kinesin/schemas'
+import { createEnvelope, defineEvent, uuidv7 } from '@qtaxis/schemas'
 import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -12,7 +12,7 @@ import {
 import { createPublisher } from './publish.js'
 
 const thingHappened = defineEvent({
-  name: 'kinesin.repo_test.happened',
+  name: 'qtaxis.repo_test.happened',
   version: 1,
   data: z.object({ n: z.number() }),
 })
@@ -21,7 +21,7 @@ let client: Client
 const publisher = createPublisher({ source: 'outbox-repo-test' })
 
 beforeAll(async () => {
-  client = new Client({ connectionString: process.env['KINESIN_TEST_DATABASE_URL'] })
+  client = new Client({ connectionString: process.env['QTAXIS_TEST_DATABASE_URL'] })
   await client.connect()
 })
 
@@ -30,7 +30,7 @@ afterAll(async () => {
 })
 
 afterEach(async () => {
-  await client.query('TRUNCATE kinesin_outbox')
+  await client.query('TRUNCATE qtaxis_outbox')
 })
 
 async function insertGoodRow(n: number): Promise<string> {
@@ -43,7 +43,7 @@ async function insertGoodRow(n: number): Promise<string> {
 async function insertRowWithId(id: string, n: number): Promise<void> {
   const envelope = await createEnvelope(thingHappened, { n }, { tenantId: null, source: 'outbox-repo-test' })
   const withId = { ...envelope, id, correlationId: id }
-  await client.query('INSERT INTO kinesin_outbox (id, name, tenant_id, envelope) VALUES ($1, $2, NULL, $3::jsonb)', [
+  await client.query('INSERT INTO qtaxis_outbox (id, name, tenant_id, envelope) VALUES ($1, $2, NULL, $3::jsonb)', [
     id,
     thingHappened.name,
     JSON.stringify(withId),
@@ -51,14 +51,14 @@ async function insertRowWithId(id: string, n: number): Promise<void> {
 }
 
 async function backdateCreatedAt(id: string, millisecondsAgo: number): Promise<void> {
-  await client.query(`UPDATE kinesin_outbox SET created_at = now() - ($2 || ' milliseconds')::interval WHERE id = $1`, [
+  await client.query(`UPDATE qtaxis_outbox SET created_at = now() - ($2 || ' milliseconds')::interval WHERE id = $1`, [
     id,
     String(millisecondsAgo),
   ])
 }
 
 async function backdateClaimedAt(id: string, millisecondsAgo: number): Promise<void> {
-  await client.query(`UPDATE kinesin_outbox SET claimed_at = now() - ($2 || ' milliseconds')::interval WHERE id = $1`, [
+  await client.query(`UPDATE qtaxis_outbox SET claimed_at = now() - ($2 || ' milliseconds')::interval WHERE id = $1`, [
     id,
     String(millisecondsAgo),
   ])
@@ -69,10 +69,10 @@ describe('claimPendingRows: an invalid envelope is skipped, not returned', () =>
     const goodIdA = await insertGoodRow(1)
     const goodIdB = await insertGoodRow(2)
     const badId = uuidv7()
-    await client.query('INSERT INTO kinesin_outbox (id, name, tenant_id, envelope) VALUES ($1, $2, NULL, $3::jsonb)', [
+    await client.query('INSERT INTO qtaxis_outbox (id, name, tenant_id, envelope) VALUES ($1, $2, NULL, $3::jsonb)', [
       badId,
-      'kinesin.repo_test.happened',
-      JSON.stringify({ name: 'kinesin.repo_test.happened', not: 'an envelope' }),
+      'qtaxis.repo_test.happened',
+      JSON.stringify({ name: 'qtaxis.repo_test.happened', not: 'an envelope' }),
     ])
 
     const claimed = await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 60_000 })
@@ -81,7 +81,7 @@ describe('claimPendingRows: an invalid envelope is skipped, not returned', () =>
     expect(claimed.rows.map((row) => row.id).sort()).toEqual([goodIdA, goodIdB].sort())
 
     const bad = await client.query(
-      'SELECT attempts, last_error, claimed_at, claimed_by FROM kinesin_outbox WHERE id = $1',
+      'SELECT attempts, last_error, claimed_at, claimed_by FROM qtaxis_outbox WHERE id = $1',
       [badId],
     )
     expect(bad.rows[0]?.attempts).toBe(1)
@@ -93,7 +93,7 @@ describe('claimPendingRows: an invalid envelope is skipped, not returned', () =>
     expect(secondClaim.rows.map((row) => row.id)).toEqual([])
     expect(secondClaim.skipped).toEqual([])
 
-    const stillOne = await client.query('SELECT attempts FROM kinesin_outbox WHERE id = $1', [badId])
+    const stillOne = await client.query('SELECT attempts FROM qtaxis_outbox WHERE id = $1', [badId])
     expect(stillOne.rows[0]?.attempts).toBe(1)
   })
 })
@@ -106,13 +106,13 @@ describe('prunePublished', () => {
 
     await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 60_000 })
     await markPublished(client, 'worker-1', [oldId, newId])
-    await client.query(`UPDATE kinesin_outbox SET published_at = now() - interval '2 days' WHERE id = $1`, [oldId])
+    await client.query(`UPDATE qtaxis_outbox SET published_at = now() - interval '2 days' WHERE id = $1`, [oldId])
 
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000)
     const deletedCount = await prunePublished(client, { publishedBefore: cutoff })
 
     expect(deletedCount).toBe(1)
-    const remaining = await client.query('SELECT id FROM kinesin_outbox ORDER BY id')
+    const remaining = await client.query('SELECT id FROM qtaxis_outbox ORDER BY id')
     const remainingIds: string[] = remaining.rows.map((row) => row.id)
     expect(remainingIds.sort()).toEqual([newId, pendingId].sort())
   })
@@ -158,7 +158,7 @@ describe('claim semantics', () => {
     await recordPublishFailure(client, 'worker-1', [id], 'engine unreachable')
 
     const row = await client.query(
-      'SELECT attempts, last_error, claimed_at, claimed_by FROM kinesin_outbox WHERE id = $1',
+      'SELECT attempts, last_error, claimed_at, claimed_by FROM qtaxis_outbox WHERE id = $1',
       [id],
     )
     expect(row.rows[0]?.attempts).toBe(1)
@@ -174,7 +174,7 @@ describe('claim semantics', () => {
 
     await releaseClaims(client, 'worker-1', [id])
 
-    const row = await client.query('SELECT attempts, claimed_at, claimed_by FROM kinesin_outbox WHERE id = $1', [id])
+    const row = await client.query('SELECT attempts, claimed_at, claimed_by FROM qtaxis_outbox WHERE id = $1', [id])
     expect(row.rows[0]?.attempts).toBe(1)
     expect(row.rows[0]?.claimed_at).toBeNull()
     expect(row.rows[0]?.claimed_by).toBeNull()
@@ -189,15 +189,13 @@ describe('claim semantics', () => {
 
     await markPublished(client, 'worker-a', [id])
 
-    const afterStaleOwner = await client.query('SELECT published_at, claimed_by FROM kinesin_outbox WHERE id = $1', [
-      id,
-    ])
+    const afterStaleOwner = await client.query('SELECT published_at, claimed_by FROM qtaxis_outbox WHERE id = $1', [id])
     expect(afterStaleOwner.rows[0]?.published_at).toBeNull()
     expect(afterStaleOwner.rows[0]?.claimed_by).toBe('worker-b')
 
     await markPublished(client, 'worker-b', [id])
 
-    const afterCurrentOwner = await client.query('SELECT published_at FROM kinesin_outbox WHERE id = $1', [id])
+    const afterCurrentOwner = await client.query('SELECT published_at FROM qtaxis_outbox WHERE id = $1', [id])
     expect(afterCurrentOwner.rows[0]?.published_at).not.toBeNull()
   })
 
@@ -211,7 +209,7 @@ describe('claim semantics', () => {
     await recordPublishFailure(client, 'worker-a', [id], 'stale owner failure')
 
     const afterStaleOwner = await client.query(
-      'SELECT attempts, last_error, claimed_by FROM kinesin_outbox WHERE id = $1',
+      'SELECT attempts, last_error, claimed_by FROM qtaxis_outbox WHERE id = $1',
       [id],
     )
     expect(afterStaleOwner.rows[0]?.attempts).toBe(0)
@@ -221,7 +219,7 @@ describe('claim semantics', () => {
     await recordPublishFailure(client, 'worker-b', [id], 'current owner failure')
 
     const afterCurrentOwner = await client.query(
-      'SELECT attempts, last_error, claimed_at, claimed_by FROM kinesin_outbox WHERE id = $1',
+      'SELECT attempts, last_error, claimed_at, claimed_by FROM qtaxis_outbox WHERE id = $1',
       [id],
     )
     expect(afterCurrentOwner.rows[0]?.attempts).toBe(1)
@@ -239,15 +237,13 @@ describe('claim semantics', () => {
 
     await releaseClaims(client, 'worker-a', [id])
 
-    const afterStaleOwner = await client.query('SELECT claimed_at, claimed_by FROM kinesin_outbox WHERE id = $1', [id])
+    const afterStaleOwner = await client.query('SELECT claimed_at, claimed_by FROM qtaxis_outbox WHERE id = $1', [id])
     expect(afterStaleOwner.rows[0]?.claimed_at).not.toBeNull()
     expect(afterStaleOwner.rows[0]?.claimed_by).toBe('worker-b')
 
     await releaseClaims(client, 'worker-b', [id])
 
-    const afterCurrentOwner = await client.query('SELECT claimed_at, claimed_by FROM kinesin_outbox WHERE id = $1', [
-      id,
-    ])
+    const afterCurrentOwner = await client.query('SELECT claimed_at, claimed_by FROM qtaxis_outbox WHERE id = $1', [id])
     expect(afterCurrentOwner.rows[0]?.claimed_at).toBeNull()
     expect(afterCurrentOwner.rows[0]?.claimed_by).toBeNull()
   })

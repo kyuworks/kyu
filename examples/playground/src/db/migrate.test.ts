@@ -3,8 +3,8 @@ import { InvalidDatabaseUrlError, assertPlaygroundDatabaseName } from './migrate
 
 describe('assertPlaygroundDatabaseName', () => {
   it('accepts a database name matching the playground pattern', () => {
-    expect(assertPlaygroundDatabaseName('postgresql://user:pass@host/kinesin_playground_pr3')).toBe(
-      'kinesin_playground_pr3',
+    expect(assertPlaygroundDatabaseName('postgresql://user:pass@host/qtaxis_playground_pr3')).toBe(
+      'qtaxis_playground_pr3',
     )
   })
 

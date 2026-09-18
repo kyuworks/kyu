@@ -1,13 +1,13 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { defineEvent, envelopeSchema, uuidv7 } from '@kinesin/schemas'
-import type { Envelope } from '@kinesin/schemas'
+import { defineEvent, envelopeSchema, uuidv7 } from '@qtaxis/schemas'
+import type { Envelope } from '@qtaxis/schemas'
 import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { HandlerContext } from '../consume/handlerContext.js'
 import { subscribe } from '../consume/subscribe.js'
 import { createWorker } from '../consume/worker.js'
-import type { KinesinWorker } from '../consume/worker.js'
+import type { QtaxisWorker } from '../consume/worker.js'
 import type { Queryable, QueryParam, QueryRows } from '../db/queryable.js'
 import { createHatchetClient } from '../hatchet.js'
 import type { Worker } from '../hatchet.js'
@@ -23,17 +23,17 @@ const hatchet = createHatchetClient({ namespace })
 const publisher = createPublisher({ source: 'relay-test' })
 
 const orderPlaced = defineEvent({
-  name: 'kinesin.relay_test.order_placed',
+  name: 'qtaxis.relay_test.order_placed',
   version: 1,
   data: z.object({ n: z.number() }),
 })
 const invoiceSent = defineEvent({
-  name: 'kinesin.relay_test.invoice_sent',
+  name: 'qtaxis.relay_test.invoice_sent',
   version: 1,
   data: z.object({ n: z.number() }),
 })
 const relayOrdered = defineEvent({
-  name: 'kinesin.relay_test.ordered',
+  name: 'qtaxis.relay_test.ordered',
   version: 1,
   data: z.object({ orderId: z.string(), seq: z.number() }),
 })
@@ -52,7 +52,7 @@ vi.setConfig({ testTimeout: 60_000 })
 let client: Client
 
 beforeAll(async () => {
-  client = new Client({ connectionString: process.env['KINESIN_TEST_DATABASE_URL'] })
+  client = new Client({ connectionString: process.env['QTAXIS_TEST_DATABASE_URL'] })
   await client.connect()
 })
 
@@ -62,7 +62,7 @@ afterAll(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks()
-  await client.query('TRUNCATE kinesin_outbox')
+  await client.query('TRUNCATE qtaxis_outbox')
 })
 
 type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void }
@@ -124,7 +124,7 @@ describe('relay against the local engine', () => {
     expect(result.pushed).toBe(3)
     expect(result.failed).toBe(0)
 
-    const rows = await client.query('SELECT published_at FROM kinesin_outbox WHERE id = ANY($1)', [[a.id, b.id, c.id]])
+    const rows = await client.query('SELECT published_at FROM qtaxis_outbox WHERE id = ANY($1)', [[a.id, b.id, c.id]])
     expect(rows.rows.every((row) => row['published_at'] !== null)).toBe(true)
   })
 
@@ -138,7 +138,7 @@ describe('relay against the local engine', () => {
     expect(firstResult).toEqual({ claimed: 1, pushed: 0, failed: 1, skipped: [], failedIds: [envelope.id] })
 
     const afterFirst = await client.query(
-      'SELECT claimed_at, attempts, last_error, published_at FROM kinesin_outbox WHERE id = $1',
+      'SELECT claimed_at, attempts, last_error, published_at FROM qtaxis_outbox WHERE id = $1',
       [envelope.id],
     )
     expect(afterFirst.rows[0]?.['claimed_at']).toBeNull()
@@ -150,7 +150,7 @@ describe('relay against the local engine', () => {
     await relay.stop()
 
     expect(secondResult).toEqual({ claimed: 1, pushed: 1, failed: 0, skipped: [], failedIds: [] })
-    const afterSecond = await client.query('SELECT published_at FROM kinesin_outbox WHERE id = $1', [envelope.id])
+    const afterSecond = await client.query('SELECT published_at FROM qtaxis_outbox WHERE id = $1', [envelope.id])
     expect(afterSecond.rows[0]?.['published_at']).not.toBeNull()
   })
 
@@ -162,8 +162,8 @@ describe('relay against the local engine', () => {
       publishedIds.push(envelope.id)
     }
 
-    const clientA = new Client({ connectionString: process.env['KINESIN_TEST_DATABASE_URL'] })
-    const clientB = new Client({ connectionString: process.env['KINESIN_TEST_DATABASE_URL'] })
+    const clientA = new Client({ connectionString: process.env['QTAXIS_TEST_DATABASE_URL'] })
+    const clientB = new Client({ connectionString: process.env['QTAXIS_TEST_DATABASE_URL'] })
     await clientA.connect()
     await clientB.connect()
 
@@ -219,7 +219,7 @@ describe('relay against the local engine', () => {
 
     // The crash releases the claim immediately (relay.ts's `finally`), rather
     // than leaving it claimed for the whole stale window.
-    const afterCrash = await client.query('SELECT published_at, claimed_at FROM kinesin_outbox WHERE id = $1', [
+    const afterCrash = await client.query('SELECT published_at, claimed_at FROM qtaxis_outbox WHERE id = $1', [
       envelope.id,
     ])
     expect(afterCrash.rows[0]?.['published_at']).toBeNull()
@@ -229,7 +229,7 @@ describe('relay against the local engine', () => {
     await relay.stop()
 
     expect(result.pushed).toBe(1)
-    const afterReclaim = await client.query('SELECT published_at FROM kinesin_outbox WHERE id = $1', [envelope.id])
+    const afterReclaim = await client.query('SELECT published_at FROM qtaxis_outbox WHERE id = $1', [envelope.id])
     expect(afterReclaim.rows[0]?.['published_at']).not.toBeNull()
 
     const seenIds = bulkPush.mock.calls.flatMap((call) => pushedIds(call[1] as PushItem[]))
@@ -239,7 +239,7 @@ describe('relay against the local engine', () => {
   it('a dead worker’s claim is invisible until stale, then a short staleClaimMs reclaims and pushes it', async () => {
     const envelope = await publisher.publish(client, orderPlaced, { n: 1 }, { tenantId: null })
     // A killed process runs no `finally`, so its claim is never released by hand.
-    await client.query("UPDATE kinesin_outbox SET claimed_at = now(), claimed_by = 'dead-worker' WHERE id = $1", [
+    await client.query("UPDATE qtaxis_outbox SET claimed_at = now(), claimed_by = 'dead-worker' WHERE id = $1", [
       envelope.id,
     ])
 
@@ -248,7 +248,7 @@ describe('relay against the local engine', () => {
     await freshRelay.stop()
     expect(freshResult.claimed).toBe(0)
 
-    await client.query("UPDATE kinesin_outbox SET claimed_at = now() - interval '10 seconds' WHERE id = $1", [
+    await client.query("UPDATE qtaxis_outbox SET claimed_at = now() - interval '10 seconds' WHERE id = $1", [
       envelope.id,
     ])
 
@@ -265,7 +265,7 @@ describe('relay against the local engine', () => {
 
     expect(staleResult.pushed).toBe(1)
     expect(bulkPush).toHaveBeenCalledTimes(1)
-    const afterReclaim = await client.query('SELECT published_at FROM kinesin_outbox WHERE id = $1', [envelope.id])
+    const afterReclaim = await client.query('SELECT published_at FROM qtaxis_outbox WHERE id = $1', [envelope.id])
     expect(afterReclaim.rows[0]?.['published_at']).not.toBeNull()
   })
 
@@ -280,14 +280,14 @@ describe('relay against the local engine', () => {
     }
 
     const delivered = defineEvent({
-      name: 'kinesin.relay_test.delivered',
+      name: 'qtaxis.relay_test.delivered',
       version: 1,
       data: z.object({ n: z.number() }),
     })
 
     const received = deferred<Received>()
     const task = hatchet.task({
-      name: 'kinesin-relay-test-delivery',
+      name: 'qtaxis-relay-test-delivery',
       onEvents: [delivered.name],
       fn: (input, ctx) => {
         received.resolve({ payload: input, additionalMetadata: ctx.additionalMetadata() })
@@ -298,7 +298,7 @@ describe('relay against the local engine', () => {
     let worker: Worker | undefined
     let workerStartError: Error | undefined
     try {
-      worker = await hatchet.worker('kinesin-sdk-relay-integration', { workflows: [task], slots: 2 })
+      worker = await hatchet.worker('qtaxis-sdk-relay-integration', { workflows: [task], slots: 2 })
       worker.start().catch((error) => {
         workerStartError = error instanceof Error ? error : new Error(String(error))
       })
@@ -344,10 +344,10 @@ describe('relay against the local engine', () => {
     const goodA = await publisher.publish(client, orderPlaced, { n: 1 }, { tenantId: null })
     const goodB = await publisher.publish(client, orderPlaced, { n: 2 }, { tenantId: null })
     const badId = uuidv7()
-    await client.query('INSERT INTO kinesin_outbox (id, name, tenant_id, envelope) VALUES ($1, $2, NULL, $3::jsonb)', [
+    await client.query('INSERT INTO qtaxis_outbox (id, name, tenant_id, envelope) VALUES ($1, $2, NULL, $3::jsonb)', [
       badId,
-      'kinesin.relay_test.order_placed',
-      JSON.stringify({ name: 'kinesin.relay_test.order_placed', not: 'an envelope' }),
+      'qtaxis.relay_test.order_placed',
+      JSON.stringify({ name: 'qtaxis.relay_test.order_placed', not: 'an envelope' }),
     ])
 
     const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
@@ -357,19 +357,17 @@ describe('relay against the local engine', () => {
     expect(result.skipped).toEqual([badId])
     expect(result.pushed).toBe(2)
 
-    const good = await client.query('SELECT published_at FROM kinesin_outbox WHERE id = ANY($1)', [
-      [goodA.id, goodB.id],
-    ])
+    const good = await client.query('SELECT published_at FROM qtaxis_outbox WHERE id = ANY($1)', [[goodA.id, goodB.id]])
     expect(good.rows.every((row) => row['published_at'] !== null)).toBe(true)
 
-    const bad = await client.query('SELECT published_at FROM kinesin_outbox WHERE id = $1', [badId])
+    const bad = await client.query('SELECT published_at FROM qtaxis_outbox WHERE id = $1', [badId])
     expect(bad.rows[0]?.['published_at']).toBeNull()
   })
 })
 
 describe('relay + subscribe: outbox claim order reaches the handler', () => {
   const seen: number[] = []
-  let worker: KinesinWorker | undefined
+  let worker: QtaxisWorker | undefined
 
   beforeAll(async () => {
     const subscription = subscribe(hatchet, relayOrdered, {
@@ -382,7 +380,7 @@ describe('relay + subscribe: outbox claim order reaches the handler', () => {
         if (!seen.includes(ctx.envelope.data.seq)) seen.push(ctx.envelope.data.seq)
       },
     })
-    worker = await createWorker(hatchet, 'kinesin-sdk-relay-order-test', { subscriptions: [subscription], slots: 5 })
+    worker = await createWorker(hatchet, 'qtaxis-sdk-relay-order-test', { subscriptions: [subscription], slots: 5 })
     void worker.start()
     await worker.waitUntilReady()
   }, 60_000)

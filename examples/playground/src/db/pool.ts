@@ -5,7 +5,7 @@ export function createPool(databaseUrl: string, options?: Pick<PoolConfig, 'max'
   return new Pool({ connectionString: databaseUrl, ...options })
 }
 
-// pg.PoolClient satisfies @kinesin/sdk's Queryable, so the client handed to
+// pg.PoolClient satisfies @qtaxis/sdk's Queryable, so the client handed to
 // `fn` is what publish() and onceById() take. A nested call takes a second
 // connection from the pool and commits independently; do not nest.
 export async function withTransaction<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {

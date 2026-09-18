@@ -1,13 +1,13 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import path from 'node:path'
-import type { Kinesin } from '@kinesin/sdk'
+import type { Qtaxis } from '@qtaxis/sdk'
 import { Client } from 'pg'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { PlaygroundConfig } from '../config.js'
 import { readConfig } from '../config.js'
 import { createPool } from '../db/pool.js'
-import { createPlaygroundKinesin } from '../kinesin.js'
+import { createPlaygroundQtaxis } from '../qtaxis.js'
 import { placeOrder, placeOrderOn } from '../producer/placeOrder.js'
 import type { PlacedOrder } from '../producer/placeOrder.js'
 import { spawnProcess, stopAllSpawnedProcesses } from './processes.js'
@@ -16,19 +16,19 @@ import type { SpawnedProcess } from './processes.js'
 const RELAY_SCRIPT = path.resolve(import.meta.dirname, '../../dist/relay.js')
 
 // Namespaced per run so parallel worktrees sharing one engine never meet
-// (createKinesin.integration.test.ts's own convention).
+// (createQtaxis.integration.test.ts's own convention).
 const namespace = `pg${randomBytes(3).toString('hex')}_`
 
 let config: PlaygroundConfig
 let pool: Pool
-let kinesin: Kinesin
+let qtaxis: Qtaxis
 let admin: Client
 
 beforeAll(async () => {
   const base = readConfig()
   config = { ...base, namespace }
   pool = createPool(config.databaseUrl)
-  kinesin = createPlaygroundKinesin(config)
+  qtaxis = createPlaygroundQtaxis(config)
   admin = new Client({ connectionString: config.databaseUrl })
   await admin.connect()
 })
@@ -40,7 +40,7 @@ afterAll(async () => {
 })
 
 async function outboxIdsPresent(ids: readonly string[]): Promise<number> {
-  const result = await admin.query('SELECT id FROM kinesin_outbox WHERE id = ANY($1)', [ids])
+  const result = await admin.query('SELECT id FROM qtaxis_outbox WHERE id = ANY($1)', [ids])
   return result.rows.length
 }
 
@@ -51,10 +51,10 @@ describe('placeOrder: the transaction boundary', () => {
     let placed: PlacedOrder
     try {
       await client.query('BEGIN')
-      placed = await placeOrderOn(client, kinesin, input)
+      placed = await placeOrderOn(client, qtaxis, input)
 
       const ids = [placed.envelopeIds.orderPlaced, placed.envelopeIds.sendInvoice]
-      const duringTx = await client.query('SELECT id FROM kinesin_outbox WHERE id = ANY($1)', [ids])
+      const duringTx = await client.query('SELECT id FROM qtaxis_outbox WHERE id = ANY($1)', [ids])
       expect(duringTx.rows).toHaveLength(2)
       const orderDuringTx = await client.query('SELECT id FROM shop_order WHERE id = $1', [placed.orderId])
       expect(orderDuringTx.rows).toHaveLength(1)
@@ -72,17 +72,17 @@ describe('placeOrder: the transaction boundary', () => {
 
   it('a committed placeOrder is shipped by one relay tick', async () => {
     const input = { tenantId: randomUUID(), customerId: randomUUID() }
-    const placed = await placeOrder(pool, kinesin, input)
+    const placed = await placeOrder(pool, qtaxis, input)
     const ids = [placed.envelopeIds.orderPlaced, placed.envelopeIds.sendInvoice]
 
     const relayDb = new Client({ connectionString: config.databaseUrl })
     await relayDb.connect()
-    const relay = kinesin.startRelay({ db: relayDb, workerId: `producer-test-${randomUUID()}`, pollIntervalMs: 60_000 })
+    const relay = qtaxis.startRelay({ db: relayDb, workerId: `producer-test-${randomUUID()}`, pollIntervalMs: 60_000 })
     try {
       const result = await relay.tick()
       expect(result.pushed).toBe(2)
 
-      const rows = await admin.query('SELECT published_at FROM kinesin_outbox WHERE id = ANY($1)', [ids])
+      const rows = await admin.query('SELECT published_at FROM qtaxis_outbox WHERE id = ANY($1)', [ids])
       expect(rows.rows).toHaveLength(2)
       expect(rows.rows.every((row) => row.published_at !== null)).toBe(true)
     } finally {
@@ -105,7 +105,7 @@ function waitForLogEvent(running: SpawnedProcess, marker: string): Promise<void>
 }
 
 async function pendingOutboxCount(): Promise<number> {
-  const result = await admin.query('SELECT count(*)::text AS count FROM kinesin_outbox WHERE published_at IS NULL')
+  const result = await admin.query('SELECT count(*)::text AS count FROM qtaxis_outbox WHERE published_at IS NULL')
   return Number(result.rows[0]?.count)
 }
 
@@ -113,18 +113,18 @@ describe('relay.ts: restart survival (mandatory)', () => {
   it('a killed and restarted relay process still drains the outbox', async () => {
     const env = {
       ...process.env,
-      KINESIN_EXAMPLE_DATABASE_URL: config.databaseUrl,
-      KINESIN_EXAMPLE_NAMESPACE: namespace,
+      QTAXIS_EXAMPLE_DATABASE_URL: config.databaseUrl,
+      QTAXIS_EXAMPLE_NAMESPACE: namespace,
     }
 
     // placeOrder publishes two envelopes each, so twenty orders leave forty
     // outbox rows — more than one batch of 5, so the first tick cannot drain
     // them all and the process must be killed mid-drain.
     for (let i = 0; i < 20; i += 1) {
-      await placeOrder(pool, kinesin, { tenantId: randomUUID(), customerId: randomUUID() })
+      await placeOrder(pool, qtaxis, { tenantId: randomUUID(), customerId: randomUUID() })
     }
 
-    let running = spawnProcess(RELAY_SCRIPT, { ...env, KINESIN_EXAMPLE_RELAY_BATCH_SIZE: '5' })
+    let running = spawnProcess(RELAY_SCRIPT, { ...env, QTAXIS_EXAMPLE_RELAY_BATCH_SIZE: '5' })
     await running.ready
 
     await waitForLogEvent(running, '"event":"tick"')

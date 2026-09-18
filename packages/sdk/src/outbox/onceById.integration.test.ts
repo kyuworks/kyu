@@ -9,7 +9,7 @@ import { onceById } from './onceById.js'
 let client: Client
 
 beforeAll(async () => {
-  client = new Client({ connectionString: process.env['KINESIN_TEST_DATABASE_URL'] })
+  client = new Client({ connectionString: process.env['QTAXIS_TEST_DATABASE_URL'] })
   await client.connect()
 })
 
@@ -18,7 +18,7 @@ afterAll(async () => {
 })
 
 afterEach(async () => {
-  await client.query('TRUNCATE kinesin_processed')
+  await client.query('TRUNCATE qtaxis_processed')
 })
 
 describe('onceById', () => {
@@ -37,7 +37,7 @@ describe('onceById', () => {
     expect(second).toEqual({ ran: false })
     expect(calls).toBe(1)
 
-    const rows = await client.query('SELECT count(*)::text AS count FROM kinesin_processed WHERE envelope_id = $1', [
+    const rows = await client.query('SELECT count(*)::text AS count FROM qtaxis_processed WHERE envelope_id = $1', [
       envelopeId,
     ])
     expect(Number(rows.rows[0]?.count)).toBe(1)
@@ -72,7 +72,7 @@ describe('onceById', () => {
     // Positive control: the processed row exists on the same client before
     // rollback, so this test cannot pass an onceById() that never inserts it.
     const beforeRollback = await client.query(
-      'SELECT count(*)::text AS count FROM kinesin_processed WHERE envelope_id = $1',
+      'SELECT count(*)::text AS count FROM qtaxis_processed WHERE envelope_id = $1',
       [envelopeId],
     )
     expect(Number(beforeRollback.rows[0]?.count)).toBe(1)
@@ -80,7 +80,7 @@ describe('onceById', () => {
     await client.query('ROLLBACK')
 
     const afterRollback = await client.query(
-      'SELECT count(*)::text AS count FROM kinesin_processed WHERE envelope_id = $1',
+      'SELECT count(*)::text AS count FROM qtaxis_processed WHERE envelope_id = $1',
       [envelopeId],
     )
     expect(Number(afterRollback.rows[0]?.count)).toBe(0)

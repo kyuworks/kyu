@@ -1,12 +1,12 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import path from 'node:path'
-import type { Kinesin } from '@kinesin/sdk'
+import type { Qtaxis } from '@qtaxis/sdk'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { PlaygroundConfig } from '../config.js'
 import { readConfig } from '../config.js'
 import { createPool } from '../db/pool.js'
-import { createPlaygroundKinesin } from '../kinesin.js'
+import { createPlaygroundQtaxis } from '../qtaxis.js'
 import { placeOrder } from '../producer/placeOrder.js'
 import { shipOrder } from '../producer/shipOrder.js'
 import { buildSubscriptions } from '../subscriptions.js'
@@ -26,13 +26,13 @@ const namespace = `bc${randomBytes(3).toString('hex')}_`
 
 let config: PlaygroundConfig
 let pool: Pool
-let kinesin: Kinesin
+let qtaxis: Qtaxis
 let topology: BusTopology
 let relay: SpawnedProcess
 let worker: SpawnedProcess
 
 function childEnv(): NodeJS.ProcessEnv {
-  return { ...process.env, KINESIN_EXAMPLE_DATABASE_URL: config.databaseUrl, KINESIN_EXAMPLE_NAMESPACE: namespace }
+  return { ...process.env, QTAXIS_EXAMPLE_DATABASE_URL: config.databaseUrl, QTAXIS_EXAMPLE_NAMESPACE: namespace }
 }
 
 async function waitUntil(
@@ -61,8 +61,8 @@ beforeAll(async () => {
   const base = readConfig()
   config = { ...base, namespace }
   pool = createPool(config.databaseUrl)
-  kinesin = createPlaygroundKinesin(config)
-  topology = describeBusTopology(buildSubscriptions(kinesin, pool, config))
+  qtaxis = createPlaygroundQtaxis(config)
+  topology = describeBusTopology(buildSubscriptions(qtaxis, pool, config))
 
   relay = spawnProcess(RELAY_SCRIPT, childEnv())
   worker = spawnProcess(WORKER_SCRIPT, childEnv())
@@ -81,7 +81,7 @@ describe('readBusCounts: against the local engine', () => {
     const baseline = await readBusCounts(pool, topology)
 
     const tenantId = randomUUID()
-    const placed = await placeOrder(pool, kinesin, { tenantId, customerId: randomUUID() })
+    const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
 
     let afterPlace: BusCounts = baseline
     await waitUntil(
@@ -104,7 +104,7 @@ describe('readBusCounts: against the local engine', () => {
     expect(afterPlace.bus.published).toBe(baseline.bus.published + 2)
     expect(afterPlace.bus.inFlight).toBe(baseline.bus.inFlight + 1)
 
-    await shipOrder(pool, kinesin, { tenantId, orderId: placed.orderId, carrier: 'ups' })
+    await shipOrder(pool, qtaxis, { tenantId, orderId: placed.orderId, carrier: 'ups' })
 
     let afterShip: BusCounts = afterPlace
     await waitUntil(
