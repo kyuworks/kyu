@@ -284,7 +284,7 @@ Declared per subscription, evaluated by Hatchet on the engine using CEL against 
 
 ### 9.3 Retries and failure
 
-Subscriptions declare `retries` and `backoff: { factor, maxSeconds }`. Handlers throw `NonRetryableError` for permanent conditions such as 4xx responses from an external API or an order that no longer exists. Exhausted retries mark the run failed. Failed runs are the dead-letter set: alerted on, visible and replayable in the dashboard, and never silently dropped.
+Subscriptions declare `retries` and `backoff: { factor, maxSeconds }`. Handlers throw `NonRetryableError` for permanent conditions such as 4xx responses from an external API or an order that no longer exists. Exhausted retries mark the run failed. Failed runs are the dead-letter set: alerted on, visible and replayable in the dashboard, and never silently dropped. A consumer reads a run's status and attempt count by envelope id with `qtaxis.runs.forEnvelope(id)`; it never calls the engine client itself.
 
 ### 9.4 Priority and rate limits
 
@@ -335,6 +335,10 @@ await worker.start();
 
 // Relay, started once per producer process
 const relay = qtaxis.startRelay({ db: pool, workerId: 'shop-api-1' });
+
+// Alerting: a run's outcome by envelope id, without the engine client
+const outcomes = await qtaxis.runs.forEnvelope(envelope.id);
+const deadLetters = outcomes.filter((o) => o.status === 'failed');
 ```
 
 Durable handlers set `executionTimeout` above the total of their sleeps and waits; the SDK defaults it to 24 hours.

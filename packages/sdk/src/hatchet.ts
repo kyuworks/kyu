@@ -59,8 +59,8 @@ export type {
  * and importing it back would make the two files circular.
  */
 export class QtaxisError extends Error {
-  constructor(message: string) {
-    super(message)
+  constructor(message: string, options?: { cause: Error }) {
+    super(message, options)
     this.name = 'QtaxisError'
   }
 }
