@@ -7,10 +7,11 @@ import { requireTenant } from './tenant.js'
 
 type OrderPlacedContext = DurableHandlerContext<MessageData<typeof orderPlaced>>
 
-// ui/busTopology.ts imports these so its handler list can't drift from what this file writes.
-export const WATCH_SHIPPING_WAITING = 'watch-shipping:waiting'
-export const WATCH_SHIPPING_COMPLETED = 'watch-shipping:completed'
-export const WATCH_SHIPPING_TIMEOUT = 'watch-shipping:timeout'
+// ui/busTopology.ts imports these so its handler list and subscription name can't drift from what this file writes.
+export const WATCH_SHIPPING_NAME = 'watch-shipping'
+export const WATCH_SHIPPING_WAITING = `${WATCH_SHIPPING_NAME}:waiting`
+export const WATCH_SHIPPING_COMPLETED = `${WATCH_SHIPPING_NAME}:completed`
+export const WATCH_SHIPPING_TIMEOUT = `${WATCH_SHIPPING_NAME}:timeout`
 
 async function logRow(
   tx: PoolClient,
@@ -35,7 +36,7 @@ async function watchShipping(
   config: PlaygroundConfig,
   ctx: OrderPlacedContext,
 ): Promise<void> {
-  const tenantId = requireTenant('watch-shipping', ctx)
+  const tenantId = requireTenant(WATCH_SHIPPING_NAME, ctx)
   const { orderId } = ctx.envelope.data
 
   await withTransaction(pool, (tx) =>
@@ -52,7 +53,7 @@ async function watchShipping(
   })
 
   await withTransaction(pool, (tx) =>
-    qtaxis.onceById(tx, ctx.envelope.id, 'watch-shipping:done', async () => {
+    qtaxis.onceById(tx, ctx.envelope.id, `${WATCH_SHIPPING_NAME}:done`, async () => {
       if (result.kind === 'message') {
         await tx.query('UPDATE shop_order SET shipped_at = now() WHERE id = $1', [orderId])
         await logRow(tx, WATCH_SHIPPING_COMPLETED, ctx.envelope.id, orderId, tenantId, result.envelope.data.carrier)
@@ -65,7 +66,7 @@ async function watchShipping(
 
 export function watchShippingSubscription(qtaxis: Qtaxis, pool: Pool, config: PlaygroundConfig): Subscription {
   return qtaxis.durable(orderPlaced, {
-    name: 'watch-shipping',
+    name: WATCH_SHIPPING_NAME,
     executionTimeout: '1h',
     // A worker stopped while the body executes (not while parked in a wait)
     // fails that attempt; retrying is safe because every write goes through onceById.

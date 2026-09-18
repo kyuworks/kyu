@@ -1,3 +1,5 @@
+import { ENGINE_WINDOW_LIMIT } from './busCounts.js'
+
 const STYLE = `
   :root { color-scheme: light dark; }
   body { font: 14px/1.4 monospace; max-width: 60rem; margin: 2rem auto; padding: 0 1rem; background: Canvas; color: CanvasText; }
@@ -14,6 +16,7 @@ const STYLE = `
   .arrow-line { border-left: 1px solid color-mix(in srgb, CanvasText 40%, Canvas); height: 1.2rem; }
   #status:empty { display: none; }
   #status { font-weight: bold; }
+  .window-note { font-size: 0.8rem; opacity: 0.75; text-align: center; margin-top: 0.5rem; }
 `
 
 const SCRIPT = `
@@ -86,12 +89,12 @@ const SCRIPT = `
 
   document.addEventListener('DOMContentLoaded', function () {
     refresh()
-    setInterval(refresh, 2000)
+    setInterval(refresh, 5000)
   })
 `
 
 // The boxes and counts come only from `/bus.json`, fetched on load and every
-// 2s, so this page cannot drift from what the worker registers (subscriptions.ts).
+// 5s, so this page cannot drift from what the worker registers (subscriptions.ts).
 export function renderBusPage(dashboardUrl: string): string {
   return `<!doctype html>
 <html lang="en">
@@ -125,6 +128,7 @@ export function renderBusPage(dashboardUrl: string): string {
 </div>
 </div>
 <div class="row columns-row" id="subscription-columns"></div>
+<p class="window-note" id="window-note">Run states cover the newest ${String(ENGINE_WINDOW_LIMIT)} messages; outbox counts are lifetime.</p>
 </div>
 
 <script>${SCRIPT}</script>

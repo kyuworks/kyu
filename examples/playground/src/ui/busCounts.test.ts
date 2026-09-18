@@ -145,7 +145,11 @@ describe('readBusCounts', () => {
     expect(watchShipping?.parked).toBe(0)
   })
 
-  it('splits done by distinct window envelopes per label, never exceeding completed (M6)', async () => {
+  // The split is not bounded by `completed`: a handler commits its log row
+  // before the engine marks the run completed (busCounts.ts's foldBusCounts
+  // comment), so the two can briefly disagree. This only proves the split
+  // counts distinct envelopes per label.
+  it('splits done by distinct window envelopes per label', async () => {
     const { db } = fakeDb([
       [{ source: 'playground', published: 2, waiting: 0 }],
       [
@@ -170,8 +174,6 @@ describe('readBusCounts', () => {
       { label: 'shipped', count: 1 },
       { label: 'timed out', count: 1 },
     ])
-    const doneSplitTotal = watchShipping?.doneOutcomes?.reduce((sum, item) => sum + item.count, 0) ?? 0
-    expect(doneSplitTotal).toBeLessThanOrEqual(watchShipping?.completed ?? 0)
   })
 
   it('never lets a redelivered envelope inflate the done split past distinct envelopes', async () => {
@@ -271,6 +273,14 @@ describe('readBusCounts', () => {
     const runs = fakeRuns({ 'env-1': [outcome('record-order', 'completed')] })
 
     await readBusCounts(db, runs, plainTopology)
+
+    expect(queries).toHaveLength(2)
+  })
+
+  it('skips the handler-log round trip when the window is empty, even with a waiting handler declared', async () => {
+    const { db, queries } = fakeDb([[{ source: 'playground', published: 0, waiting: 0 }], []])
+
+    await readBusCounts(db, fakeRuns({}), topologyWithDurable)
 
     expect(queries).toHaveLength(2)
   })

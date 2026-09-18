@@ -150,28 +150,33 @@ describe('readBusCounts: against the local engine', () => {
   // moves to "shipped" and the runs appear under the subscriptions.
   it('moves only waiting-for-relay while the relay is stopped, then drains it and gains runs once restarted', async () => {
     const stoppedCode = await relay.stop()
-    expect(stoppedCode).toBe(0)
 
     const baseline = await readCounts()
     const tenantId = randomUUID()
     const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
 
-    const whileStopped = await readCounts()
-    expect(whileStopped.outbox.waitingForRelay).toBe(baseline.outbox.waitingForRelay + 2)
-    expect(whileStopped.outbox.shipped).toBe(baseline.outbox.shipped)
-    for (const subscription of topology.subscriptions) {
-      const before = subscriptionCounts(baseline, subscription.name)
-      const after = subscriptionCounts(whileStopped, subscription.name)
-      expect(
-        [after.queued, after.running, after.completed, after.failed, after.cancelled],
-        `subscription ${subscription.name} moved while the relay was stopped`,
-      ).toEqual([before.queued, before.running, before.completed, before.failed, before.cancelled])
+    // A failing assertion below must not leave the relay dead for the rest of
+    // this file — every later test would then burn a 60s waitUntil timeout.
+    try {
+      expect(stoppedCode).toBe(0)
+
+      const whileStopped = await readCounts()
+      expect(whileStopped.outbox.waitingForRelay).toBe(baseline.outbox.waitingForRelay + 2)
+      expect(whileStopped.outbox.shipped).toBe(baseline.outbox.shipped)
+      for (const subscription of topology.subscriptions) {
+        const before = subscriptionCounts(baseline, subscription.name)
+        const after = subscriptionCounts(whileStopped, subscription.name)
+        expect(
+          [after.queued, after.running, after.completed, after.failed, after.cancelled],
+          `subscription ${subscription.name} moved while the relay was stopped`,
+        ).toEqual([before.queued, before.running, before.completed, before.failed, before.cancelled])
+      }
+    } finally {
+      relay = spawnProcess(RELAY_SCRIPT, childEnv())
+      await relay.ready
     }
 
-    relay = spawnProcess(RELAY_SCRIPT, childEnv())
-    await relay.ready
-
-    let afterRestart: BusCounts = whileStopped
+    let afterRestart: BusCounts = baseline
     await waitUntil(
       async () => {
         afterRestart = await readCounts()
@@ -255,6 +260,9 @@ describe('readBusCounts: against the local engine', () => {
     )
 
     const afterFailure = await readCounts()
+    expect(subscriptionCounts(afterFailure, 'send-invoice').failed).toBe(
+      subscriptionCounts(baseline, 'send-invoice').failed + 1,
+    )
     expect(subscriptionCounts(afterFailure, 'send-invoice').completed).toBe(
       subscriptionCounts(baseline, 'send-invoice').completed,
     )

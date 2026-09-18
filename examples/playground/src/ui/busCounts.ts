@@ -57,8 +57,8 @@ export interface RunsSource {
   forEnvelope(envelopeId: string): Promise<readonly RunOutcome[]>
 }
 
-// The newest N outbox rows the engine is asked about per refresh. Measured
-// cost is ~4ms per call locally, so 200 calls stay well under a second.
+// The newest N outbox rows the engine is asked about per refresh: at most 200
+// `runs.forEnvelope` lookups, 8 in flight at once (ENGINE_CONCURRENCY below).
 export const ENGINE_WINDOW_LIMIT = 200
 
 // Bounds the engine fan-out burst; a short local helper, not a dependency.
@@ -115,7 +115,10 @@ async function readWindowEnvelopes(db: CountsSource, topology: BusTopology): Pro
 }
 
 // Handlers this topology actually logs against: a waitingHandler plus every
-// doneOutcomes[].handler. A plain subscription contributes neither.
+// doneOutcomes[].handler. A plain subscription contributes neither. Handler
+// literals are prefixed with their owning subscription's name (e.g.
+// "watch-shipping:completed"), so a bare handler-name match below never
+// crosses into another subscription's count without a subscription filter.
 function loggedHandlers(topology: BusTopology): string[] {
   const handlers: string[] = []
   for (const subscription of topology.subscriptions) {
@@ -133,7 +136,7 @@ async function readHandlerLogRows(
   windowRows: readonly WindowRow[],
 ): Promise<HandlerLogRow[]> {
   const handlers = loggedHandlers(topology)
-  if (handlers.length === 0) return []
+  if (handlers.length === 0 || windowRows.length === 0) return []
 
   const result = await db.query(
     `SELECT DISTINCT envelope_id::text AS envelope_id, handler
@@ -156,7 +159,9 @@ async function mapWithConcurrency<T, R>(items: readonly T[], limit: number, fn: 
     for (;;) {
       const index = next
       next += 1
-      if (index >= items.length) return
+      if (index >= items.length) return // queue exhausted — every worker exits this way
+      // noUncheckedIndexedAccess types this `T | undefined`; the bounds check
+      // above already guarantees it is defined, so this never abandons an item.
       const item = items[index]
       if (item === undefined) return
       results[index] = await fn(item)
@@ -250,6 +255,10 @@ function foldBusCounts(
     }
     if (subscription.waitingHandler !== undefined) counts.parked = bucket.parked
     if (subscription.doneOutcomes !== undefined) {
+      // The handler commits its shop_handler_log row inside its own transaction,
+      // before the engine marks the run completed. A worker killed in that gap
+      // is retried and onceById skips the body, so this converges — but the
+      // split can briefly read higher than `completed`; nothing here enforces otherwise.
       counts.doneOutcomes = subscription.doneOutcomes.map((outcome) => ({
         label: outcome.label,
         count: envelopesByHandler.get(outcome.handler)?.size ?? 0,

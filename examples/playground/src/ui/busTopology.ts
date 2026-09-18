@@ -1,5 +1,10 @@
 import type { Subscription } from '@qtaxis/sdk'
-import { WATCH_SHIPPING_COMPLETED, WATCH_SHIPPING_TIMEOUT, WATCH_SHIPPING_WAITING } from '../handlers/watchShipping.js'
+import {
+  WATCH_SHIPPING_COMPLETED,
+  WATCH_SHIPPING_NAME,
+  WATCH_SHIPPING_TIMEOUT,
+  WATCH_SHIPPING_WAITING,
+} from '../handlers/watchShipping.js'
 import { orderShipped } from '../messages.js'
 import { PLAYGROUND_SOURCE } from '../qtaxis.js'
 
@@ -39,10 +44,12 @@ interface HandlerOverride {
 }
 
 // watch-shipping parks in a wait and finishes under two handler names; every
-// other subscription's engine "completed" is the whole story for it.
+// other subscription's engine "completed" is the whole story for it. Handler
+// literals are prefixed with their owning subscription's name (watchShipping.ts),
+// so busCounts.ts can key its per-subscription split on the handler string alone.
 const HANDLER_OVERRIDES = new Map<string, HandlerOverride>([
   [
-    'watch-shipping',
+    WATCH_SHIPPING_NAME,
     {
       doneOutcomes: [
         { handler: WATCH_SHIPPING_COMPLETED, label: 'shipped' },

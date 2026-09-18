@@ -3,7 +3,12 @@ import { createQtaxis } from '@qtaxis/sdk'
 import type { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
 import type { PlaygroundConfig } from '../config.js'
-import { WATCH_SHIPPING_COMPLETED, WATCH_SHIPPING_TIMEOUT, WATCH_SHIPPING_WAITING } from '../handlers/watchShipping.js'
+import {
+  WATCH_SHIPPING_COMPLETED,
+  WATCH_SHIPPING_NAME,
+  WATCH_SHIPPING_TIMEOUT,
+  WATCH_SHIPPING_WAITING,
+} from '../handlers/watchShipping.js'
 import { orderShipped } from '../messages.js'
 import { buildSubscriptions } from '../subscriptions.js'
 import { describeBusTopology } from './busTopology.js'
@@ -74,9 +79,9 @@ describe('describeBusTopology', () => {
 
     const topology = describeBusTopology(subscriptions)
 
-    const watchShipping = topology.subscriptions.find((subscription) => subscription.name === 'watch-shipping')
+    const watchShipping = topology.subscriptions.find((subscription) => subscription.name === WATCH_SHIPPING_NAME)
     expect(watchShipping).toEqual({
-      name: 'watch-shipping',
+      name: WATCH_SHIPPING_NAME,
       messageName: 'shop.order.placed',
       kind: 'event',
       doneOutcomes: [
@@ -109,7 +114,7 @@ describe('describeBusTopology', () => {
     const topology = describeBusTopology(subscriptions)
 
     for (const subscription of topology.subscriptions) {
-      if (subscription.name === 'watch-shipping') {
+      if (subscription.name === WATCH_SHIPPING_NAME) {
         expect(subscription.doneOutcomes?.map((outcome) => outcome.handler)).toEqual([
           WATCH_SHIPPING_COMPLETED,
           WATCH_SHIPPING_TIMEOUT,
