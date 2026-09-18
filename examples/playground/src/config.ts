@@ -9,6 +9,7 @@ export interface PlaygroundConfig {
   watchShippingTimeout: Duration
   // Unset lets the relay fall back to the SDK's own default batch size.
   relayBatchSize?: number
+  uiPort: number
 }
 
 const LOG_LEVELS: readonly LogLevel[] = ['debug', 'info', 'warn', 'error']
@@ -57,6 +58,17 @@ function parseRelayBatchSize(value: string | undefined): number | undefined {
   return parsed
 }
 
+const DEFAULT_UI_PORT = 3333
+
+function parseUiPort(value: string | undefined): number {
+  if (value === undefined || value === '') return DEFAULT_UI_PORT
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    throw new MissingConfigError('KINESIN_EXAMPLE_UI_PORT', 'an integer between 1 and 65535')
+  }
+  return parsed
+}
+
 // The engine client reads HATCHET_CLIENT_TOKEN and HATCHET_CLIENT_TLS_STRATEGY
 // from the environment itself; this function never touches those two.
 export function readConfig(env: NodeJS.ProcessEnv = process.env): PlaygroundConfig {
@@ -88,8 +100,15 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): PlaygroundConf
   }
 
   const relayBatchSize = parseRelayBatchSize(env['KINESIN_EXAMPLE_RELAY_BATCH_SIZE'])
+  const uiPort = parseUiPort(env['KINESIN_EXAMPLE_UI_PORT'])
 
-  const config: PlaygroundConfig = { databaseUrl, namespace, logLevel: logLevelValue, watchShippingTimeout }
+  const config: PlaygroundConfig = {
+    databaseUrl,
+    namespace,
+    logLevel: logLevelValue,
+    watchShippingTimeout,
+    uiPort,
+  }
   if (relayBatchSize !== undefined) config.relayBatchSize = relayBatchSize
   return config
 }
