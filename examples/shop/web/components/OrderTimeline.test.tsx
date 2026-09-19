@@ -7,7 +7,7 @@ import { OrderTimeline } from './OrderTimeline'
 // surrounding tags avoids the two type checkers disagreeing over whether an
 // indexed capture group can be undefined.
 function reachedLabels(markup: string): string[] {
-  const entries = markup.match(/<li class="order-step order-step-reached[^"]*"[^>]*>[^<]+<\/li>/g) ?? []
+  const entries = markup.match(/<li[^>]*data-reached="true"[^>]*>[^<]+<\/li>/g) ?? []
   return entries.map((entry) => entry.replace(/<[^>]+>/g, ''))
 }
 

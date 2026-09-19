@@ -21,4 +21,10 @@ describe('ProductCard', () => {
     expect(markup).toContain('aria-label="Increase quantity of Enamel mug"')
     expect(markup).toContain('aria-label="Quantity of Enamel mug"')
   })
+
+  it('disables the decrement button at the minimum quantity', () => {
+    const markup = renderToStaticMarkup(<ProductCard product={product} onAdd={() => undefined} />)
+
+    expect(markup).toMatch(/<button[^>]*disabled[^>]*aria-label="Decrease quantity of Enamel mug"/)
+  })
 })
