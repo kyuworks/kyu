@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { firstIssueMessage } from './fetchJson'
 
 const topologyDoneOutcomeSchema = z.object({ handler: z.string(), label: z.string() })
 const topologyWakeSchema = z.object({ messageName: z.string(), label: z.string() })
@@ -40,14 +41,6 @@ const busDocumentSchema = z.object({ topology: busTopologySchema, counts: busCou
 
 export type BusDocument = z.infer<typeof busDocumentSchema>
 export type BusDocumentOutcome = { ok: true; document: BusDocument } | { ok: false; error: string }
-
-// Mirrors src/ui/handleRequest.ts's parseBody: the first Zod issue's path and message.
-function firstIssueMessage(error: z.ZodError): string {
-  const issue = error.issues.at(0)
-  if (issue === undefined) return 'invalid response body'
-  const path = issue.path.join('.')
-  return path === '' ? issue.message : `${path}: ${issue.message}`
-}
 
 /** Parses a `GET /bus.json` body. The only place that body is looked at. */
 export function parseBusDocument(body: string): BusDocumentOutcome {

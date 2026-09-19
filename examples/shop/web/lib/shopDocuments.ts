@@ -1,13 +1,5 @@
 import { z } from 'zod'
-
-export interface ShopProduct {
-  id: string
-  sku: string
-  name: string
-  priceCents: number
-}
-
-export type ProductsDocumentOutcome = { ok: true; products: ShopProduct[] } | { ok: false; error: string }
+import { firstIssueMessage } from './fetchJson'
 
 const shopProductSchema = z.object({
   id: z.string(),
@@ -15,15 +7,10 @@ const shopProductSchema = z.object({
   name: z.string(),
   priceCents: z.number(),
 })
-const productsDocumentSchema = z.object({ products: z.array(shopProductSchema) })
+export type ShopProduct = z.infer<typeof shopProductSchema>
 
-// Mirrors src/ui/handleRequest.ts's parseBody: the first Zod issue's path and message.
-function firstIssueMessage(error: z.ZodError): string {
-  const issue = error.issues.at(0)
-  if (issue === undefined) return 'invalid response body'
-  const path = issue.path.join('.')
-  return path === '' ? issue.message : `${path}: ${issue.message}`
-}
+const productsDocumentSchema = z.object({ products: z.array(shopProductSchema) })
+export type ProductsDocumentOutcome = { ok: true; products: ShopProduct[] } | { ok: false; error: string }
 
 /** Parses a `GET /products.json` body. The only place that body is looked at. */
 export function parseProductsDocument(body: string): ProductsDocumentOutcome {
@@ -38,14 +25,6 @@ export function parseProductsDocument(body: string): ProductsDocumentOutcome {
   return { ok: true, products: result.data.products }
 }
 
-export interface PlacedOrder {
-  orderId: string
-  invoiceId: string
-  totalCents: number
-  orderPlacedEnvelopeId: string
-  sendInvoiceEnvelopeId: string
-}
-
 const placedOrderSchema = z.object({
   orderId: z.string(),
   invoiceId: z.string(),
@@ -53,12 +32,18 @@ const placedOrderSchema = z.object({
   orderPlacedEnvelopeId: z.string(),
   sendInvoiceEnvelopeId: z.string(),
 })
+export type PlacedOrder = z.infer<typeof placedOrderSchema>
+export type PlacedOrderOutcome = { ok: true; order: PlacedOrder } | { ok: false; error: string }
 
-/** Parses a `POST /orders` response body, or undefined when it is not the agreed shape. */
-export function parsePlacedOrder(body: string): PlacedOrder | undefined {
+/** Parses a `POST /orders` response body. */
+export function parsePlacedOrder(body: string): PlacedOrderOutcome {
+  let json: unknown
   try {
-    return placedOrderSchema.parse(JSON.parse(body))
+    json = JSON.parse(body)
   } catch {
-    return undefined
+    return { ok: false, error: 'invalid JSON body' }
   }
+  const result = placedOrderSchema.safeParse(json)
+  if (!result.success) return { ok: false, error: firstIssueMessage(result.error) }
+  return { ok: true, order: result.data }
 }
