@@ -8,12 +8,8 @@ export interface WarehousePageProps {
   dashboardUrl: string
 }
 
-// Explicit locals, not a direct property access in the template: tsgolint
-// cannot resolve a zod-inferred field's type inline (typescript/restrict-template-expressions).
 function summarizeLine(line: ShopOrderLine): string {
-  const name: string = line.name
-  const quantity: number = line.quantity
-  return `${name} × ${quantity}`
+  return `${line.name} × ${line.quantity}`
 }
 
 function summarizeLines(lines: readonly ShopOrderLine[]): string {

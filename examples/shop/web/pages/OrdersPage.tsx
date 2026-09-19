@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { OrderTimeline } from '../components/OrderTimeline'
 import { formatCents } from '../lib/cart'
 import { readCustomerId } from '../lib/customer'
+import { postJsonOutcome } from '../lib/fetchJson'
 import { buildResendInvoiceBody, nextResendInvoiceState, RESEND_INVOICE_PATH } from '../lib/resendInvoice'
 import type { ShopOrder } from '../lib/shopDocuments'
 import { shortOrderId } from '../lib/shopDocuments'
@@ -25,22 +26,13 @@ export function ResendInvoiceAction({ orderId }: ResendInvoiceActionProps) {
   function resend(): void {
     setStatusMessage('')
     setSubmitting(true)
-    fetch(RESEND_INVOICE_PATH, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: buildResendInvoiceBody(orderId),
+    // postJsonOutcome never rejects (see fetchJson.ts), so there is no
+    // rejection branch to attach — void marks that as read, not an oversight.
+    void postJsonOutcome(RESEND_INVOICE_PATH, buildResendInvoiceBody(orderId)).then((outcome) => {
+      const state = nextResendInvoiceState(outcome)
+      if (!state.ok) setStatusMessage(state.error)
+      setSubmitting(false)
     })
-      .then((response) => response.text().then((bodyText) => ({ ok: response.ok, status: response.status, bodyText })))
-      .then((outcome) => {
-        const state = nextResendInvoiceState(outcome)
-        if (!state.ok) setStatusMessage(state.error)
-      })
-      .catch((error) => {
-        setStatusMessage(`resend invoice failed: ${error instanceof Error ? error.message : String(error)}`)
-      })
-      .finally(() => {
-        setSubmitting(false)
-      })
   }
 
   return (

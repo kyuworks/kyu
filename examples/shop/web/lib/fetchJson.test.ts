@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeFetchFailure } from './fetchJson'
+import { describeFetchFailure, describeSubmitFailure } from './fetchJson'
 
 describe('describeFetchFailure', () => {
   it('surfaces the server’s own error message', () => {
@@ -18,5 +18,23 @@ describe('describeFetchFailure', () => {
     const message = describeFetchFailure(502, 'not json')
 
     expect(message).toBe('HTTP 502')
+  })
+})
+
+describe('describeSubmitFailure', () => {
+  it('prefixes the label on the server’s own error message', () => {
+    const message = describeSubmitFailure('ship', {
+      ok: false,
+      status: 400,
+      bodyText: JSON.stringify({ error: 'orderId: Invalid UUID' }),
+    })
+
+    expect(message).toBe('ship failed: orderId: Invalid UUID')
+  })
+
+  it('prefixes the label on a status-only fallback', () => {
+    const message = describeSubmitFailure('resend invoice', { ok: false, status: 404, bodyText: 'not json' })
+
+    expect(message).toBe('resend invoice failed: HTTP 404')
   })
 })

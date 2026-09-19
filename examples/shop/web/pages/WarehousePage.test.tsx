@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { ShopOrder } from '../lib/shopDocuments'
-import { WarehousePage, WarehouseRow, unshippedOldestFirst } from './WarehousePage'
+import { WarehouseList, WarehousePage, WarehouseRow, unshippedOldestFirst } from './WarehousePage'
 
 function order(id: string, stage: ShopOrder['stage'], totalCents: number): ShopOrder {
   return {
@@ -49,5 +49,13 @@ describe('WarehouseRow', () => {
     expect(markup).toContain('$14.00')
     expect(markup).toMatch(/value="Speedy"/)
     expect(markup).toContain('Ship')
+  })
+})
+
+describe('WarehouseList', () => {
+  it('gives the list an explicit role, since list-style: none strips it in Safari', () => {
+    const markup = renderToStaticMarkup(<WarehouseList orders={[order('order-1', 'placed', 1000)]} />)
+
+    expect(markup).toContain('<ul class="warehouse-list" role="list">')
   })
 })

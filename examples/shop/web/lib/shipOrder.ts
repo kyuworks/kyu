@@ -1,20 +1,27 @@
-import { describeFetchFailure } from './fetchJson'
-import type { JsonFetchOutcome } from './fetchJson'
-
 /** Where WarehousePage posts a ship action. Named so a test can pin it. */
 export const SHIP_ORDER_PATH = '/shipments'
 
-/** The request body `POST /shipments` expects: the order id and the carrier. */
+// A blank carrier is omitted, not sent as "": the server schema's carrier is
+// optional and its own default (`shipOrder.ts`'s `?? 'unspecified'`) applies.
+/** The request body `POST /shipments` expects: the order id and, unless blank, the carrier. */
 export function buildShipOrderBody(orderId: string, carrier: string): string {
-  return JSON.stringify({ orderId, carrier })
+  const trimmed = carrier.trim()
+  return trimmed === '' ? JSON.stringify({ orderId }) : JSON.stringify({ orderId, carrier: trimmed })
 }
 
-export type ShipOrderState = { ok: true } | { ok: false; error: string }
+export type ShipPhase =
+  | { kind: 'idle' }
+  | { kind: 'submitting' }
+  | { kind: 'shipped' }
+  | { kind: 'failed'; error: string }
 
-// Pure and unit-tested: reverting the route or the non-2xx branch fails a test, not just a click.
-export function nextShipOrderState(outcome: JsonFetchOutcome): ShipOrderState {
-  if (!outcome.ok) {
-    return { ok: false, error: `ship failed: ${describeFetchFailure(outcome.status, outcome.bodyText)}` }
-  }
-  return { ok: true }
+export type ShipEvent = { kind: 'submit' } | { kind: 'succeeded' } | { kind: 'failed'; error: string }
+
+// idle -> submitting -> shipped | failed. A further submit once shipped is
+// ignored — the row is already leaving the worklist on the next refresh,
+// so there is nothing left to ship twice. A failed submit allows a retry.
+export function nextShipPhase(phase: ShipPhase, event: ShipEvent): ShipPhase {
+  if (event.kind === 'submit') return phase.kind === 'shipped' ? phase : { kind: 'submitting' }
+  if (event.kind === 'succeeded') return { kind: 'shipped' }
+  return { kind: 'failed', error: event.error }
 }
