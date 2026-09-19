@@ -14,6 +14,13 @@ export type CartAction =
 // Mirrors src/ui/requests.ts's placeOrderRequestSchema: the server 400s past
 // this, so a line can never reach it.
 export const MAX_LINE_QUANTITY = 99
+export const MIN_LINE_QUANTITY = 1
+
+/** Clamps a quantity into [MIN_LINE_QUANTITY, MAX_LINE_QUANTITY]; NaN clamps to the minimum. */
+export function clampQuantity(value: number): number {
+  if (Number.isNaN(value)) return MIN_LINE_QUANTITY
+  return Math.min(MAX_LINE_QUANTITY, Math.max(MIN_LINE_QUANTITY, Math.trunc(value)))
+}
 
 /** A pure reducer: no React, no storage. `set` with a quantity of zero removes the line. */
 export function cartReducer(lines: readonly CartLine[], action: CartAction): CartLine[] {

@@ -1,3 +1,43 @@
+/* Tailwind's preflight (part of @import 'tailwindcss' in theme.css) resets a/h1-h3/p to
+   inherit everything and strips their UA defaults. Restored here, unlayered, for the pages
+   this PR series has not reached yet — a @layer block would still lose to preflight, which
+   is itself layered but wins on source order. :where(...) keeps the specificity at zero, like
+   the UA styles it replaces, so .app-title, .status and every other class rule below still
+   wins without a fight; :not([data-slot]) keeps it off HeroUI's own <Link> and <CardTitle>,
+   which render <a>/<h3> too. Deleted page by page as #81 restyles them. */
+:where(a:not([data-slot])) {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+:where(h1:not([data-slot])) {
+  font-size: 2em;
+  font-weight: bold;
+  margin: 0.67em 0;
+}
+
+:where(h2:not([data-slot])) {
+  font-size: 1.5em;
+  font-weight: bold;
+  margin: 0.83em 0;
+}
+
+:where(h3:not([data-slot])) {
+  font-size: 1.17em;
+  font-weight: bold;
+  margin: 1em 0;
+}
+
+:where(p:not([data-slot])) {
+  margin: 1em 0;
+}
+
+/* Higher specificity than the :where() rule above, on purpose: text placed inside a HeroUI
+   card already gets its spacing from the card's own layout utilities (gap-2 and friends). */
+[data-slot='card-content'] p:not([data-slot]) {
+  margin: 0;
+}
+
 .app-header {
   border-bottom: 1px solid var(--line);
   background: var(--surface);

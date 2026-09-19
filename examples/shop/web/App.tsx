@@ -1,8 +1,8 @@
-import { useTheme } from '@heroui/react'
 import { useEffect, useReducer, useState } from 'react'
 import { describeFetchFailure } from './lib/fetchJson'
 import { parseUiConfig } from './lib/uiConfig'
 import { cartReducer, readStoredCart, writeStoredCart } from './lib/cart'
+import { watchSystemTheme } from './lib/theme'
 import { parseProductsDocument } from './lib/shopDocuments'
 import type { ShopProduct } from './lib/shopDocuments'
 import { BusPage } from './pages/BusPage'
@@ -27,9 +27,6 @@ const NAV_LINKS: readonly NavLink[] = [
 ]
 
 export function App() {
-  // Follows the OS appearance and applies .dark / data-theme to <html>; HeroUI's own
-  // variables do not read prefers-color-scheme. Persists nothing unless setTheme is called.
-  useTheme('system')
   // Empty until /ui.json answers: no dashboard link rather than a guessed one.
   const [dashboardUrl, setDashboardUrl] = useState('')
   const [statusMessage, setStatusMessage] = useState('')
@@ -90,6 +87,10 @@ export function App() {
   useEffect(() => {
     writeStoredCart(cartLines)
   }, [cartLines])
+
+  // The inline script in index.html sets the class before first paint; this keeps it in
+  // sync with the OS after mount, live, with no reload and nothing persisted.
+  useEffect(() => watchSystemTheme(document.documentElement), [])
 
   const pathname = window.location.pathname
   const cartCount = cartLines.reduce((total, line) => total + line.quantity, 0)

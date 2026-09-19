@@ -13,4 +13,12 @@ describe('ProductCard', () => {
     expect(markup).toContain('$14.00')
     expect(markup).toContain('Add to order')
   })
+
+  it('gives the quantity field an increment and a decrement button, each named for the product', () => {
+    const markup = renderToStaticMarkup(<ProductCard product={product} onAdd={() => undefined} />)
+
+    expect(markup).toContain('aria-label="Decrease quantity of Enamel mug"')
+    expect(markup).toContain('aria-label="Increase quantity of Enamel mug"')
+    expect(markup).toContain('aria-label="Quantity of Enamel mug"')
+  })
 })
