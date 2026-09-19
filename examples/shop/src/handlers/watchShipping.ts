@@ -1,6 +1,6 @@
 import type { DurableHandlerContext, Qtaxis, MessageData, Subscription } from '@qtaxis/sdk'
 import type { Pool, PoolClient } from 'pg'
-import type { PlaygroundConfig } from '../config.js'
+import type { ShopConfig } from '../config.js'
 import { withTransaction } from '../db/pool.js'
 import { orderPlaced, orderShipped } from '../messages.js'
 import { requireTenant } from './tenant.js'
@@ -30,12 +30,7 @@ async function logRow(
 // The body re-runs from the top on every reassignment (durable.ts), so both
 // writes go through onceById under their own handler names: the waiting row
 // before the wait, the completed/timeout row after it.
-async function watchShipping(
-  pool: Pool,
-  qtaxis: Qtaxis,
-  config: PlaygroundConfig,
-  ctx: OrderPlacedContext,
-): Promise<void> {
+async function watchShipping(pool: Pool, qtaxis: Qtaxis, config: ShopConfig, ctx: OrderPlacedContext): Promise<void> {
   const tenantId = requireTenant(WATCH_SHIPPING_NAME, ctx)
   const { orderId } = ctx.envelope.data
 
@@ -64,7 +59,7 @@ async function watchShipping(
   )
 }
 
-export function watchShippingSubscription(qtaxis: Qtaxis, pool: Pool, config: PlaygroundConfig): Subscription {
+export function watchShippingSubscription(qtaxis: Qtaxis, pool: Pool, config: ShopConfig): Subscription {
   return qtaxis.durable(orderPlaced, {
     name: WATCH_SHIPPING_NAME,
     executionTimeout: '1h',

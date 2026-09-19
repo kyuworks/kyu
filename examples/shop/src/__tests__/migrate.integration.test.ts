@@ -24,17 +24,17 @@ describe('applyPending', () => {
   // Global setup already applied every migration once; drop what it
   // created so this test exercises a genuinely first run.
   beforeEach(async () => {
-    await client.query(`DROP TABLE IF EXISTS playground_migrations, ${TABLES.join(', ')}`)
+    await client.query(`DROP TABLE IF EXISTS shop_migrations, ${TABLES.join(', ')}`)
   })
 
   it('applies the SDK migration then the app migration, once', async () => {
     const first = await applyPending(client, [MIGRATIONS_DIRECTORY, APP_MIGRATIONS_DIRECTORY])
-    expect(first).toEqual(['20260916233209_create_outbox.sql', '0001_playground.sql'])
+    expect(first).toEqual(['20260916233209_create_outbox.sql', '0001_shop.sql'])
 
     const second = await applyPending(client, [MIGRATIONS_DIRECTORY, APP_MIGRATIONS_DIRECTORY])
     expect(second).toEqual([])
 
-    const ledger = await client.query('SELECT name FROM playground_migrations')
+    const ledger = await client.query('SELECT name FROM shop_migrations')
     expect(ledger.rows).toHaveLength(2)
 
     for (const table of TABLES) {
@@ -51,7 +51,7 @@ describe('applyPending transaction check', () => {
 
   beforeAll(async () => {
     await client.connect()
-    dir = await mkdtemp(path.join(tmpdir(), 'qtaxis-playground-migrate-'))
+    dir = await mkdtemp(path.join(tmpdir(), 'qtaxis-shop-migrate-'))
   })
 
   afterAll(async () => {
@@ -65,7 +65,7 @@ describe('applyPending transaction check', () => {
 
     await expect(applyPending(client, [dir])).rejects.toThrow(new RegExp(file))
 
-    const ledger = await client.query('SELECT name FROM playground_migrations WHERE name = $1', [file])
+    const ledger = await client.query('SELECT name FROM shop_migrations WHERE name = $1', [file])
     expect(ledger.rows).toHaveLength(0)
   })
 })

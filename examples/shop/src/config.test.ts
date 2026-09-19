@@ -15,41 +15,41 @@ describe('readConfig', () => {
       else throw caught
     }
     expect(error).toBeInstanceOf(MissingConfigError)
-    expect(error?.variable).toBe('QTAXIS_EXAMPLE_DATABASE_URL')
-    expect(error?.message).toContain('QTAXIS_EXAMPLE_DATABASE_URL')
+    expect(error?.variable).toBe('QTAXIS_SHOP_DATABASE_URL')
+    expect(error?.message).toContain('QTAXIS_SHOP_DATABASE_URL')
   })
 
   it('throws MissingConfigError naming the variable for an empty database url', () => {
     let error: MissingConfigError | undefined
     try {
-      readConfig({ QTAXIS_EXAMPLE_DATABASE_URL: '' })
+      readConfig({ QTAXIS_SHOP_DATABASE_URL: '' })
     } catch (caught) {
       if (caught instanceof MissingConfigError) error = caught
       else throw caught
     }
     expect(error).toBeInstanceOf(MissingConfigError)
-    expect(error?.variable).toBe('QTAXIS_EXAMPLE_DATABASE_URL')
+    expect(error?.variable).toBe('QTAXIS_SHOP_DATABASE_URL')
   })
 
   it('throws MissingConfigError naming the variable for an empty namespace', () => {
     let error: MissingConfigError | undefined
     try {
       readConfig({
-        QTAXIS_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
-        QTAXIS_EXAMPLE_NAMESPACE: '',
+        QTAXIS_SHOP_DATABASE_URL: 'postgresql://localhost/db',
+        QTAXIS_SHOP_NAMESPACE: '',
       })
     } catch (caught) {
       if (caught instanceof MissingConfigError) error = caught
       else throw caught
     }
     expect(error).toBeInstanceOf(MissingConfigError)
-    expect(error?.variable).toBe('QTAXIS_EXAMPLE_NAMESPACE')
+    expect(error?.variable).toBe('QTAXIS_SHOP_NAMESPACE')
   })
 
   it('reads from process.env by default', () => {
-    vi.stubEnv('QTAXIS_EXAMPLE_DATABASE_URL', 'postgresql://localhost/from-env')
-    vi.stubEnv('QTAXIS_EXAMPLE_NAMESPACE', 'env_')
-    vi.stubEnv('QTAXIS_EXAMPLE_LOG_LEVEL', 'warn')
+    vi.stubEnv('QTAXIS_SHOP_DATABASE_URL', 'postgresql://localhost/from-env')
+    vi.stubEnv('QTAXIS_SHOP_NAMESPACE', 'env_')
+    vi.stubEnv('QTAXIS_SHOP_LOG_LEVEL', 'warn')
 
     const config = readConfig()
 
@@ -59,19 +59,19 @@ describe('readConfig', () => {
   })
 
   it('defaults namespace, log level and the watch-shipping timeout when unset', () => {
-    const config = readConfig({ QTAXIS_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db' })
+    const config = readConfig({ QTAXIS_SHOP_DATABASE_URL: 'postgresql://localhost/db' })
     expect(config.databaseUrl).toBe('postgresql://localhost/db')
-    expect(config.namespace).toBe('playground_')
+    expect(config.namespace).toBe('shop_')
     expect(config.logLevel).toBe('info')
     expect(config.watchShippingTimeout).toBe('3m')
   })
 
   it('reads namespace, log level and the watch-shipping timeout when set', () => {
     const config = readConfig({
-      QTAXIS_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
-      QTAXIS_EXAMPLE_NAMESPACE: 'other_',
-      QTAXIS_EXAMPLE_LOG_LEVEL: 'debug',
-      QTAXIS_EXAMPLE_WATCH_TIMEOUT: '20s',
+      QTAXIS_SHOP_DATABASE_URL: 'postgresql://localhost/db',
+      QTAXIS_SHOP_NAMESPACE: 'other_',
+      QTAXIS_SHOP_LOG_LEVEL: 'debug',
+      QTAXIS_SHOP_WATCH_TIMEOUT: '20s',
     })
     expect(config.namespace).toBe('other_')
     expect(config.logLevel).toBe('debug')
@@ -82,21 +82,21 @@ describe('readConfig', () => {
     let error: MissingConfigError | undefined
     try {
       readConfig({
-        QTAXIS_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
-        QTAXIS_EXAMPLE_WATCH_TIMEOUT: '5 minutes',
+        QTAXIS_SHOP_DATABASE_URL: 'postgresql://localhost/db',
+        QTAXIS_SHOP_WATCH_TIMEOUT: '5 minutes',
       })
     } catch (caught) {
       if (caught instanceof MissingConfigError) error = caught
       else throw caught
     }
     expect(error).toBeInstanceOf(MissingConfigError)
-    expect(error?.variable).toBe('QTAXIS_EXAMPLE_WATCH_TIMEOUT')
+    expect(error?.variable).toBe('QTAXIS_SHOP_WATCH_TIMEOUT')
   })
 
   it('accepts a watch-shipping timeout of exactly 20 minutes', () => {
     const config = readConfig({
-      QTAXIS_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
-      QTAXIS_EXAMPLE_WATCH_TIMEOUT: '20m',
+      QTAXIS_SHOP_DATABASE_URL: 'postgresql://localhost/db',
+      QTAXIS_SHOP_WATCH_TIMEOUT: '20m',
     })
     expect(config.watchShippingTimeout).toBe('20m')
   })
@@ -105,26 +105,26 @@ describe('readConfig', () => {
     let error: MissingConfigError | undefined
     try {
       readConfig({
-        QTAXIS_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
-        QTAXIS_EXAMPLE_WATCH_TIMEOUT: '21m',
+        QTAXIS_SHOP_DATABASE_URL: 'postgresql://localhost/db',
+        QTAXIS_SHOP_WATCH_TIMEOUT: '21m',
       })
     } catch (caught) {
       if (caught instanceof MissingConfigError) error = caught
       else throw caught
     }
     expect(error).toBeInstanceOf(MissingConfigError)
-    expect(error?.variable).toBe('QTAXIS_EXAMPLE_WATCH_TIMEOUT')
+    expect(error?.variable).toBe('QTAXIS_SHOP_WATCH_TIMEOUT')
   })
 
-  it('leaves relayBatchSize unset when QTAXIS_EXAMPLE_RELAY_BATCH_SIZE is unset', () => {
-    const config = readConfig({ QTAXIS_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db' })
+  it('leaves relayBatchSize unset when QTAXIS_SHOP_RELAY_BATCH_SIZE is unset', () => {
+    const config = readConfig({ QTAXIS_SHOP_DATABASE_URL: 'postgresql://localhost/db' })
     expect(config.relayBatchSize).toBeUndefined()
   })
 
-  it('reads relayBatchSize when QTAXIS_EXAMPLE_RELAY_BATCH_SIZE is a positive integer', () => {
+  it('reads relayBatchSize when QTAXIS_SHOP_RELAY_BATCH_SIZE is a positive integer', () => {
     const config = readConfig({
-      QTAXIS_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
-      QTAXIS_EXAMPLE_RELAY_BATCH_SIZE: '5',
+      QTAXIS_SHOP_DATABASE_URL: 'postgresql://localhost/db',
+      QTAXIS_SHOP_RELAY_BATCH_SIZE: '5',
     })
     expect(config.relayBatchSize).toBe(5)
   })
@@ -133,35 +133,35 @@ describe('readConfig', () => {
     let error: MissingConfigError | undefined
     try {
       readConfig({
-        QTAXIS_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
-        QTAXIS_EXAMPLE_RELAY_BATCH_SIZE: 'nope',
+        QTAXIS_SHOP_DATABASE_URL: 'postgresql://localhost/db',
+        QTAXIS_SHOP_RELAY_BATCH_SIZE: 'nope',
       })
     } catch (caught) {
       if (caught instanceof MissingConfigError) error = caught
       else throw caught
     }
     expect(error).toBeInstanceOf(MissingConfigError)
-    expect(error?.variable).toBe('QTAXIS_EXAMPLE_RELAY_BATCH_SIZE')
+    expect(error?.variable).toBe('QTAXIS_SHOP_RELAY_BATCH_SIZE')
   })
 
   it('throws MissingConfigError naming the variable for a zero or negative relay batch size', () => {
     expect(() =>
       readConfig({
-        QTAXIS_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
-        QTAXIS_EXAMPLE_RELAY_BATCH_SIZE: '0',
+        QTAXIS_SHOP_DATABASE_URL: 'postgresql://localhost/db',
+        QTAXIS_SHOP_RELAY_BATCH_SIZE: '0',
       }),
-    ).toThrow('QTAXIS_EXAMPLE_RELAY_BATCH_SIZE')
+    ).toThrow('QTAXIS_SHOP_RELAY_BATCH_SIZE')
   })
 
   it('defaults uiPort to 3333 when unset', () => {
-    const config = readConfig({ QTAXIS_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db' })
+    const config = readConfig({ QTAXIS_SHOP_DATABASE_URL: 'postgresql://localhost/db' })
     expect(config.uiPort).toBe(3333)
   })
 
   it('reads uiPort when set to a valid port', () => {
     const config = readConfig({
-      QTAXIS_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
-      QTAXIS_EXAMPLE_UI_PORT: '4000',
+      QTAXIS_SHOP_DATABASE_URL: 'postgresql://localhost/db',
+      QTAXIS_SHOP_UI_PORT: '4000',
     })
     expect(config.uiPort).toBe(4000)
   })
@@ -170,30 +170,30 @@ describe('readConfig', () => {
     let error: MissingConfigError | undefined
     try {
       readConfig({
-        QTAXIS_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
-        QTAXIS_EXAMPLE_UI_PORT: '70000',
+        QTAXIS_SHOP_DATABASE_URL: 'postgresql://localhost/db',
+        QTAXIS_SHOP_UI_PORT: '70000',
       })
     } catch (caught) {
       if (caught instanceof MissingConfigError) error = caught
       else throw caught
     }
     expect(error).toBeInstanceOf(MissingConfigError)
-    expect(error?.variable).toBe('QTAXIS_EXAMPLE_UI_PORT')
+    expect(error?.variable).toBe('QTAXIS_SHOP_UI_PORT')
   })
 
   it('throws MissingConfigError naming the variable and the allowed values for an invalid log level', () => {
     let error: MissingConfigError | undefined
     try {
       readConfig({
-        QTAXIS_EXAMPLE_DATABASE_URL: 'postgresql://localhost/db',
-        QTAXIS_EXAMPLE_LOG_LEVEL: 'verbose',
+        QTAXIS_SHOP_DATABASE_URL: 'postgresql://localhost/db',
+        QTAXIS_SHOP_LOG_LEVEL: 'verbose',
       })
     } catch (caught) {
       if (caught instanceof MissingConfigError) error = caught
       else throw caught
     }
     expect(error).toBeInstanceOf(MissingConfigError)
-    expect(error?.variable).toBe('QTAXIS_EXAMPLE_LOG_LEVEL')
+    expect(error?.variable).toBe('QTAXIS_SHOP_LOG_LEVEL')
     expect(error?.message).toContain('debug')
     expect(error?.message).toContain('error')
   })

@@ -17,7 +17,7 @@ describe('log', () => {
   it('writes one NDJSON line with the process, event and fields', () => {
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
 
-    log('worker', 'ready', { pid: 123, namespace: 'playground_' })
+    log('worker', 'ready', { pid: 123, namespace: 'shop_' })
 
     expect(write).toHaveBeenCalledTimes(1)
     const line = String(write.mock.calls[0]?.[0])
@@ -26,7 +26,7 @@ describe('log', () => {
     expect(record.process).toBe('worker')
     expect(record.event).toBe('ready')
     expect(record.pid).toBe(123)
-    expect(record.namespace).toBe('playground_')
+    expect(record.namespace).toBe('shop_')
     expect(record.ts).toEqual(expect.any(String))
   })
 

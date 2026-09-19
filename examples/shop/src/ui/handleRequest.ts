@@ -131,7 +131,7 @@ async function handleBusJson(deps: UiRequestDeps): Promise<UiResponse> {
   }
 }
 
-/** Routes the playground: the JSON and POST routes, then the web app's own files, last. */
+/** Routes the shop: the JSON and POST routes, then the web app's own files, last. */
 export async function handleUiRequest(deps: UiRequestDeps, request: UiRequest): Promise<UiResponse> {
   if (request.method === 'POST' && request.url === '/orders') {
     return checkPostBody(request) ?? handlePlaceOrder(deps, request.body)

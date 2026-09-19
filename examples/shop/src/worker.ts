@@ -3,7 +3,7 @@ import type { QtaxisWorker } from '@qtaxis/sdk'
 import type { Pool } from 'pg'
 import { readConfig } from './config.js'
 import { createPool } from './db/pool.js'
-import { createPlaygroundQtaxis } from './qtaxis.js'
+import { createShopQtaxis } from './qtaxis.js'
 import { describeError, exitAfterLog, log } from './log.js'
 import { buildSubscriptions } from './subscriptions.js'
 
@@ -26,9 +26,9 @@ function onShutdownSignal(worker: QtaxisWorker, pool: Pool): void {
 async function main(): Promise<void> {
   const config = readConfig()
   const pool = createPool(config.databaseUrl)
-  const qtaxis = createPlaygroundQtaxis(config)
+  const qtaxis = createShopQtaxis(config)
 
-  const worker = await qtaxis.worker('playground-worker', {
+  const worker = await qtaxis.worker('shop-worker', {
     subscriptions: buildSubscriptions(qtaxis, pool, config),
     slots: 5,
     durableSlots: 5,

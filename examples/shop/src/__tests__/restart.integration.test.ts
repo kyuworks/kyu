@@ -5,10 +5,10 @@ import { createHatchetClient } from '@qtaxis/sdk'
 import { Client } from 'pg'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { PlaygroundConfig } from '../config.js'
+import type { ShopConfig } from '../config.js'
 import { readConfig } from '../config.js'
 import { createPool } from '../db/pool.js'
-import { createPlaygroundQtaxis } from '../qtaxis.js'
+import { createShopQtaxis } from '../qtaxis.js'
 import { placeOrder } from '../producer/placeOrder.js'
 import { shipOrder } from '../producer/shipOrder.js'
 import { spawnProcess, stopAllSpawnedProcesses } from './processes.js'
@@ -17,12 +17,12 @@ import type { SpawnedProcess } from './processes.js'
 // Drives the durable watch-shipping handler as a real worker process,
 // restarting it mid-wait: a killed process is the only honest way to prove
 // a durable run survives a restart. Every test gets its own namespace, relay
-// and worker(s) (startPlayground below) so a worker one test leaves running
+// and worker(s) (startShop below) so a worker one test leaves running
 // can never pick up a run that belongs to a different test.
 const RELAY_SCRIPT = path.resolve(import.meta.dirname, '../../dist/relay.js')
 const WORKER_SCRIPT = path.resolve(import.meta.dirname, '../../dist/worker.js')
 
-let baseConfig: PlaygroundConfig
+let baseConfig: ShopConfig
 let pool: Pool
 let qtaxis: Qtaxis
 let admin: Client
@@ -76,7 +76,7 @@ async function expectEventually(
   )
 }
 
-interface Playground {
+interface Shop {
   namespace: string
   engine: HatchetClient
   relay: SpawnedProcess
@@ -85,18 +85,18 @@ interface Playground {
 }
 
 // One namespace, one relay, per test. Every worker a test spawns shares this
-// namespace and this one watch timeout (config.ts's QTAXIS_EXAMPLE_WATCH_TIMEOUT):
+// namespace and this one watch timeout (config.ts's QTAXIS_SHOP_WATCH_TIMEOUT):
 // a run parked by a worker on one timeout and replayed by a worker on another
 // fails with a non-determinism error, since the timeout is read inside the
 // durable body and becomes part of the recorded wait.
-async function startPlayground(watchTimeout?: string): Promise<Playground> {
-  const namespace = `playground_${randomBytes(4).toString('hex')}_`
+async function startShop(watchTimeout?: string): Promise<Shop> {
+  const namespace = `shop_${randomBytes(4).toString('hex')}_`
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    QTAXIS_EXAMPLE_DATABASE_URL: baseConfig.databaseUrl,
-    QTAXIS_EXAMPLE_NAMESPACE: namespace,
+    QTAXIS_SHOP_DATABASE_URL: baseConfig.databaseUrl,
+    QTAXIS_SHOP_NAMESPACE: namespace,
   }
-  if (watchTimeout !== undefined) env['QTAXIS_EXAMPLE_WATCH_TIMEOUT'] = watchTimeout
+  if (watchTimeout !== undefined) env['QTAXIS_SHOP_WATCH_TIMEOUT'] = watchTimeout
 
   const engine = createHatchetClient({ namespace })
   const relay = spawnProcess(RELAY_SCRIPT, env)
@@ -124,7 +124,7 @@ beforeAll(async () => {
   pool = createPool(baseConfig.databaseUrl)
   // publish()/onceById() only ever touch Postgres (never the engine), so one
   // shared client is fine for placeOrder/shipOrder across every test below.
-  qtaxis = createPlaygroundQtaxis(baseConfig)
+  qtaxis = createShopQtaxis(baseConfig)
   admin = new Client({ connectionString: baseConfig.databaseUrl })
   await admin.connect()
 }, 60_000)
@@ -138,22 +138,22 @@ afterAll(async () => {
 describe('restart: the durable watch-shipping handler', () => {
   it('completes when the order ships during the wait', async () => {
     const tenantId = randomUUID()
-    const playground = await startPlayground()
+    const shop = await startShop()
     try {
-      await playground.spawnWorker()
+      await shop.spawnWorker()
 
       const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
       const envelopeId = placed.envelopeIds.orderPlaced
 
       const waiting = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:waiting'), 60_000)
-      await expectEventually(playground.engine, envelopeId, 'watch-shipping:waiting row', waiting)
+      await expectEventually(shop.engine, envelopeId, 'watch-shipping:waiting row', waiting)
 
       await sleep(2_000)
       const carrier = 'ups'
       await shipOrder(pool, qtaxis, { tenantId, orderId: placed.orderId, carrier })
 
       const completed = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:completed'), 90_000)
-      await expectEventually(playground.engine, envelopeId, 'watch-shipping:completed row', completed)
+      await expectEventually(shop.engine, envelopeId, 'watch-shipping:completed row', completed)
 
       const rows = await watchLogRows(envelopeId)
       const completedRow = rows.find((row) => row.handler === 'watch-shipping:completed')
@@ -162,59 +162,59 @@ describe('restart: the durable watch-shipping handler', () => {
       const orderRow = await admin.query('SELECT shipped_at FROM shop_order WHERE id = $1', [placed.orderId])
       expect(orderRow.rows[0]?.shipped_at).not.toBeNull()
     } finally {
-      await playground.stopAll()
+      await shop.stopAll()
     }
   }, 180_000)
 
   it('records a timeout when nothing ships', async () => {
     const tenantId = randomUUID()
-    const playground = await startPlayground('8s')
+    const shop = await startShop('8s')
     try {
-      await playground.spawnWorker()
+      await shop.spawnWorker()
 
       const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
       const envelopeId = placed.envelopeIds.orderPlaced
 
       const timedOut = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:timeout'), 60_000)
-      await expectEventually(playground.engine, envelopeId, 'watch-shipping:timeout row', timedOut)
+      await expectEventually(shop.engine, envelopeId, 'watch-shipping:timeout row', timedOut)
 
       const orderRow = await admin.query('SELECT shipped_at FROM shop_order WHERE id = $1', [placed.orderId])
       expect(orderRow.rows[0]?.shipped_at).toBeNull()
     } finally {
-      await playground.stopAll()
+      await shop.stopAll()
     }
   }, 180_000)
 
   it('a wrong-tenant shipment never matches; the wait times out', async () => {
     const tenantId = randomUUID()
     const otherTenantId = randomUUID()
-    const playground = await startPlayground('8s')
+    const shop = await startShop('8s')
     try {
-      await playground.spawnWorker()
+      await shop.spawnWorker()
 
       const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
       const envelopeId = placed.envelopeIds.orderPlaced
 
       const waiting = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:waiting'), 60_000)
-      await expectEventually(playground.engine, envelopeId, 'watch-shipping:waiting row', waiting)
+      await expectEventually(shop.engine, envelopeId, 'watch-shipping:waiting row', waiting)
 
       await shipOrder(pool, qtaxis, { tenantId: otherTenantId, orderId: placed.orderId, carrier: 'dhl' })
 
       const timedOut = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:timeout'), 60_000)
-      await expectEventually(playground.engine, envelopeId, 'watch-shipping:timeout row', timedOut)
+      await expectEventually(shop.engine, envelopeId, 'watch-shipping:timeout row', timedOut)
 
       const orderRow = await admin.query('SELECT shipped_at FROM shop_order WHERE id = $1', [placed.orderId])
       expect(orderRow.rows[0]?.shipped_at).toBeNull()
     } finally {
-      await playground.stopAll()
+      await shop.stopAll()
     }
   }, 180_000)
 
   it('a parked run completes in a new worker process after a restart (headline)', async () => {
     const tenantId = randomUUID()
-    const playground = await startPlayground()
+    const shop = await startShop()
     try {
-      const workerA = await playground.spawnWorker()
+      const workerA = await shop.spawnWorker()
       const workerAPid = workerA.child.pid
 
       const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
@@ -222,7 +222,7 @@ describe('restart: the durable watch-shipping handler', () => {
 
       const waiting = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:waiting'), 60_000)
       await expectEventually(
-        playground.engine,
+        shop.engine,
         envelopeId,
         `watch-shipping:waiting row (worker A pid ${String(workerAPid)})`,
         waiting,
@@ -252,12 +252,12 @@ describe('restart: the durable watch-shipping handler', () => {
       const carrier = 'fedex'
       await shipOrder(pool, qtaxis, { tenantId, orderId: placed.orderId, carrier })
 
-      const workerB = await playground.spawnWorker()
+      const workerB = await shop.spawnWorker()
       const workerBPid = workerB.child.pid
 
       const completed = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:completed'), 120_000)
       await expectEventually(
-        playground.engine,
+        shop.engine,
         envelopeId,
         `watch-shipping:completed row (worker A pid ${String(workerAPid)}, worker B pid ${String(workerBPid)})`,
         completed,
@@ -276,15 +276,15 @@ describe('restart: the durable watch-shipping handler', () => {
         `completed row pid must equal worker B's pid ${String(workerBPid)}, not worker A's pid ${String(workerAPid)}`,
       ).toBe(workerBPid)
     } finally {
-      await playground.stopAll()
+      await shop.stopAll()
     }
   }, 180_000)
 
   it('survives a stop during execution', async () => {
     const tenantId = randomUUID()
-    const playground = await startPlayground()
+    const shop = await startShop()
     try {
-      const workerA = await playground.spawnWorker()
+      const workerA = await shop.spawnWorker()
       const workerAPid = workerA.child.pid
 
       const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
@@ -297,7 +297,7 @@ describe('restart: the durable watch-shipping handler', () => {
       // Every write goes through onceById, so the replayed attempt is safe.
       const waiting = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:waiting'), 60_000)
       await expectEventually(
-        playground.engine,
+        shop.engine,
         envelopeId,
         `watch-shipping:waiting row (worker A pid ${String(workerAPid)})`,
         waiting,
@@ -308,12 +308,12 @@ describe('restart: the durable watch-shipping handler', () => {
       const carrier = 'ups'
       await shipOrder(pool, qtaxis, { tenantId, orderId: placed.orderId, carrier })
 
-      const workerB = await playground.spawnWorker()
+      const workerB = await shop.spawnWorker()
       const workerBPid = workerB.child.pid
 
       const completed = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:completed'), 120_000)
       await expectEventually(
-        playground.engine,
+        shop.engine,
         envelopeId,
         `watch-shipping:completed row (worker A pid ${String(workerAPid)}, worker B pid ${String(workerBPid)})`,
         completed,
@@ -326,7 +326,7 @@ describe('restart: the durable watch-shipping handler', () => {
         workerBPid,
       )
     } finally {
-      await playground.stopAll()
+      await shop.stopAll()
     }
   }, 180_000)
 })

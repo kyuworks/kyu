@@ -49,7 +49,7 @@ export function App() {
     <>
       <header className="app-header">
         <div className="app-header-inner">
-          <p className="app-title">Qtaxis playground</p>
+          <p className="app-title">Qtaxis shop</p>
           <nav className="app-nav">
             {NAV_LINKS.map((link) => (
               <a key={link.href} href={link.href} aria-current={pathname === link.href ? 'page' : undefined}>

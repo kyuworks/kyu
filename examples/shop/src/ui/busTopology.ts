@@ -6,7 +6,7 @@ import {
   WATCH_SHIPPING_WAITING,
 } from '../handlers/watchShipping.js'
 import { orderShipped } from '../messages.js'
-import { PLAYGROUND_SOURCE } from '../qtaxis.js'
+import { SHOP_SOURCE } from '../qtaxis.js'
 
 /** One way a subscription can finish, under the handler name it writes to shop_handler_log. */
 export interface TopologyDoneOutcome {
@@ -79,7 +79,7 @@ function describeSubscription(subscription: Subscription): TopologySubscription 
 /** The bus diagram's shape: the producer box and one entry per subscription, arrows labelled by message name. */
 export function describeBusTopology(subscriptions: readonly Subscription[]): BusTopology {
   return {
-    producer: { source: PLAYGROUND_SOURCE },
+    producer: { source: SHOP_SOURCE },
     subscriptions: subscriptions.map(describeSubscription),
   }
 }

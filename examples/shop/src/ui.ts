@@ -5,7 +5,7 @@ import nodeProcess from 'node:process'
 import type { Pool } from 'pg'
 import { readConfig } from './config.js'
 import { createPool } from './db/pool.js'
-import { createPlaygroundQtaxis } from './qtaxis.js'
+import { createShopQtaxis } from './qtaxis.js'
 import { describeError, exitAfterLog, log } from './log.js'
 import { buildSubscriptions } from './subscriptions.js'
 import { describeBusTopology } from './ui/busTopology.js'
@@ -44,7 +44,7 @@ function onShutdownSignal(server: http.Server, pool: Pool): void {
 async function main(): Promise<void> {
   const config = readConfig()
   const pool = createPool(config.databaseUrl)
-  const qtaxis = createPlaygroundQtaxis(config)
+  const qtaxis = createShopQtaxis(config)
   // Built once from the same registry the worker uses, so the diagram at
   // /bus can never name a subscription the worker does not run.
   const topology = describeBusTopology(buildSubscriptions(qtaxis, pool, config))
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
   // dist/web/index.html missing (the build was skipped) is a hint, not a
   // reason to refuse to serve the JSON and POST routes.
   await fs.access(path.join(WEB_ROOT, 'index.html')).catch(() => {
-    log('ui', 'web-missing', { root: WEB_ROOT, hint: 'run `pnpm --filter @qtaxis/playground build`' })
+    log('ui', 'web-missing', { root: WEB_ROOT, hint: 'run `pnpm --filter @qtaxis/shop build`' })
   })
 
   const server = http.createServer((req, res) => {

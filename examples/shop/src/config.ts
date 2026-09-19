@@ -2,7 +2,7 @@ import type { Duration } from '@qtaxis/sdk'
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
-export interface PlaygroundConfig {
+export interface ShopConfig {
   databaseUrl: string
   namespace: string
   logLevel: LogLevel
@@ -53,7 +53,7 @@ function parseRelayBatchSize(value: string | undefined): number | undefined {
   if (value === undefined || value === '') return undefined
   const parsed = Number(value)
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new MissingConfigError('QTAXIS_EXAMPLE_RELAY_BATCH_SIZE', 'a positive integer')
+    throw new MissingConfigError('QTAXIS_SHOP_RELAY_BATCH_SIZE', 'a positive integer')
   }
   return parsed
 }
@@ -64,45 +64,45 @@ function parseUiPort(value: string | undefined): number {
   if (value === undefined || value === '') return DEFAULT_UI_PORT
   const parsed = Number(value)
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
-    throw new MissingConfigError('QTAXIS_EXAMPLE_UI_PORT', 'an integer between 1 and 65535')
+    throw new MissingConfigError('QTAXIS_SHOP_UI_PORT', 'an integer between 1 and 65535')
   }
   return parsed
 }
 
 // The engine client reads HATCHET_CLIENT_TOKEN and HATCHET_CLIENT_TLS_STRATEGY
 // from the environment itself; this function never touches those two.
-export function readConfig(env: NodeJS.ProcessEnv = process.env): PlaygroundConfig {
-  const databaseUrl = env['QTAXIS_EXAMPLE_DATABASE_URL']
+export function readConfig(env: NodeJS.ProcessEnv = process.env): ShopConfig {
+  const databaseUrl = env['QTAXIS_SHOP_DATABASE_URL']
   if (databaseUrl === undefined || databaseUrl === '') {
-    throw new MissingConfigError('QTAXIS_EXAMPLE_DATABASE_URL', 'a postgres connection string')
+    throw new MissingConfigError('QTAXIS_SHOP_DATABASE_URL', 'a postgres connection string')
   }
 
-  const namespaceValue = env['QTAXIS_EXAMPLE_NAMESPACE']
+  const namespaceValue = env['QTAXIS_SHOP_NAMESPACE']
   if (namespaceValue === '') {
-    throw new MissingConfigError('QTAXIS_EXAMPLE_NAMESPACE', 'a non-empty prefix')
+    throw new MissingConfigError('QTAXIS_SHOP_NAMESPACE', 'a non-empty prefix')
   }
-  const namespace = namespaceValue ?? 'playground_'
+  const namespace = namespaceValue ?? 'shop_'
 
-  const logLevelValue = env['QTAXIS_EXAMPLE_LOG_LEVEL'] ?? 'info'
+  const logLevelValue = env['QTAXIS_SHOP_LOG_LEVEL'] ?? 'info'
   if (!isLogLevel(logLevelValue)) {
-    throw new MissingConfigError('QTAXIS_EXAMPLE_LOG_LEVEL', `one of ${LOG_LEVELS.join(', ')}`)
+    throw new MissingConfigError('QTAXIS_SHOP_LOG_LEVEL', `one of ${LOG_LEVELS.join(', ')}`)
   }
 
-  const watchShippingTimeout = env['QTAXIS_EXAMPLE_WATCH_TIMEOUT'] ?? '3m'
+  const watchShippingTimeout = env['QTAXIS_SHOP_WATCH_TIMEOUT'] ?? '3m'
   if (!isDuration(watchShippingTimeout)) {
-    throw new MissingConfigError('QTAXIS_EXAMPLE_WATCH_TIMEOUT', 'an h/m/s duration string, e.g. "3m" or "30s"')
+    throw new MissingConfigError('QTAXIS_SHOP_WATCH_TIMEOUT', 'an h/m/s duration string, e.g. "3m" or "30s"')
   }
   if (durationToSeconds(watchShippingTimeout) > MAX_WATCH_SHIPPING_TIMEOUT_SECONDS) {
     throw new MissingConfigError(
-      'QTAXIS_EXAMPLE_WATCH_TIMEOUT',
+      'QTAXIS_SHOP_WATCH_TIMEOUT',
       'an h/m/s duration string of 20 minutes or less (the watch-shipping execution timeout is fixed at 1h)',
     )
   }
 
-  const relayBatchSize = parseRelayBatchSize(env['QTAXIS_EXAMPLE_RELAY_BATCH_SIZE'])
-  const uiPort = parseUiPort(env['QTAXIS_EXAMPLE_UI_PORT'])
+  const relayBatchSize = parseRelayBatchSize(env['QTAXIS_SHOP_RELAY_BATCH_SIZE'])
+  const uiPort = parseUiPort(env['QTAXIS_SHOP_UI_PORT'])
 
-  const config: PlaygroundConfig = {
+  const config: ShopConfig = {
     databaseUrl,
     namespace,
     logLevel: logLevelValue,

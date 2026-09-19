@@ -2,7 +2,7 @@ import type { HatchetClient, Qtaxis } from '@qtaxis/sdk'
 import { createQtaxis } from '@qtaxis/sdk'
 import type { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
-import type { PlaygroundConfig } from '../config.js'
+import type { ShopConfig } from '../config.js'
 import {
   WATCH_SHIPPING_COMPLETED,
   WATCH_SHIPPING_NAME,
@@ -31,7 +31,7 @@ function fakePool(): Pool {
   return stub as Pool
 }
 
-function fakeConfig(): PlaygroundConfig {
+function fakeConfig(): ShopConfig {
   return {
     databaseUrl: 'postgresql://localhost/fake',
     namespace: 'test_',
@@ -51,7 +51,7 @@ describe('describeBusTopology', () => {
 
     const topology = describeBusTopology(subscriptions)
 
-    expect(topology.producer).toEqual({ source: 'playground' })
+    expect(topology.producer).toEqual({ source: 'shop' })
   })
 
   it('carries name, messageName and kind through unchanged for a plain subscription', () => {

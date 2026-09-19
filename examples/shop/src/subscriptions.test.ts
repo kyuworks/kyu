@@ -2,7 +2,7 @@ import type { HatchetClient, Qtaxis } from '@qtaxis/sdk'
 import { CommandHasTwoSubscribersError, createQtaxis } from '@qtaxis/sdk'
 import type { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
-import type { PlaygroundConfig } from './config.js'
+import type { ShopConfig } from './config.js'
 import { sendInvoiceSubscription } from './handlers/sendInvoice.js'
 import { buildSubscriptions } from './subscriptions.js'
 
@@ -32,7 +32,7 @@ function buildQtaxis(): Qtaxis {
   return createQtaxis({ hatchet: fakeHatchetClient(), source: 'subscriptions-test' })
 }
 
-function fakeConfig(): PlaygroundConfig {
+function fakeConfig(): ShopConfig {
   return {
     databaseUrl: 'postgresql://localhost/fake',
     namespace: 'test_',

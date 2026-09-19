@@ -4,11 +4,11 @@ import type { Qtaxis } from '@qtaxis/sdk'
 import { uuidv7 } from '@qtaxis/sdk'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { PlaygroundConfig } from '../config.js'
+import type { ShopConfig } from '../config.js'
 import { readConfig } from '../config.js'
 import { createPool, withTransaction } from '../db/pool.js'
 import { sendInvoice } from '../messages.js'
-import { createPlaygroundQtaxis } from '../qtaxis.js'
+import { createShopQtaxis } from '../qtaxis.js'
 import { placeOrder } from '../producer/placeOrder.js'
 import { shipOrder } from '../producer/shipOrder.js'
 import { buildSubscriptions } from '../subscriptions.js'
@@ -29,7 +29,7 @@ const RELAY_SCRIPT = path.resolve(import.meta.dirname, '../../dist/relay.js')
 const WORKER_SCRIPT = path.resolve(import.meta.dirname, '../../dist/worker.js')
 const namespace = `bc${randomBytes(3).toString('hex')}_`
 
-let config: PlaygroundConfig
+let config: ShopConfig
 let pool: Pool
 let qtaxis: Qtaxis
 let topology: BusTopology
@@ -37,7 +37,7 @@ let relay: SpawnedProcess
 let worker: SpawnedProcess
 
 function childEnv(): NodeJS.ProcessEnv {
-  return { ...process.env, QTAXIS_EXAMPLE_DATABASE_URL: config.databaseUrl, QTAXIS_EXAMPLE_NAMESPACE: namespace }
+  return { ...process.env, QTAXIS_SHOP_DATABASE_URL: config.databaseUrl, QTAXIS_SHOP_NAMESPACE: namespace }
 }
 
 async function waitUntil(
@@ -84,7 +84,7 @@ beforeAll(async () => {
   const base = readConfig()
   config = { ...base, namespace }
   pool = createPool(config.databaseUrl)
-  qtaxis = createPlaygroundQtaxis(config)
+  qtaxis = createShopQtaxis(config)
   topology = describeBusTopology(buildSubscriptions(qtaxis, pool, config))
 
   relay = spawnProcess(RELAY_SCRIPT, childEnv())

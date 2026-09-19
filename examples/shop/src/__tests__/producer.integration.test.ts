@@ -4,10 +4,10 @@ import type { Qtaxis } from '@qtaxis/sdk'
 import { Client } from 'pg'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { PlaygroundConfig } from '../config.js'
+import type { ShopConfig } from '../config.js'
 import { readConfig } from '../config.js'
 import { createPool } from '../db/pool.js'
-import { createPlaygroundQtaxis } from '../qtaxis.js'
+import { createShopQtaxis } from '../qtaxis.js'
 import { placeOrder, placeOrderOn } from '../producer/placeOrder.js'
 import type { PlacedOrder } from '../producer/placeOrder.js'
 import { spawnProcess, stopAllSpawnedProcesses } from './processes.js'
@@ -19,7 +19,7 @@ const RELAY_SCRIPT = path.resolve(import.meta.dirname, '../../dist/relay.js')
 // (createQtaxis.integration.test.ts's own convention).
 const namespace = `pg${randomBytes(3).toString('hex')}_`
 
-let config: PlaygroundConfig
+let config: ShopConfig
 let pool: Pool
 let qtaxis: Qtaxis
 let admin: Client
@@ -28,7 +28,7 @@ beforeAll(async () => {
   const base = readConfig()
   config = { ...base, namespace }
   pool = createPool(config.databaseUrl)
-  qtaxis = createPlaygroundQtaxis(config)
+  qtaxis = createShopQtaxis(config)
   admin = new Client({ connectionString: config.databaseUrl })
   await admin.connect()
 })
@@ -113,8 +113,8 @@ describe('relay.ts: restart survival (mandatory)', () => {
   it('a killed and restarted relay process still drains the outbox', async () => {
     const env = {
       ...process.env,
-      QTAXIS_EXAMPLE_DATABASE_URL: config.databaseUrl,
-      QTAXIS_EXAMPLE_NAMESPACE: namespace,
+      QTAXIS_SHOP_DATABASE_URL: config.databaseUrl,
+      QTAXIS_SHOP_NAMESPACE: namespace,
     }
 
     // placeOrder publishes two envelopes each, so twenty orders leave forty
@@ -124,7 +124,7 @@ describe('relay.ts: restart survival (mandatory)', () => {
       await placeOrder(pool, qtaxis, { tenantId: randomUUID(), customerId: randomUUID() })
     }
 
-    let running = spawnProcess(RELAY_SCRIPT, { ...env, QTAXIS_EXAMPLE_RELAY_BATCH_SIZE: '5' })
+    let running = spawnProcess(RELAY_SCRIPT, { ...env, QTAXIS_SHOP_RELAY_BATCH_SIZE: '5' })
     await running.ready
 
     await waitForLogEvent(running, '"event":"tick"')

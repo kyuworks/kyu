@@ -2,7 +2,7 @@ import nodeProcess from 'node:process'
 import type { QtaxisRelayOptions, Relay } from '@qtaxis/sdk'
 import { Client } from 'pg'
 import { readConfig } from './config.js'
-import { createPlaygroundQtaxis } from './qtaxis.js'
+import { createShopQtaxis } from './qtaxis.js'
 import { describeError, exitAfterLog, log } from './log.js'
 
 // SIGTERM/SIGINT both drain the relay before exiting; a supervisor sends
@@ -31,10 +31,10 @@ async function main(): Promise<void> {
     exitAfterLog(1, 'relay', 'db-error', { message: describeError(error) })
   })
 
-  const qtaxis = createPlaygroundQtaxis(config)
+  const qtaxis = createShopQtaxis(config)
   const relayOptions: QtaxisRelayOptions = {
     db,
-    workerId: `playground-relay-${nodeProcess.pid}`,
+    workerId: `shop-relay-${nodeProcess.pid}`,
     // A relay killed without SIGTERM (a crash, a supervisor SIGKILL) leaves
     // its claims stale for this long before another relay takes them.
     staleClaimMs: 30_000,

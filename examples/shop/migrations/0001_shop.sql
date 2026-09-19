@@ -1,4 +1,4 @@
--- The playground's own tables, applied after the SDK's shipped migrations.
+-- The shop's own tables, applied after the SDK's shipped migrations.
 -- Handlers (later PRs) write here; the drivers assert here.
 
 CREATE TABLE shop_order (

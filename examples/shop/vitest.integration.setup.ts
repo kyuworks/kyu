@@ -15,10 +15,10 @@ export default async function setup(): Promise<void> {
     if (!(error instanceof MissingConfigError)) throw error
     throw new Error(
       [
-        'QTAXIS_EXAMPLE_DATABASE_URL is not set, so the integration suite has no database.',
+        'QTAXIS_SHOP_DATABASE_URL is not set, so the integration suite has no database.',
         'Start the local stack and point this lane at its own database:',
         '  pnpm hatchet:up',
-        '  export QTAXIS_EXAMPLE_DATABASE_URL="postgresql://hatchet:hatchet@localhost:15432/qtaxis_playground_pr3"',
+        '  export QTAXIS_SHOP_DATABASE_URL="postgresql://hatchet:hatchet@localhost:15432/qtaxis_shop_pr3"',
       ].join('\n'),
       { cause: error },
     )

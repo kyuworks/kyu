@@ -4,7 +4,7 @@ import type { Queryable } from '@qtaxis/sdk'
 import { Client } from 'pg'
 import { z } from 'zod'
 
-const PLAYGROUND_DATABASE_NAME_PATTERN = /^qtaxis_playground[a-z0-9_]*$/
+const SHOP_DATABASE_NAME_PATTERN = /^qtaxis_shop[a-z0-9_]*$/
 
 // Computed the same way the SDK locates its own shipped migrations/: two
 // levels up from this file, whether running from src/ (vitest) or dist/ (built).
@@ -19,7 +19,7 @@ export class InvalidDatabaseUrlError extends Error {
 }
 
 /** The target database name, or throws before any connection is opened. */
-export function assertPlaygroundDatabaseName(databaseUrl: string): string {
+export function assertShopDatabaseName(databaseUrl: string): string {
   let url: URL
   try {
     url = new URL(databaseUrl)
@@ -28,10 +28,10 @@ export function assertPlaygroundDatabaseName(databaseUrl: string): string {
     throw error
   }
   const name = decodeURIComponent(url.pathname.replace(/^\//, ''))
-  if (!PLAYGROUND_DATABASE_NAME_PATTERN.test(name)) {
+  if (!SHOP_DATABASE_NAME_PATTERN.test(name)) {
     throw new Error(
-      `refusing to create database "${name}": the playground only creates databases matching ` +
-        PLAYGROUND_DATABASE_NAME_PATTERN.source,
+      `refusing to create database "${name}": the shop only creates databases matching ` +
+        SHOP_DATABASE_NAME_PATTERN.source,
     )
   }
   return name
@@ -40,7 +40,7 @@ export function assertPlaygroundDatabaseName(databaseUrl: string): string {
 // Connects to the server's own `postgres` database and creates the target
 // database when missing. Never drops anything.
 export async function ensureDatabase(databaseUrl: string): Promise<void> {
-  const name = assertPlaygroundDatabaseName(databaseUrl)
+  const name = assertShopDatabaseName(databaseUrl)
 
   const adminUrl = new URL(databaseUrl)
   adminUrl.pathname = '/postgres'
@@ -58,7 +58,7 @@ export async function ensureDatabase(databaseUrl: string): Promise<void> {
 
 async function ensureLedger(client: Queryable): Promise<void> {
   await client.query(
-    'CREATE TABLE IF NOT EXISTS playground_migrations (name text primary key, applied_at timestamptz not null default now())',
+    'CREATE TABLE IF NOT EXISTS shop_migrations (name text primary key, applied_at timestamptz not null default now())',
     [],
   )
 }
@@ -96,7 +96,7 @@ export async function applyPending(client: Queryable, directories: readonly stri
   const applied: string[] = []
   for (const { directory, files } of listings) {
     for (const file of files) {
-      const already = await client.query('SELECT 1 FROM playground_migrations WHERE name = $1', [file])
+      const already = await client.query('SELECT 1 FROM shop_migrations WHERE name = $1', [file])
       if (already.rows.length > 0) continue
 
       const sql = await readFile(path.join(directory, file), 'utf8')
@@ -111,7 +111,7 @@ export async function applyPending(client: Queryable, directories: readonly stri
         if (currentXid === null || currentXid !== openedXid) {
           throw new Error('ended or replaced the transaction the harness opened around it')
         }
-        await client.query('INSERT INTO playground_migrations (name) VALUES ($1)', [file])
+        await client.query('INSERT INTO shop_migrations (name) VALUES ($1)', [file])
         await client.query('COMMIT', [])
       } catch (error) {
         try {

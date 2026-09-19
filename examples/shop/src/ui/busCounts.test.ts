@@ -50,7 +50,7 @@ function outcome(subscription: string, status: RunStatus, overrides: Partial<Run
 }
 
 const topologyWithDurable: BusTopology = {
-  producer: { source: 'playground' },
+  producer: { source: 'shop' },
   subscriptions: [
     { name: 'record-order', messageName: 'shop.order.placed', kind: 'event' },
     { name: 'send-invoice', messageName: 'shop.invoice.send', kind: 'command' },
@@ -70,7 +70,7 @@ const topologyWithDurable: BusTopology = {
 describe('readBusCounts', () => {
   it('assembles producers, outbox and per-subscription counts from the stubbed rows', async () => {
     const { db, queries } = fakeDb([
-      [{ source: 'playground', published: 9, waiting: 2 }],
+      [{ source: 'shop', published: 9, waiting: 2 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [],
     ])
@@ -78,7 +78,7 @@ describe('readBusCounts', () => {
 
     const counts = await readBusCounts(db, runs, topologyWithDurable)
 
-    expect(counts.producers).toEqual([{ source: 'playground', published: 9 }])
+    expect(counts.producers).toEqual([{ source: 'shop', published: 9 }])
     expect(counts.outbox).toEqual({ published: 9, waitingForRelay: 2, shipped: 7 })
     expect(counts.window).toEqual({ limit: ENGINE_WINDOW_LIMIT, envelopes: 1, engineCalls: 1 })
     expect(queries).toHaveLength(3)
@@ -86,7 +86,7 @@ describe('readBusCounts', () => {
 
   it('counts a failed run as failed for its subscription and never as done', async () => {
     const { db } = fakeDb([
-      [{ source: 'playground', published: 1, waiting: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0 }],
       [{ id: 'env-1', name: 'shop.invoice.send' }],
       [],
     ])
@@ -101,7 +101,7 @@ describe('readBusCounts', () => {
 
   it('reports a running run as parked only when the log has the waiting handler and no done handler (M5)', async () => {
     const { db } = fakeDb([
-      [{ source: 'playground', published: 1, waiting: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [{ envelope_id: 'env-1', handler: 'watch-shipping:waiting' }],
     ])
@@ -116,7 +116,7 @@ describe('readBusCounts', () => {
 
   it('never reports a running run parked once a done handler has logged for its envelope', async () => {
     const { db } = fakeDb([
-      [{ source: 'playground', published: 1, waiting: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [
         { envelope_id: 'env-1', handler: 'watch-shipping:waiting' },
@@ -133,7 +133,7 @@ describe('readBusCounts', () => {
 
   it('a running run with no waiting-handler log row is never parked', async () => {
     const { db } = fakeDb([
-      [{ source: 'playground', published: 1, waiting: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [],
     ])
@@ -151,7 +151,7 @@ describe('readBusCounts', () => {
   // counts distinct envelopes per label.
   it('splits done by distinct window envelopes per label', async () => {
     const { db } = fakeDb([
-      [{ source: 'playground', published: 2, waiting: 0 }],
+      [{ source: 'shop', published: 2, waiting: 0 }],
       [
         { id: 'env-1', name: 'shop.order.placed' },
         { id: 'env-2', name: 'shop.order.placed' },
@@ -178,7 +178,7 @@ describe('readBusCounts', () => {
 
   it('never lets a redelivered envelope inflate the done split past distinct envelopes', async () => {
     const { db } = fakeDb([
-      [{ source: 'playground', published: 1, waiting: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [{ envelope_id: 'env-1', handler: 'watch-shipping:completed' }],
     ])
@@ -199,7 +199,7 @@ describe('readBusCounts', () => {
 
   it('gives a plain subscription no parked key and no doneOutcomes key', async () => {
     const { db } = fakeDb([
-      [{ source: 'playground', published: 1, waiting: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [],
     ])
@@ -215,7 +215,7 @@ describe('readBusCounts', () => {
 
   it('ignores an outcome naming a subscription the topology does not have', async () => {
     const { db } = fakeDb([
-      [{ source: 'playground', published: 1, waiting: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [],
     ])
@@ -238,7 +238,7 @@ describe('readBusCounts', () => {
 
   it('sets window.engineCalls to the number of window rows and never asks the engine about a row outside it', async () => {
     const { db, queries } = fakeDb([
-      [{ source: 'playground', published: 1, waiting: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [],
     ])
@@ -263,11 +263,11 @@ describe('readBusCounts', () => {
 
   it('skips the handler-log round trip when no subscription declares a waiting handler or done outcomes', async () => {
     const plainTopology: BusTopology = {
-      producer: { source: 'playground' },
+      producer: { source: 'shop' },
       subscriptions: [{ name: 'record-order', messageName: 'shop.order.placed', kind: 'event' }],
     }
     const { db, queries } = fakeDb([
-      [{ source: 'playground', published: 1, waiting: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
     ])
     const runs = fakeRuns({ 'env-1': [outcome('record-order', 'completed')] })
@@ -278,7 +278,7 @@ describe('readBusCounts', () => {
   })
 
   it('skips the handler-log round trip when the window is empty, even with a waiting handler declared', async () => {
-    const { db, queries } = fakeDb([[{ source: 'playground', published: 0, waiting: 0 }], []])
+    const { db, queries } = fakeDb([[{ source: 'shop', published: 0, waiting: 0 }], []])
 
     await readBusCounts(db, fakeRuns({}), topologyWithDurable)
 
@@ -286,7 +286,7 @@ describe('readBusCounts', () => {
   })
 
   it('defaults a subscription with no matching outcome to zero', async () => {
-    const { db } = fakeDb([[{ source: 'playground', published: 0, waiting: 0 }], [], []])
+    const { db } = fakeDb([[{ source: 'shop', published: 0, waiting: 0 }], [], []])
 
     const counts = await readBusCounts(db, fakeRuns({}), topologyWithDurable)
 
@@ -313,7 +313,7 @@ describe('readBusCounts', () => {
     const { db } = fakeDb([
       [
         { source: 'other', published: 1, waiting: 1 },
-        { source: 'playground', published: 3, waiting: 1 },
+        { source: 'shop', published: 3, waiting: 1 },
       ],
       [],
       [],
@@ -323,7 +323,7 @@ describe('readBusCounts', () => {
 
     expect(counts.producers).toEqual([
       { source: 'other', published: 1 },
-      { source: 'playground', published: 3 },
+      { source: 'shop', published: 3 },
     ])
     expect(counts.outbox).toEqual({ published: 4, waitingForRelay: 2, shipped: 2 })
   })
