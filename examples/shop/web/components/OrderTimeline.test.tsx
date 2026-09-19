@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import type { OrderStage } from '../lib/shopDocuments'
 import { OrderTimeline } from './OrderTimeline'
 
 // No capturing group, so every element is a plain string: stripping the
@@ -37,12 +38,23 @@ describe('OrderTimeline', () => {
     expect(reachedLabels(markup)).toEqual(['Placed'])
   })
 
-  it('marks exactly the current step with aria-current="step", for screen readers that cannot rely on colour', () => {
-    const markup = renderToStaticMarkup(<OrderTimeline stage="invoice-sent" />)
+  // Every stage names a different current step, so reverting `current` for
+  // shipped or timed-out (only ever exercised by the invoice-sent case
+  // before) cannot leave all four green.
+  const currentStepByStage: readonly [OrderStage, string][] = [
+    ['placed', 'Placed'],
+    ['invoice-sent', 'Invoice sent'],
+    ['shipped', 'Shipped'],
+    ['timed-out', 'Timed out'],
+  ]
+  for (const [stage, label] of currentStepByStage) {
+    it(`marks exactly the current step with aria-current="step", for a ${stage} order`, () => {
+      const markup = renderToStaticMarkup(<OrderTimeline stage={stage} />)
 
-    expect(markup.match(/aria-current="step"/g)).toHaveLength(1)
-    expect(markup).toMatch(/aria-current="step">Invoice sent</)
-  })
+      expect(markup.match(/aria-current="step"/g)).toHaveLength(1)
+      expect(markup).toContain(`aria-current="step">${label}</li>`)
+    })
+  }
 
   it('gives the list an explicit role, since list-style: none strips it in Safari', () => {
     const markup = renderToStaticMarkup(<OrderTimeline stage="placed" />)

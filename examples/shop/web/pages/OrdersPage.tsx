@@ -49,6 +49,25 @@ export function OrderCard({ order, customerId }: OrderCardProps) {
   )
 }
 
+export interface OrderListProps {
+  orders: readonly ShopOrder[]
+  customerId: string
+}
+
+// Extracted so a test can render it directly with data: OrdersPage's own
+// fetch hook never resolves under renderToStaticMarkup, so this element
+// would otherwise never appear in a static render.
+/** The order cards, newest first. */
+export function OrderList({ orders, customerId }: OrderListProps) {
+  return (
+    <ul className="order-list" role="list">
+      {orders.map((order) => (
+        <OrderCard key={order.id} order={order} customerId={customerId} />
+      ))}
+    </ul>
+  )
+}
+
 export interface OrdersPageProps {
   dashboardUrl: string
 }
@@ -77,15 +96,11 @@ export function OrdersPage({ dashboardUrl }: OrdersPageProps) {
         )}
       </p>
       {limit !== undefined && <p className="muted">Showing the newest {limit} orders.</p>}
-      <p className="status">{error ?? ''}</p>
+      <p className="status" aria-live="polite">
+        {error ?? ''}
+      </p>
       {orders !== undefined && orders.length === 0 && <p className="muted">No orders yet.</p>}
-      {orders !== undefined && orders.length > 0 && (
-        <ul className="order-list" role="list">
-          {orders.map((order) => (
-            <OrderCard key={order.id} order={order} customerId={customerId} />
-          ))}
-        </ul>
-      )}
+      {orders !== undefined && orders.length > 0 && <OrderList orders={orders} customerId={customerId} />}
     </div>
   )
 }

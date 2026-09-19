@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { ShopOrder } from '../lib/shopDocuments'
-import { OrderCard, OrdersPage } from './OrdersPage'
+import { OrderCard, OrderList, OrdersPage } from './OrdersPage'
 
 // Every number below is distinct — unit price, quantity, line amount and the
 // order total never collide — so reverting the line amount, the total, or
@@ -46,6 +46,20 @@ describe('OrderCard', () => {
 
     expect(markup).not.toContain('order-yours')
   })
+
+  it('gives its line list an explicit role, since list-style: none strips it in Safari', () => {
+    const markup = renderToStaticMarkup(<OrderCard order={order} customerId="someone-else" />)
+
+    expect(markup).toContain('<ul class="order-lines" role="list">')
+  })
+})
+
+describe('OrderList', () => {
+  it('gives the list an explicit role, since list-style: none strips it in Safari', () => {
+    const markup = renderToStaticMarkup(<OrderList orders={[order]} customerId="someone-else" />)
+
+    expect(markup).toContain('<ul class="order-list" role="list">')
+  })
 })
 
 describe('OrdersPage', () => {
@@ -61,5 +75,11 @@ describe('OrdersPage', () => {
     const markup = renderToStaticMarkup(<OrdersPage dashboardUrl="" />)
 
     expect(markup).not.toContain('order-card')
+  })
+
+  it('marks the status paragraph aria-live="polite", so a polled error announces', () => {
+    const markup = renderToStaticMarkup(<OrdersPage dashboardUrl="" />)
+
+    expect(markup).toContain('<p class="status" aria-live="polite">')
   })
 })
