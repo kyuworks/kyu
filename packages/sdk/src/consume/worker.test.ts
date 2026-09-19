@@ -169,3 +169,64 @@ describe('KyuWorker.waitUntilReady', () => {
     await expect(ready).rejects.toBe(startError)
   })
 })
+
+describe('KyuWorker.stop', () => {
+  it('resolves within the configured bound when the engine stop never settles', async () => {
+    const unhandled: unknown[] = []
+    const onUnhandledRejection: NodeJS.UnhandledRejectionListener = (reason) => {
+      unhandled.push(reason)
+    }
+    process.on('unhandledRejection', onUnhandledRejection)
+
+    try {
+      const { client } = fakeHatchetClient(() =>
+        Promise.resolve(fakeWorker({ stop: () => new Promise<void>(() => undefined) })),
+      )
+      const subscription = stubSubscription('notify-ops', 'event', 'shop.order.placed')
+      const worker = await createWorker(client, 'worker', { subscriptions: [subscription], stopTimeoutMs: 50 })
+
+      const start = Date.now()
+      await worker.stop()
+      const elapsed = Date.now() - start
+
+      expect(elapsed).toBeLessThan(5_000)
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection)
+    }
+  })
+
+  it('refuses a stopTimeoutMs that is not a positive finite number', async () => {
+    const { client } = fakeHatchetClient(() => Promise.resolve(fakeWorker({})))
+    const subscription = stubSubscription('notify-ops', 'event', 'shop.order.placed')
+
+    await expect(
+      createWorker(client, 'worker', { subscriptions: [subscription], stopTimeoutMs: 0 }),
+    ).rejects.toBeInstanceOf(RangeError)
+    await expect(
+      createWorker(client, 'worker', { subscriptions: [subscription], stopTimeoutMs: Number.NaN }),
+    ).rejects.toBeInstanceOf(RangeError)
+  })
+
+  it('waits for the engine stop when no bound is set', async () => {
+    let resolveEngineStop: () => void = () => undefined
+    const engineStop = new Promise<void>((resolve) => {
+      resolveEngineStop = resolve
+    })
+    const { client } = fakeHatchetClient(() => Promise.resolve(fakeWorker({ stop: () => engineStop })))
+    const subscription = stubSubscription('notify-ops', 'event', 'shop.order.placed')
+    const worker = await createWorker(client, 'worker', { subscriptions: [subscription] })
+
+    let settled = false
+    const stopped = worker.stop().then(() => {
+      settled = true
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(settled).toBe(false)
+
+    resolveEngineStop()
+    await stopped
+    expect(settled).toBe(true)
+  })
+})

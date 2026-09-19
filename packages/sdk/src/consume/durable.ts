@@ -7,7 +7,7 @@ import type {
   MessageSchema,
   Unparsed,
 } from '@kyuworks/schemas'
-import { EnvelopeRejectedError, KyuError } from '../errors.js'
+import { EnvelopeRejectedError, KyuError, WorkerStoppingError } from '../errors.js'
 import { eventScope } from '../eventScope.js'
 import { Or, SleepCondition, UserEventCondition, durationToMs } from '../hatchet.js'
 import type { CreateDurableTaskWorkflowOpts, Duration, DurableContext, HatchetClient, JsonObject } from '../hatchet.js'
@@ -132,17 +132,29 @@ export async function waitForMessage<S extends MessageSchema>(
   throw new KyuError(`waitFor: unexpected engine result shape: ${JSON.stringify(raw)}`)
 }
 
+// Entry check only. A wait already registered when the worker stops is either
+// evicted cleanly or rejected with "DurableListener stopped"; one sent after
+// the engine SDK's durable listener stopped is never settled at all.
+function assertWorkerNotStopping(isStopping: () => boolean): void {
+  if (isStopping()) throw new WorkerStoppingError()
+}
+
 function buildDurableHandlerContext<TData extends MessageDataShape>(
   envelope: Envelope<TData>,
   metadata: EnvelopeMetadataFields,
   hatchetContext: DurableContext<JsonObject>,
+  isStopping: () => boolean,
 ): DurableHandlerContext<TData> {
   return {
     ...buildHandlerContext(envelope, metadata, hatchetContext),
     sleepFor: async (duration) => {
+      assertWorkerNotStopping(isStopping)
       await hatchetContext.sleepFor(duration)
     },
-    waitFor: (definition, options) => waitForMessage(hatchetContext, envelope, definition, options),
+    waitFor: async (definition, options) => {
+      assertWorkerNotStopping(isStopping)
+      return waitForMessage(hatchetContext, envelope, definition, options)
+    },
   }
 }
 
@@ -151,35 +163,58 @@ async function runDurableHandler<S extends MessageSchema>(
   handler: DurableOptions<MessageData<MessageDefinition<S>>>['handler'],
   input: JsonObject,
   hatchetContext: DurableContext<JsonObject>,
+  isStopping: () => boolean,
 ): Promise<void> {
   const envelope = await decodeIncomingEnvelope(definition, input)
   const metadata = decodeAndCheckMetadata(hatchetContext, envelope)
-  await handler(buildDurableHandlerContext(envelope, metadata, hatchetContext))
+  await handler(buildDurableHandlerContext(envelope, metadata, hatchetContext, isStopping))
 }
 
 /**
  * The handler body re-runs from the top on engine reassignment or replay; only
  * `sleepFor`, `waitFor` and the engine's `now()` replay from the durable log.
  * Side effects before a wait must be idempotent — that is what `onceById()` is for.
+ *
+ * A worker stopping mid-run is handled in two halves. A run already parked in
+ * `sleepFor`/`waitFor` is evicted by the engine and continues on the next
+ * worker. A body that reaches its first wait *after* its worker began stopping
+ * cannot register it — the engine SDK's durable listener has already stopped —
+ * so that wait raises `WorkerStoppingError` at once and `retries`, which
+ * defaults to 3 here, carries the run to the next worker. Replay is safe by
+ * design: side effects before a wait go through `onceById()`. Pass `retries: 0`
+ * to opt out and dead-letter instead.
  */
 export function durable<S extends MessageSchema>(
   hatchet: HatchetClient,
   definition: MessageDefinition<S>,
   options: DurableOptions<MessageData<MessageDefinition<S>>>,
 ): Subscription {
+  let stopping = false
   const taskOptions: CreateDurableTaskWorkflowOpts<JsonObject, void> = {
     name: options.name,
     onEvents: [definition.name],
     fn: (input: JsonObject, ctx: DurableContext<JsonObject>) =>
-      runDurableHandler(definition, options.handler, input, ctx),
+      runDurableHandler(definition, options.handler, input, ctx, () => stopping),
   }
 
   applySharedTaskOptions(taskOptions, options)
   // The engine's own default execution timeout is 60s; without an explicit
   // value here, a wait past a minute would be cancelled.
   taskOptions.executionTimeout ??= '24h'
+  // A wait entered after this worker began stopping fails fast
+  // (WorkerStoppingError) rather than hanging; the retry is what carries the
+  // run to the next worker. Replay is safe: side effects go through onceById().
+  taskOptions.retries ??= 3
 
   const workflow = hatchet.durableTask<JsonObject, void>(taskOptions)
 
-  return { name: options.name, kind: definition.kind, messageName: definition.name, workflow }
+  return {
+    name: options.name,
+    kind: definition.kind,
+    messageName: definition.name,
+    workflow,
+    stopDurableWaits: () => {
+      stopping = true
+    },
+  }
 }

@@ -26,6 +26,12 @@ export interface Subscription {
   kind: MessageKind
   messageName: string
   workflow: TaskWorkflowDeclaration
+  /**
+   * Set by `durable()` only. `KyuWorker.stop()` calls it before the engine's
+   * own stop, so a wait entered afterwards fails fast instead of hanging on a
+   * stopped durable listener. One-way: build one subscription per worker.
+   */
+  stopDurableWaits?: () => void
 }
 
 // Every mismatch is an `EnvelopeRejectedError`, non-retryable: redelivering
