@@ -26,6 +26,10 @@ export interface ShopOrder {
   lines: ShopOrderLine[]
 }
 
+// How many of the tenant's newest orders /orders.json reads, mirrors
+// busCounts.ts's own ENGINE_WINDOW_LIMIT constant.
+export const ORDER_HISTORY_LIMIT = 50
+
 const productRowSchema = z.object({
   id: z.string(),
   sku: z.string(),
@@ -42,9 +46,7 @@ export async function readProducts(db: CountsSource): Promise<ShopProduct[]> {
   })
 }
 
-// pg returns a timestamptz column as a Date, not a string; ShopOrder's own
-// contract is a string (JSON has no date type), so this is the one place
-// that conversion happens.
+// pg returns timestamptz as a Date; ShopOrder's own contract is a string.
 const timestampSchema = z
   .union([z.string(), z.date()])
   .nullable()
@@ -85,8 +87,8 @@ async function readOrderHeaders(db: CountsSource, tenantId: string): Promise<Ord
      LEFT JOIN shop_invoice i ON i.order_id = o.id
      WHERE o.tenant_id = $1
      ORDER BY o.id DESC
-     LIMIT 50`,
-    [tenantId, WATCH_SHIPPING_TIMEOUT],
+     LIMIT $3`,
+    [tenantId, WATCH_SHIPPING_TIMEOUT, ORDER_HISTORY_LIMIT],
   )
   return result.rows.map((row) => orderHeaderRowSchema.parse(row))
 }
@@ -115,7 +117,7 @@ export function orderStage(row: {
   return 'placed'
 }
 
-/** The newest 50 orders for the tenant, newest first, each with its lines and stage. */
+/** The newest ORDER_HISTORY_LIMIT orders for the tenant, newest first, each with its lines and stage. */
 export async function readOrders(db: CountsSource, tenantId: string): Promise<ShopOrder[]> {
   const headers = await readOrderHeaders(db, tenantId)
   const lineRows = await readOrderLines(

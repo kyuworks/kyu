@@ -39,13 +39,13 @@ describe('applyPending', () => {
 
   it('applies the SDK migration then the app migration, once', async () => {
     const first = await applyPending(client, [MIGRATIONS_DIRECTORY, APP_MIGRATIONS_DIRECTORY])
-    expect(first).toEqual(['20260916233209_create_outbox.sql', '0001_shop.sql', '0002_shop.sql'])
+    expect(first).toEqual(['20260916233209_create_outbox.sql', '0001_shop.sql', '0002_shop.sql', '0003_shop.sql'])
 
     const second = await applyPending(client, [MIGRATIONS_DIRECTORY, APP_MIGRATIONS_DIRECTORY])
     expect(second).toEqual([])
 
     const ledger = await client.query('SELECT name FROM shop_migrations')
-    expect(ledger.rows).toHaveLength(3)
+    expect(ledger.rows).toHaveLength(4)
 
     for (const table of TABLES) {
       const exists = await client.query('SELECT 1 FROM information_schema.tables WHERE table_name = $1', [table])

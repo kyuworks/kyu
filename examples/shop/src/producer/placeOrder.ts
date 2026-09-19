@@ -32,8 +32,7 @@ export interface PlacedOrder {
 
 const totalRowSchema = z.object({ total_cents: z.coerce.number().int() })
 
-// The unknown-product-id path (a line whose product does not exist) throws
-// before any total is computed or anything is published; the JOIN below
+// An unknown product id throws before anything is published: the JOIN below
 // would otherwise silently drop that line and place an order half-built.
 async function insertLines(client: PoolClient, orderId: string, lines: readonly PlaceOrderLine[]): Promise<number> {
   const result = await client.query(

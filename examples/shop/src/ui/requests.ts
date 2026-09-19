@@ -1,8 +1,7 @@
 import { z } from 'zod'
 
-// The HTTP body is the trust edge: parsed once here, then handed to the
-// producers as plain values (see handleRequest.ts). The tenant is a server
-// constant (shop.ts's DEMO_TENANT_ID), never a client-supplied field.
+// The HTTP body is the trust edge, parsed once here (handleRequest.ts).
+// The tenant is always shop.ts's DEMO_TENANT_ID, never a client field.
 export const placeOrderRequestSchema = z.object({
   customerId: z.uuid().optional(),
   lines: z
