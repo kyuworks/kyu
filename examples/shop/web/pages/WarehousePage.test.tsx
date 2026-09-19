@@ -44,7 +44,7 @@ describe('WarehouseRow', () => {
   it('shows the order id, its lines in one line, the total, and a carrier input defaulted to Speedy', () => {
     const markup = renderToStaticMarkup(<WarehouseRow order={order('order-00000001', 'placed', 1400)} />)
 
-    expect(markup).toContain('>order-00<')
+    expect(markup).toContain('<code>order-00</code>')
     expect(markup).toContain('Enamel mug')
     expect(markup).toContain('$14.00')
     expect(markup).toMatch(/value="Speedy"/)

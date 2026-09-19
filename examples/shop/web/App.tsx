@@ -1,6 +1,5 @@
-import { Chip } from '@heroui/react'
-import { ShoppingBagIcon } from '@heroicons/react/24/outline'
 import { useEffect, useReducer, useState } from 'react'
+import { AppShellView } from './components/AppShell'
 import { describeFetchFailure } from './lib/fetchJson'
 import { parseUiConfig } from './lib/uiConfig'
 import { cartReducer, readStoredCart, writeStoredCart } from './lib/cart'
@@ -12,21 +11,6 @@ import { CheckoutPage } from './pages/CheckoutPage'
 import { OrdersPage } from './pages/OrdersPage'
 import { ShopPage } from './pages/ShopPage'
 import { WarehousePage } from './pages/WarehousePage'
-
-interface NavLink {
-  href: string
-  label: string
-}
-
-// One entry per page. Adding one here also means adding its path to
-// src/ui/serveWeb.ts's APP_ROUTES — nothing ties the two lists together.
-const NAV_LINKS: readonly NavLink[] = [
-  { href: '/', label: 'Shop' },
-  { href: '/checkout', label: 'Checkout' },
-  { href: '/orders', label: 'Orders' },
-  { href: '/warehouse', label: 'Warehouse' },
-  { href: '/bus', label: 'Bus' },
-]
 
 export function App() {
   // Empty until /ui.json answers: no dashboard link rather than a guessed one.
@@ -124,41 +108,9 @@ export function App() {
   }
 
   return (
-    <>
-      <header className="border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-4">
-          <p className="m-0 flex items-center gap-2 text-lg font-semibold">
-            <ShoppingBagIcon className="size-5" aria-hidden="true" />
-            Qtaxis shop
-          </p>
-          <nav className="flex flex-1 items-center gap-4">
-            {NAV_LINKS.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                aria-current={pathname === link.href ? 'page' : undefined}
-                className="border-b-2 border-transparent py-1 text-muted no-underline aria-[current=page]:border-accent aria-[current=page]:text-foreground"
-              >
-                {link.label}
-              </a>
-            ))}
-            {cartCount > 0 && (
-              <Chip
-                color="default"
-                size="sm"
-                role="status"
-                aria-label={`${cartCount} item${cartCount === 1 ? '' : 's'} in your order`}
-              >
-                {cartCount}
-              </Chip>
-            )}
-          </nav>
-        </div>
-      </header>
-      <main className="mx-auto max-w-5xl px-4 py-6">
-        <p className="status">{statusMessage}</p>
-        {renderPage()}
-      </main>
-    </>
+    <AppShellView pathname={pathname} cartCount={cartCount}>
+      <p className="status">{statusMessage}</p>
+      {renderPage()}
+    </AppShellView>
   )
 }

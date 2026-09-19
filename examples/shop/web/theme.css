@@ -67,8 +67,6 @@
     --raised: var(--surface-secondary);
     --text: var(--foreground);
     --line: var(--border);
-    --accent-text: var(--accent-foreground);
-    --ok: var(--success);
     /* The exact old stack, not HeroUI's --font-sans: keeps untouched pages pixel-identical. */
     --font: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     --mono: var(--font-mono);

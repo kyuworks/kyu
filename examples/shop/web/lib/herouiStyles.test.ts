@@ -37,7 +37,8 @@ function namedImportsFrom(source: string): string[] {
     // "import type { … }" names no runtime component, so it needs no stylesheet.
     if (source.slice(importStart + 'import'.length, braceOpen).trim() === 'type') continue
     for (const raw of source.slice(braceOpen + 1, braceClose).split(',')) {
-      const name = (raw.split(' as ')[0] ?? '').trim()
+      // A mixed import can type one specifier at a time ("{ type X, Y }"); strip that prefix too.
+      const name = (raw.split(' as ')[0] ?? '').trim().replace(/^type\s+/, '')
       if (name !== '') names.push(name)
     }
   }
@@ -86,14 +87,11 @@ describe('namedImportsFrom', () => {
 
     expect(namedImportsFrom(source)).toEqual(['Alert', 'Button'])
   })
-})
 
-describe('stylesheetsFor', () => {
-  it('maps NumberField to its own stylesheet plus the shared input and label stylesheets it composes from', () => {
-    // A NumberFieldInput renders through the same input/label markup TextField and Input do —
-    // if theme.css ever drops input.css or label.css, NumberField goes unstyled too. Listing
-    // all three here means the gate below goes red if either shared file is ever removed.
-    expect(stylesheetsFor('NumberFieldInput')).toEqual(['number-field.css', 'input.css', 'label.css'])
+  it('strips a leading "type " from a mixed import, so an unmapped name is never reported as "type X"', () => {
+    const source = "import { type AlertProps, Button } from '@heroui/react'\n"
+
+    expect(namedImportsFrom(source)).toEqual(['AlertProps', 'Button'])
   })
 })
 

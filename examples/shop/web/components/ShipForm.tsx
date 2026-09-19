@@ -3,6 +3,7 @@ import { TruckIcon } from '@heroicons/react/24/outline'
 import { useReducer, useState } from 'react'
 import { describeSubmitFailure, postJsonOutcome } from '../lib/fetchJson'
 import { SHIP_ORDER_PATH, buildShipOrderBody } from '../lib/shipOrder'
+import { shortOrderId } from '../lib/shopDocuments'
 import type { SubmitPhase } from '../lib/submitPhase'
 import { canSubmit, nextSubmitPhase } from '../lib/submitPhase'
 
@@ -34,12 +35,14 @@ export function ShipFormView({ orderId, carrier, phase, onCarrierChange, onSubmi
     >
       {/* isDisabled goes on TextField: on a bare Input it emits no disabled attribute. */}
       <TextField isDisabled={shipped} className="flex-row items-center gap-2">
-        <Label>Carrier</Label>
-        <Input
-          aria-label={`Carrier for order ${orderId}`}
-          value={carrier}
-          onChange={(event) => onCarrierChange(event.target.value)}
-        />
+        {/* The order id lives in the label, not a redundant aria-label on Input: react-aria points
+            the input's aria-labelledby at this label, and aria-labelledby outranks aria-label, so
+            an aria-label here would be silently ignored and every row would read just "Carrier". */}
+        <Label>
+          Carrier
+          <span className="sr-only"> for order {shortOrderId(orderId)}</span>
+        </Label>
+        <Input value={carrier} onChange={(event) => onCarrierChange(event.target.value)} />
       </TextField>
       <Button type="submit" variant="primary" size="sm" isDisabled={submitting || shipped}>
         Ship
