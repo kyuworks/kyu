@@ -1,7 +1,8 @@
-import type { Qtaxis, Queryable, QueryParam, Unparsed } from '@qtaxis/sdk'
+import type { Qtaxis, Queryable, QueryParam, RunOutcome, Unparsed } from '@qtaxis/sdk'
 import { createEnvelope } from '@qtaxis/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
+import { ENGINE_WINDOW_LIMIT } from './busCounts.js'
 import type { BusTopology } from './busTopology.js'
 import type { UiRequest } from './handleRequest.js'
 import { handleUiRequest } from './handleRequest.js'
@@ -47,25 +48,33 @@ interface RecordedPublish {
   tenantId: string | null
 }
 
-function fakeQtaxis(publishes: RecordedPublish[]): Qtaxis {
+// Empty by default: a test that cares about run outcomes passes its own map.
+function fakeQtaxis(
+  publishes: RecordedPublish[],
+  runOutcomes: Readonly<Record<string, readonly RunOutcome[]>> = {},
+): Qtaxis {
   const publish: Qtaxis['publish'] = async (_tx: Queryable, definition, data, options) => {
     const name: string = definition.name
     publishes.push({ name, tenantId: options.tenantId })
     return createEnvelope(definition, data, { tenantId: options.tenantId, source: 'test' })
   }
-  const stub: Pick<Qtaxis, 'publish'> = { publish }
+  const runs: Qtaxis['runs'] = { forEnvelope: (envelopeId: string) => Promise.resolve(runOutcomes[envelopeId] ?? []) }
+  const stub: Pick<Qtaxis, 'publish' | 'runs'> = { publish, runs }
   return stub as Qtaxis
 }
 
 const fakeTopology: BusTopology = {
   producer: { source: 'playground' },
   subscriptions: [
-    { name: 'record-order', messageName: 'shop.order.placed', kind: 'event', doneHandlers: ['record-order'] },
+    { name: 'record-order', messageName: 'shop.order.placed', kind: 'event' },
     {
       name: 'watch-shipping',
       messageName: 'shop.order.placed',
       kind: 'event',
-      doneHandlers: ['watch-shipping:completed', 'watch-shipping:timeout'],
+      doneOutcomes: [
+        { handler: 'watch-shipping:completed', label: 'shipped' },
+        { handler: 'watch-shipping:timeout', label: 'timed out' },
+      ],
       waitingHandler: 'watch-shipping:waiting',
     },
   ],
@@ -254,15 +263,15 @@ describe('handleUiRequest', () => {
   })
 
   it('returns the topology and counts for /bus.json', async () => {
-    const qtaxis = fakeQtaxis([])
-    const pool = fakeQueryPool([
-      [{ count: 7 }],
-      [
-        { name: 'record-order', processed: 3 },
-        { name: 'watch-shipping', processed: 1 },
+    const qtaxis = fakeQtaxis([], {
+      'env-1': [
+        { subscription: 'record-order', status: 'completed', attempts: 1, runId: 'run-1', createdAt: new Date() },
       ],
-      [{ name: 'watch-shipping', in_progress: 2 }],
-      [{ count: 4 }],
+    })
+    const pool = fakeQueryPool([
+      [{ source: 'playground', published: 7, waiting: 0 }],
+      [{ id: 'env-1', name: 'shop.order.placed' }],
+      [],
     ])
 
     const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/bus.json'))
@@ -272,12 +281,25 @@ describe('handleUiRequest', () => {
     const parsed: { topology: BusTopology; counts: unknown } = JSON.parse(response.body)
     expect(parsed.topology).toEqual(fakeTopology)
     expect(parsed.counts).toEqual({
-      producer: { published: 7 },
-      bus: { published: 7, inFlight: 4 },
+      producers: [{ source: 'playground', published: 7 }],
+      outbox: { published: 7, waitingForRelay: 0, shipped: 7 },
       subscriptions: [
-        { name: 'record-order', processed: 3 },
-        { name: 'watch-shipping', processed: 1, inProgress: 2 },
+        { name: 'record-order', queued: 0, running: 0, completed: 1, failed: 0, cancelled: 0 },
+        {
+          name: 'watch-shipping',
+          queued: 0,
+          running: 0,
+          completed: 0,
+          failed: 0,
+          cancelled: 0,
+          parked: 0,
+          doneOutcomes: [
+            { label: 'shipped', count: 0 },
+            { label: 'timed out', count: 0 },
+          ],
+        },
       ],
+      window: { limit: ENGINE_WINDOW_LIMIT, envelopes: 1, engineCalls: 1 },
     })
   })
 })

@@ -1,3 +1,5 @@
+import { ENGINE_WINDOW_LIMIT } from './busCounts.js'
+
 const STYLE = `
   :root { color-scheme: light dark; }
   body { font: 14px/1.4 monospace; max-width: 60rem; margin: 2rem auto; padding: 0 1rem; background: Canvas; color: CanvasText; }
@@ -14,6 +16,7 @@ const STYLE = `
   .arrow-line { border-left: 1px solid color-mix(in srgb, CanvasText 40%, Canvas); height: 1.2rem; }
   #status:empty { display: none; }
   #status { font-weight: bold; }
+  .window-note { font-size: 0.8rem; opacity: 0.75; text-align: center; margin-top: 0.5rem; }
 `
 
 const SCRIPT = `
@@ -32,27 +35,25 @@ const SCRIPT = `
     var box = el('div', 'box subscription-box')
     box.id = 'subscription-' + subscription.name
     box.appendChild(el('h2', null, subscription.name))
-    box.appendChild(el('div', 'count processed', '–'))
-    box.appendChild(el('div', 'count-label', 'processed'))
-    if (subscription.waitingHandler) {
-      box.appendChild(el('div', 'count in-progress', '–'))
-      box.appendChild(el('div', 'count-label', 'in progress'))
-    }
+    box.appendChild(el('div', 'count done', '–'))
+    box.appendChild(el('div', 'count-label', 'done'))
+    box.appendChild(el('div', 'count failed', '–'))
+    box.appendChild(el('div', 'count-label', 'failed'))
     column.appendChild(box)
     return column
   }
 
   function applyCounts(counts) {
-    document.getElementById('producer-published').textContent = counts.producer.published
-    document.getElementById('bus-published').textContent = counts.bus.published
-    document.getElementById('bus-in-flight').textContent = counts.bus.inFlight
+    document.getElementById('producer-published').textContent = counts.outbox.published
+    document.getElementById('bus-published').textContent = counts.outbox.waitingForRelay
+    document.getElementById('bus-in-flight').textContent = counts.outbox.shipped
     counts.subscriptions.forEach(function (subscription) {
       var box = document.getElementById('subscription-' + subscription.name)
       if (!box) return
-      var processed = box.querySelector('.processed')
-      if (processed) processed.textContent = subscription.processed
-      var inProgress = box.querySelector('.in-progress')
-      if (inProgress && subscription.inProgress !== undefined) inProgress.textContent = subscription.inProgress
+      var done = box.querySelector('.done')
+      if (done) done.textContent = subscription.completed
+      var failed = box.querySelector('.failed')
+      if (failed) failed.textContent = subscription.failed
     })
   }
 
@@ -88,12 +89,12 @@ const SCRIPT = `
 
   document.addEventListener('DOMContentLoaded', function () {
     refresh()
-    setInterval(refresh, 2000)
+    setInterval(refresh, 5000)
   })
 `
 
 // The boxes and counts come only from `/bus.json`, fetched on load and every
-// 2s, so this page cannot drift from what the worker registers (subscriptions.ts).
+// 5s, so this page cannot drift from what the worker registers (subscriptions.ts).
 export function renderBusPage(dashboardUrl: string): string {
   return `<!doctype html>
 <html lang="en">
@@ -121,12 +122,13 @@ export function renderBusPage(dashboardUrl: string): string {
 <div class="box bus-box" id="bus-box">
 <h2>Message bus</h2>
 <div class="count" id="bus-published">&ndash;</div>
-<div class="count-label">published</div>
+<div class="count-label">waiting for relay</div>
 <div class="count" id="bus-in-flight">&ndash;</div>
-<div class="count-label">in flight</div>
+<div class="count-label">shipped</div>
 </div>
 </div>
 <div class="row columns-row" id="subscription-columns"></div>
+<p class="window-note" id="window-note">Run states cover the newest ${String(ENGINE_WINDOW_LIMIT)} messages; outbox counts are lifetime.</p>
 </div>
 
 <script>${SCRIPT}</script>

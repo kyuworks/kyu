@@ -1,16 +1,18 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import path from 'node:path'
 import type { Qtaxis } from '@qtaxis/sdk'
+import { uuidv7 } from '@qtaxis/sdk'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { PlaygroundConfig } from '../config.js'
 import { readConfig } from '../config.js'
-import { createPool } from '../db/pool.js'
+import { createPool, withTransaction } from '../db/pool.js'
+import { sendInvoice } from '../messages.js'
 import { createPlaygroundQtaxis } from '../qtaxis.js'
 import { placeOrder } from '../producer/placeOrder.js'
 import { shipOrder } from '../producer/shipOrder.js'
 import { buildSubscriptions } from '../subscriptions.js'
-import type { BusCounts } from '../ui/busCounts.js'
+import type { BusCounts, SubscriptionRunCounts } from '../ui/busCounts.js'
 import { readBusCounts } from '../ui/busCounts.js'
 import type { BusTopology } from '../ui/busTopology.js'
 import { describeBusTopology } from '../ui/busTopology.js'
@@ -18,8 +20,11 @@ import { spawnProcess, stopAllSpawnedProcesses } from './processes.js'
 import type { SpawnedProcess } from './processes.js'
 
 // Drives the relay and worker as real child processes against the local
-// engine and reads counts straight off the pool (loop.integration.test.ts's
-// own pattern), proving readBusCounts's queries against real rows, not fakes.
+// engine and reads counts straight off the pool plus one qtaxis.runs.forEnvelope
+// call per window envelope, proving readBusCounts's queries and engine fan-out
+// against real rows, not fakes. The database is shared across every
+// integration file in this suite, so every assertion below is a delta from a
+// baseline taken at the top of each test, never an absolute total.
 const RELAY_SCRIPT = path.resolve(import.meta.dirname, '../../dist/relay.js')
 const WORKER_SCRIPT = path.resolve(import.meta.dirname, '../../dist/worker.js')
 const namespace = `bc${randomBytes(3).toString('hex')}_`
@@ -49,12 +54,30 @@ async function waitUntil(
   }
 }
 
-function processedCount(counts: BusCounts, name: string): number {
-  return counts.subscriptions.find((subscription) => subscription.name === name)?.processed ?? 0
+function readCounts(): Promise<BusCounts> {
+  return readBusCounts(pool, qtaxis.runs, topology)
 }
 
-function inProgressCount(counts: BusCounts, name: string): number {
-  return counts.subscriptions.find((subscription) => subscription.name === name)?.inProgress ?? 0
+const EMPTY_SUBSCRIPTION_COUNTS: Omit<SubscriptionRunCounts, 'name'> = {
+  queued: 0,
+  running: 0,
+  completed: 0,
+  failed: 0,
+  cancelled: 0,
+}
+
+function subscriptionCounts(counts: BusCounts, name: string): SubscriptionRunCounts {
+  return (
+    counts.subscriptions.find((subscription) => subscription.name === name) ?? { name, ...EMPTY_SUBSCRIPTION_COUNTS }
+  )
+}
+
+function parkedCount(counts: BusCounts, name: string): number {
+  return subscriptionCounts(counts, name).parked ?? 0
+}
+
+function doneOutcomeCount(counts: BusCounts, name: string, label: string): number {
+  return subscriptionCounts(counts, name).doneOutcomes?.find((outcome) => outcome.label === label)?.count ?? 0
 }
 
 beforeAll(async () => {
@@ -69,7 +92,7 @@ beforeAll(async () => {
   await Promise.all([relay.ready, worker.ready])
 }, 60_000)
 
-// The order below ships before this file's own test ends, so no watch-shipping
+// The order below ships before this file's own tests end, so no watch-shipping
 // run is still parked when this runs (a parked run makes stop() wait per eviction).
 afterAll(async () => {
   await stopAllSpawnedProcesses()
@@ -77,8 +100,8 @@ afterAll(async () => {
 }, 90_000)
 
 describe('readBusCounts: against the local engine', () => {
-  it('moves published, processed, in-progress and in-flight as an order is placed then shipped', async () => {
-    const baseline = await readBusCounts(pool, topology)
+  it('moves outbox and run counts as an order is placed then shipped', async () => {
+    const baseline = await readCounts()
 
     const tenantId = randomUUID()
     const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
@@ -86,39 +109,162 @@ describe('readBusCounts: against the local engine', () => {
     let afterPlace: BusCounts = baseline
     await waitUntil(
       async () => {
-        afterPlace = await readBusCounts(pool, topology)
+        afterPlace = await readCounts()
         return (
-          processedCount(afterPlace, 'record-order') === processedCount(baseline, 'record-order') + 1 &&
-          processedCount(afterPlace, 'audit-order') === processedCount(baseline, 'audit-order') + 1 &&
-          processedCount(afterPlace, 'send-invoice') === processedCount(baseline, 'send-invoice') + 1 &&
-          inProgressCount(afterPlace, 'watch-shipping') === inProgressCount(baseline, 'watch-shipping') + 1
+          subscriptionCounts(afterPlace, 'record-order').completed ===
+            subscriptionCounts(baseline, 'record-order').completed + 1 &&
+          subscriptionCounts(afterPlace, 'audit-order').completed ===
+            subscriptionCounts(baseline, 'audit-order').completed + 1 &&
+          subscriptionCounts(afterPlace, 'send-invoice').completed ===
+            subscriptionCounts(baseline, 'send-invoice').completed + 1 &&
+          parkedCount(afterPlace, 'watch-shipping') === parkedCount(baseline, 'watch-shipping') + 1
         )
       },
       60_000,
       () => `counts after placeOrder: ${JSON.stringify(afterPlace)}, baseline: ${JSON.stringify(baseline)}`,
     )
 
-    // Two envelopes published (order placed, send invoice); only the
-    // order-placed one is still in flight, parked in watch-shipping's wait.
-    expect(afterPlace.producer.published).toBe(baseline.producer.published + 2)
-    expect(afterPlace.bus.published).toBe(baseline.bus.published + 2)
-    expect(afterPlace.bus.inFlight).toBe(baseline.bus.inFlight + 1)
+    // Two envelopes published (order placed, send invoice); both are shipped
+    // once the relay has pushed them — this test never stops the relay.
+    expect(afterPlace.outbox.shipped).toBe(baseline.outbox.shipped + 2)
 
     await shipOrder(pool, qtaxis, { tenantId, orderId: placed.orderId, carrier: 'ups' })
 
     let afterShip: BusCounts = afterPlace
     await waitUntil(
       async () => {
-        afterShip = await readBusCounts(pool, topology)
+        afterShip = await readCounts()
         return (
-          processedCount(afterShip, 'watch-shipping') === processedCount(baseline, 'watch-shipping') + 1 &&
-          inProgressCount(afterShip, 'watch-shipping') === inProgressCount(baseline, 'watch-shipping')
+          doneOutcomeCount(afterShip, 'watch-shipping', 'shipped') ===
+            doneOutcomeCount(baseline, 'watch-shipping', 'shipped') + 1 &&
+          parkedCount(afterShip, 'watch-shipping') === parkedCount(baseline, 'watch-shipping')
         )
       },
       60_000,
       () => `counts after shipOrder: ${JSON.stringify(afterShip)}, baseline: ${JSON.stringify(baseline)}`,
     )
-
-    expect(afterShip.bus.inFlight).toBe(baseline.bus.inFlight)
   }, 180_000)
+
+  // M1/M2: a message published while the relay is stopped only raises
+  // "waiting for relay" — no run count moves. Once the relay runs again, it
+  // moves to "shipped" and the runs appear under the subscriptions.
+  it('moves only waiting-for-relay while the relay is stopped, then drains it and gains runs once restarted', async () => {
+    const stoppedCode = await relay.stop()
+
+    const baseline = await readCounts()
+    const tenantId = randomUUID()
+    const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
+
+    // A failing assertion below must not leave the relay dead for the rest of
+    // this file — every later test would then burn a 60s waitUntil timeout.
+    try {
+      expect(stoppedCode).toBe(0)
+
+      const whileStopped = await readCounts()
+      expect(whileStopped.outbox.waitingForRelay).toBe(baseline.outbox.waitingForRelay + 2)
+      expect(whileStopped.outbox.shipped).toBe(baseline.outbox.shipped)
+      for (const subscription of topology.subscriptions) {
+        const before = subscriptionCounts(baseline, subscription.name)
+        const after = subscriptionCounts(whileStopped, subscription.name)
+        expect(
+          [after.queued, after.running, after.completed, after.failed, after.cancelled],
+          `subscription ${subscription.name} moved while the relay was stopped`,
+        ).toEqual([before.queued, before.running, before.completed, before.failed, before.cancelled])
+      }
+    } finally {
+      relay = spawnProcess(RELAY_SCRIPT, childEnv())
+      await relay.ready
+    }
+
+    let afterRestart: BusCounts = baseline
+    await waitUntil(
+      async () => {
+        afterRestart = await readCounts()
+        return (
+          afterRestart.outbox.waitingForRelay === baseline.outbox.waitingForRelay &&
+          subscriptionCounts(afterRestart, 'record-order').completed >
+            subscriptionCounts(baseline, 'record-order').completed &&
+          subscriptionCounts(afterRestart, 'audit-order').completed >
+            subscriptionCounts(baseline, 'audit-order').completed &&
+          subscriptionCounts(afterRestart, 'send-invoice').completed >
+            subscriptionCounts(baseline, 'send-invoice').completed
+        )
+      },
+      60_000,
+      () => `counts after relay restart: ${JSON.stringify(afterRestart)}, baseline: ${JSON.stringify(baseline)}`,
+    )
+
+    // Ship the order so its watch-shipping run does not stay parked past this
+    // test — a parked run makes afterAll's stop() wait per eviction ack.
+    await shipOrder(pool, qtaxis, { tenantId, orderId: placed.orderId, carrier: 'ups' })
+    await waitUntil(
+      async () => {
+        const current = await readCounts()
+        return (
+          doneOutcomeCount(current, 'watch-shipping', 'shipped') >
+          doneOutcomeCount(baseline, 'watch-shipping', 'shipped')
+        )
+      },
+      60_000,
+      () => 'watch-shipping never completed after shipping post-restart',
+    )
+  }, 180_000)
+
+  // M4: watch-shipping parks while the order is unshipped, then returns to
+  // baseline and the shipped label gains one once it ships.
+  it('reports watch-shipping parked while the order is unshipped, then shipped once it ships', async () => {
+    const baseline = await readCounts()
+    const tenantId = randomUUID()
+    const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
+
+    await waitUntil(
+      async () => parkedCount(await readCounts(), 'watch-shipping') === parkedCount(baseline, 'watch-shipping') + 1,
+      60_000,
+      () => 'watch-shipping never parked after placeOrder',
+    )
+
+    await shipOrder(pool, qtaxis, { tenantId, orderId: placed.orderId, carrier: 'fedex' })
+
+    await waitUntil(
+      async () => {
+        const current = await readCounts()
+        return (
+          parkedCount(current, 'watch-shipping') === parkedCount(baseline, 'watch-shipping') &&
+          doneOutcomeCount(current, 'watch-shipping', 'shipped') ===
+            doneOutcomeCount(baseline, 'watch-shipping', 'shipped') + 1
+        )
+      },
+      60_000,
+      () => 'watch-shipping never returned to baseline parked and gained shipped',
+    )
+  }, 180_000)
+
+  // M3: a command naming an invoice id with no row shows as exactly one
+  // failed run in send-invoice, and never moves send-invoice's done count.
+  it('shows a command for a missing invoice as one failed run in send-invoice, never done', async () => {
+    const baseline = await readCounts()
+    const tenantId = randomUUID()
+    const orderId = uuidv7()
+    const missingInvoiceId = uuidv7()
+
+    await withTransaction(pool, (tx) =>
+      qtaxis.publish(tx, sendInvoice, { orderId, invoiceId: missingInvoiceId }, { tenantId }),
+    )
+
+    await waitUntil(
+      async () =>
+        subscriptionCounts(await readCounts(), 'send-invoice').failed ===
+        subscriptionCounts(baseline, 'send-invoice').failed + 1,
+      60_000,
+      () => 'send-invoice never gained a failed run for the missing invoice',
+    )
+
+    const afterFailure = await readCounts()
+    expect(subscriptionCounts(afterFailure, 'send-invoice').failed).toBe(
+      subscriptionCounts(baseline, 'send-invoice').failed + 1,
+    )
+    expect(subscriptionCounts(afterFailure, 'send-invoice').completed).toBe(
+      subscriptionCounts(baseline, 'send-invoice').completed,
+    )
+  }, 90_000)
 })

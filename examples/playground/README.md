@@ -49,13 +49,13 @@ Serves the same two forms on `http://127.0.0.1:3333` (`QTAXIS_EXAMPLE_UI_PORT` t
 port). The page sends ids and shows the ids it got back; it does not read handler logs or run
 status. Watch what happens next in the Hatchet dashboard.
 
-`/bus` draws the producer, the bus, and one box per subscription, with counts read from this
-app's own database every 2 seconds. In flight counts a published message until every subscriber
-for its name has finished it; in progress counts `watch-shipping` runs parked in their wait.
-There is no errored count yet; a failed run only shows in the Hatchet dashboard. In flight scans
-`qtaxis_outbox` and `shop_handler_log` across the whole database, not scoped to `QTAXIS_EXAMPLE_NAMESPACE`,
-so a database shared with another namespace, or a run that exhausted its retries, keeps that count
-above zero.
+`/bus` draws the producer, the outbox, and one box per subscription, refreshed every 5 seconds.
+Outbox stages — published, waiting for relay, shipped — come from `qtaxis_outbox`. Each
+subscription's queued, running, done, failed and cancelled counts come from the engine, through
+the SDK's `runs.forEnvelope`, one call per message over the newest 200 subscribed messages.
+`watch-shipping`'s parked count and its shipped/timed-out split under "done" come from
+`shop_handler_log`. The ui process now needs a reachable engine to serve `/bus.json`; the page
+shows an error line instead of stale counts when it is down.
 
 ## Environment variables
 
