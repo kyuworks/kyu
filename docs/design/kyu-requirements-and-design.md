@@ -1,4 +1,4 @@
-# Qtaxis — Requirements and Design
+# Kyu — Requirements and Design
 
 The company message bus, built on self-hosted Hatchet.
 
@@ -20,7 +20,7 @@ Build one message bus, owned by the company and run as its own system, that ever
 
 The engine is [Hatchet](https://github.com/hatchet-dev/hatchet), self-hosted. Everything company-specific lives in a thin SDK and a set of conventions on top of it. This document is the requirements and the design for that system.
 
-**Name.** Qtaxis is q for queue plus taxis, the biology term for directed movement in response to a stimulus, as in chemotaxis. A message moves deliberately toward the consumers that asked for it, not by accident and not everywhere at once. That is what this system does for messages. The name is scientific rather than industry-specific, so a project in any industry can adopt it without the name pointing at another product.
+**Name.** Kyu sounds like queue, and the kanji 急 (kyū) means urgent or express, as in express delivery. The kanji is the logo. A message moves deliberately toward the consumers that asked for it, not by accident and not everywhere at once. That is what this system does for messages. The name is short and industry-neutral, so a project in any industry can adopt it without the name pointing at another product.
 
 ## 2. Context
 
@@ -132,7 +132,7 @@ Known gaps, and how they are covered:
 ```mermaid
 flowchart LR
   subgraph Producer project
-    APP[App code] -->|"qtaxis.publish() in tx"| OUTBOX[(qtaxis_outbox)]
+    APP[App code] -->|"kyu.publish() in tx"| OUTBOX[(kyu_outbox)]
     RELAY[Outbox relay] -->|reads, marks published| OUTBOX
   end
   RELAY -->|"events.bulkPush over gRPC"| ENGINE
@@ -150,7 +150,7 @@ flowchart LR
 ### 6.1 Components
 
 - **Hatchet control plane.** One Fly app per environment (dev, staging, production) running the `hatchet-lite` image: engine, REST API and dashboard in one container, HTTP on 8888 and gRPC on 7077. Backed by a dedicated Postgres database that also serves as Hatchet's internal queue. Not shared with any project's database.
-- **Qtaxis SDK** (`@qtaxis/sdk`; npm scope registered, see open question 1). A TypeScript package wrapping the Hatchet SDK. It owns the envelope, schema validation, the outbox table and relay, and thin helpers for subscribing, sending and durable handlers. Non-TypeScript projects use the Hatchet SDK directly and follow the same conventions, documented in the package.
+- **Kyu SDK** (`@kyuworks/sdk`; npm scope registered, see open question 1). A TypeScript package wrapping the Hatchet SDK. It owns the envelope, schema validation, the outbox table and relay, and thin helpers for subscribing, sending and durable handlers. Non-TypeScript projects use the Hatchet SDK directly and follow the same conventions, documented in the package.
 - **Producer outbox and relay.** A table in each producer's database and a relay loop in the producer's process. Section 8.
 - **Consumer workers.** Each consuming project runs a Hatchet worker process that registers its handlers. A consumer runs the worker inside its existing API process or as a separate worker entrypoint; both are one image.
 - **Inbound webhooks.** Hatchet's webhook endpoints, per bus tenant, for third parties that push to us (a mail provider's delivery events, an SMS provider's receipts). These arrive as events with a CEL-derived key.
@@ -211,7 +211,7 @@ This is the one component Hatchet does not provide and the only piece of real en
 Created by the SDK's migration in each producer's database:
 
 ```sql
-CREATE TABLE qtaxis_outbox (
+CREATE TABLE kyu_outbox (
   id            uuid PRIMARY KEY,           -- the envelope id
   name          text NOT NULL,
   tenant_id     uuid,
@@ -222,26 +222,26 @@ CREATE TABLE qtaxis_outbox (
   published_at  timestamptz,
   attempts      int NOT NULL DEFAULT 0,
   last_error    text,
-  CONSTRAINT qtaxis_outbox_name_matches_envelope CHECK (name = envelope->>'name')
+  CONSTRAINT kyu_outbox_name_matches_envelope CHECK (name = envelope->>'name')
 );
-CREATE INDEX qtaxis_outbox_pending_idx ON qtaxis_outbox (created_at) WHERE published_at IS NULL;
+CREATE INDEX kyu_outbox_pending_idx ON kyu_outbox (created_at) WHERE published_at IS NULL;
 ```
 
-The same migration creates `qtaxis_processed` (section 9.1):
+The same migration creates `kyu_processed` (section 9.1):
 
 ```sql
-CREATE TABLE qtaxis_processed (
+CREATE TABLE kyu_processed (
   envelope_id   uuid NOT NULL,
   handler       text NOT NULL,
   processed_at  timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (envelope_id, handler)
 );
-CREATE INDEX qtaxis_processed_processed_at_idx ON qtaxis_processed (processed_at);
+CREATE INDEX kyu_processed_processed_at_idx ON kyu_processed (processed_at);
 ```
 
 ### 8.2 Write path
 
-`qtaxis.publish(tx, definition, data, options)` inserts the row inside the caller's transaction. If the transaction rolls back the row disappears; if it commits the row is durable before any consumer could act. When a consumer's callers run under Postgres row-level security, the table carries an insert-only policy for that role scoped to the current tenant, and the relay reads with a privileged connection.
+`kyu.publish(tx, definition, data, options)` inserts the row inside the caller's transaction. If the transaction rolls back the row disappears; if it commits the row is durable before any consumer could act. When a consumer's callers run under Postgres row-level security, the table carries an insert-only policy for that role scoped to the current tenant, and the relay reads with a privileged connection.
 
 ### 8.3 Relay
 
@@ -269,7 +269,7 @@ Alert when the oldest pending row is older than 60 seconds or when `attempts` on
 Delivery is at-least-once end to end. Every handler is idempotent by one of two means:
 
 - **Natural idempotency.** The effect is a put, or the handler compares a content hash before acting. A handler that pushes to a third party can compare a content hash of what it last sent.
-- **Processed-id table.** The SDK provides `qtaxis.onceById(tx, envelope.id, handlerName, fn)` which records the id in a `qtaxis_processed` table in the consumer's database inside the handler's own transaction and skips duplicates. The handler name is part of the dedupe key, so two different handlers processing the same envelope do not collide.
+- **Processed-id table.** The SDK provides `kyu.onceById(tx, envelope.id, handlerName, fn)` which records the id in a `kyu_processed` table in the consumer's database inside the handler's own transaction and skips duplicates. The handler name is part of the dedupe key, so two different handlers processing the same envelope do not collide.
 
 ### 9.2 Ordering and coalescing
 
@@ -284,7 +284,7 @@ Declared per subscription, evaluated by Hatchet on the engine using CEL against 
 
 ### 9.3 Retries and failure
 
-Subscriptions declare `retries` and `backoff: { factor, maxSeconds }`. Handlers throw `NonRetryableError` for permanent conditions such as 4xx responses from an external API or an order that no longer exists. Exhausted retries mark the run failed. Failed runs are the dead-letter set: alerted on, visible and replayable in the dashboard, and never silently dropped. A consumer reads a run's status and attempt count by envelope id with `qtaxis.runs.forEnvelope(id)`; it never calls the engine client itself.
+Subscriptions declare `retries` and `backoff: { factor, maxSeconds }`. Handlers throw `NonRetryableError` for permanent conditions such as 4xx responses from an external API or an order that no longer exists. Exhausted retries mark the run failed. Failed runs are the dead-letter set: alerted on, visible and replayable in the dashboard, and never silently dropped. A consumer reads a run's status and attempt count by envelope id with `kyu.runs.forEnvelope(id)`; it never calls the engine client itself.
 
 ### 9.4 Priority and rate limits
 
@@ -299,18 +299,18 @@ Durable handlers use `sleepFor` for delays and `waitFor(definition, { where, sco
 Working shape; names to be finalised in review.
 
 ```ts
-import { createQtaxis, defineEvent } from '@qtaxis/sdk';
+import { createKyu, defineEvent } from '@kyuworks/sdk';
 
 const orderPlaced = defineEvent({ name: 'shop.order.placed', version: 1, data: z.object({ orderId: z.string(), customerId: z.string() }) });
 const orderShipped = defineEvent({ name: 'shop.order.shipped', version: 1, data: z.object({ orderId: z.string() }) });
 
-const qtaxis = createQtaxis({ hatchet: hatchetClient, source: 'shop.api' });
+const kyu = createKyu({ hatchet: hatchetClient, source: 'shop.api' });
 
 // Producer, inside a transaction
-await qtaxis.publish(tx, orderPlaced, { orderId, customerId }, { tenantId, actorUserId });
+await kyu.publish(tx, orderPlaced, { orderId, customerId }, { tenantId, actorUserId });
 
 // Consumer
-export const sendInvoice = qtaxis.subscribe(orderPlaced, {
+export const sendInvoice = kyu.subscribe(orderPlaced, {
   name: 'shop.invoice.send',
   concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'cancel_in_progress' },
   retries: 5,
@@ -319,7 +319,7 @@ export const sendInvoice = qtaxis.subscribe(orderPlaced, {
 });
 
 // Durable consumer
-export const followUpOrder = qtaxis.durable(orderPlaced, {
+export const followUpOrder = kyu.durable(orderPlaced, {
   name: 'shop.order.follow_up',
   concurrency: { key: 'input.data.customerId', maxRuns: 1, strategy: 'cancel_newest' },
   executionTimeout: '240h',
@@ -330,14 +330,14 @@ export const followUpOrder = qtaxis.durable(orderPlaced, {
 });
 
 // Worker
-const worker = await qtaxis.worker('shop-api', { subscriptions: [sendInvoice, followUpOrder], slots: 10 });
+const worker = await kyu.worker('shop-api', { subscriptions: [sendInvoice, followUpOrder], slots: 10 });
 await worker.start();
 
 // Relay, started once per producer process
-const relay = qtaxis.startRelay({ db: pool, workerId: 'shop-api-1' });
+const relay = kyu.startRelay({ db: pool, workerId: 'shop-api-1' });
 
 // Alerting: a run's outcome by envelope id, without the engine client
-const outcomes = await qtaxis.runs.forEnvelope(envelope.id);
+const outcomes = await kyu.runs.forEnvelope(envelope.id);
 const deadLetters = outcomes.filter((o) => o.status === 'failed');
 ```
 
@@ -374,7 +374,7 @@ Hatchet dev environment on Fly, tokens in 1Password, dashboard reachable, one he
 
 ### Phase 1: SDK core (one to two weeks)
 
-Build the SDK: `@qtaxis/schemas` message definitions, `publish()` and the outbox, the relay, `subscribe()`, `onceById()`, and the worker. Every later phase builds on this surface and nothing product-specific enters it.
+Build the SDK: `@kyuworks/schemas` message definitions, `publish()` and the outbox, the relay, `subscribe()`, `onceById()`, and the worker. Every later phase builds on this surface and nothing product-specific enters it.
 
 ### Phase 2: test application (one week)
 
@@ -410,12 +410,12 @@ Synchronous third-party lookups get a shared HTTP client with timeouts, retries 
 
 ## 14. Open questions
 
-1. **npm scope and home — resolved.** The `@qtaxis` npm scope is registered. The SDK lives in this repository (`Camba-nz/qtaxis`), with the Hatchet deployment config alongside.
+1. **npm scope and home — resolved.** The `@kyuworks` npm scope is registered. The SDK lives in this repository (`kyuworks/kyu`), with the Hatchet deployment config alongside.
 2. **Relay placement.** In every producer process (simplest) or as a sidecar per project (one fewer thing in app code, one more deployable)?
 3. **Outbox retention and the audit question.** Is the outbox also the producer's durable event log, or is Hatchet's history enough?
 4. **Non-TypeScript projects.** Which languages will the other company projects use, and does the outbox SDK need a second implementation soon?
 5. **Hatchet retention and metrics.** Confirm the retention settings and whether the engine exposes Prometheus metrics in the pinned version.
-6. **Idempotency key on push.** Confirm whether the pinned Hatchet version offers a producer-side dedupe key; if so, use the envelope id and drop `qtaxis_processed` for most consumers.
+6. **Idempotency key on push.** Confirm whether the pinned Hatchet version offers a producer-side dedupe key; if so, use the envelope id and drop `kyu_processed` for most consumers.
 7. **Worker split for the first consumer.** Keep the worker in the API process for release one, or split to a separate worker entrypoint immediately to isolate handler load?
 
 ## Appendix A: legacy patterns and their bus equivalents
@@ -441,7 +441,7 @@ Synchronous third-party lookups get a shared HTTP client with timeouts, retries 
 | F2 | Same, with one subscriber; SDK enforces single registration | Design |
 | F3 | Not provided; SDK outbox | Design |
 | F5 | CEL filters with scope | Docs, Events |
-| F6 | Envelope id; `qtaxis_processed` | Design |
+| F6 | Envelope id; `kyu_processed` | Design |
 | F7 | `retries`, `backoff`, `NonRetryableError` | Docs, Retry policies |
 | F8 | Failed runs, dashboard replay | Docs |
 | F9 | Concurrency key, `maxRuns: 1`, `GROUP_ROUND_ROBIN` | Docs, Concurrency |

@@ -90,7 +90,7 @@ Integration / Manual. Every flow in section 4 maps to at least one.
 
 > Bad: "Publishing works correctly."
 > Good: "`publish(tx, envelope)` inside a transaction that rolls back leaves zero rows in
-> `qtaxis_outbox`, and the handler subscribed to that name is never invoked."
+> `kyu_outbox`, and the handler subscribed to that name is never invoked."
 
 ## 6. Execution steps
 

@@ -66,7 +66,7 @@ emit RED2_RECORDED "$RED2"
 
 # --- what kind of commits are on the branch ----------------------------------
 
-# Qtaxis test files: colocated *.test.ts, *.integration.test.ts, and the shell
+# Kyu test files: colocated *.test.ts, *.integration.test.ts, and the shell
 # suites (*.test.sh) next to the gates and skill scripts.
 TESTPAT='(^|/)(tests?|__tests__|spec)/|\.(test|spec)\.[jt]sx?$|\.integration\.test\.[jt]s$|\.test\.sh$'
 # Where implementation lives: the workspace packages, the Hatchet deployment

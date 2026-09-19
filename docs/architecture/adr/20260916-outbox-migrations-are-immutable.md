@@ -2,7 +2,7 @@
 
 **Status:** accepted
 **Date:** 2026-09-16
-**Parent:** [design document](../../design/qtaxis-requirements-and-design.md) § 8
+**Parent:** [design document](../../design/kyu-requirements-and-design.md) § 8
 **This is not** a decision about how a consumer runs migrations; that is the consumer's own runner.
 
 Every file under `packages/sdk/migrations/` is applied by consumers to databases the bus does not control. Once a file is on `main` it is never edited, renamed or deleted.
@@ -11,9 +11,9 @@ Every file under `packages/sdk/migrations/` is applied by consumers to databases
 
 ## Status
 
-On 2026-09-18 the owner rewrote the one existing migration in place as part of the rename to Qtaxis, because no consumer had applied it to a real database, and disarmed `scripts/gates/check-migration-immutability.sh` (`ARMED=0`) until the first consumer does. Issue #59 tracks re-arming it. Once re-armed, every rule below applies again.
+On 2026-09-18 the owner rewrote the one existing migration in place during a project rename, because no consumer had applied it to a real database, and disarmed `scripts/gates/check-migration-immutability.sh` (`ARMED=0`). Re-armed on 2026-09-18 with the rewritten file as the baseline (#59).
 
-Re-armed on 2026-09-18 with the rewritten migration on `main` as the baseline (#59).
+On 2026-09-19 the owner rewrote the same migration in place again for the rename to Kyu, for the same reason, and disarmed the gate a second time. Issue #89 tracks re-arming it. Once re-armed, every rule below applies again.
 
 ---
 

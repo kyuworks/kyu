@@ -42,7 +42,7 @@ assert_eq "a missing pnpm script did not run any test" "NOT-RUN" \
 # `pnpm --filter <pkg> test` prints ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL whenever
 # the script it ran exited non-zero — which is what a failing test suite does.
 fixture pnpm-run-first-fail "Test Files  1 failed (1)" "     Tests  2 failed (2)" \
-  '[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @qtaxis/sdk@0.0.0 test: `vitest run`' "Exit status 1"
+  '[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @kyuworks/sdk@0.0.0 test: `vitest run`' "Exit status 1"
 assert_eq "a filtered pnpm run whose tests failed is proven" "PROVEN" \
   "$(verdict 1 pnpm-run-first-fail)"
 

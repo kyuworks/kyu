@@ -1,6 +1,6 @@
-# Qtaxis shop
+# Kyu shop
 
-A small app that uses `@qtaxis/sdk` the way a real project would. It sells nothing real; the
+A small app that uses `@kyuworks/sdk` the way a real project would. It sells nothing real; the
 messages are named `shop.*` as a neutral stand-in.
 
 Three processes share one Postgres database and one Hatchet engine:
@@ -22,7 +22,7 @@ wait hands the wait to the next worker directly, with no failed attempt in betwe
 The relay owns one dedicated `pg.Client`, not a pool (the SDK's `Queryable` rejects a pool by
 design). It has no reconnect: if that connection drops, the process logs the error and exits
 non-zero rather than stopping quietly. A real deployment runs it under a supervisor that
-restarts it — `pnpm --filter @qtaxis/shop relay` alone does not.
+restarts it — `pnpm --filter @kyuworks/shop relay` alone does not.
 
 A relay stopped by SIGTERM releases its claimed rows before exiting. A relay killed without
 SIGTERM (a crash, a supervisor's SIGKILL) leaves its claims stale for 30 seconds before another
@@ -31,8 +31,8 @@ relay takes them over.
 ## Producer CLI
 
 ```bash
-pnpm --filter @qtaxis/shop publish-cli place-order --tenant <uuid> [--customer <uuid>]
-pnpm --filter @qtaxis/shop publish-cli ship-order --tenant <uuid> --order <uuid> [--carrier <name>]
+pnpm --filter @kyuworks/shop publish-cli place-order --tenant <uuid> [--customer <uuid>]
+pnpm --filter @kyuworks/shop publish-cli ship-order --tenant <uuid> --order <uuid> [--carrier <name>]
 ```
 
 Each command commits one transaction and prints the ids it created as one JSON line. A missing
@@ -62,16 +62,16 @@ matching `shop_invoice` row, the simulated fault that gives the Bus page a dead 
 
 ## Web page
 
-A Vite + React app under `web/`, built to `dist/web/` by `pnpm --filter @qtaxis/shop build`
+A Vite + React app under `web/`, built to `dist/web/` by `pnpm --filter @kyuworks/shop build`
 (`tsc -b && vite build`) and served from there by the `ui` process:
 
 ```bash
-pnpm --filter @qtaxis/shop build
-pnpm --filter @qtaxis/shop ui
+pnpm --filter @kyuworks/shop build
+pnpm --filter @kyuworks/shop ui
 ```
 
-Open `http://127.0.0.1:3333` (`QTAXIS_SHOP_UI_PORT` to change the port). For hot reload during
-development, run `pnpm --filter @qtaxis/shop web:dev` instead: it proxies the JSON and POST
+Open `http://127.0.0.1:3333` (`KYU_SHOP_UI_PORT` to change the port). For hot reload during
+development, run `pnpm --filter @kyuworks/shop web:dev` instead: it proxies the JSON and POST
 routes to the `ui` process, which must already be running.
 
 `web/` uses bundler module resolution, so its own relative imports carry no `.js` extension —
@@ -92,9 +92,9 @@ next to a cart summary with the running total. `/checkout` shows the cart's line
 one button, **Pay and place order** — there is no payment
 provider, so pressing it writes the order with `paid_at = now()` in the same transaction and
 posts to `POST /orders`. On success the page shows the order id, the total, and the two envelope
-ids, with a link to `/orders`. The cart is kept in `localStorage` under `qtaxis.shop.cart` so it survives the full page
+ids, with a link to `/orders`. The cart is kept in `localStorage` under `kyu.shop.cart` so it survives the full page
 load a real `<a href>` nav makes; the browser's own customer id lives under
-`qtaxis.shop.customerId`. Both are read and written through a try/catch — a private window throws
+`kyu.shop.customerId`. Both are read and written through a try/catch — a private window throws
 on access, and a storage failure must never break the page.
 
 A request that fails after the server has already committed the order still shows a checkout
@@ -126,7 +126,7 @@ silently, it is alerted on, and it can be replayed from the Hatchet dashboard li
 
 `/bus` is a React page now: it draws the producer, the outbox, and one column per subscription
 in registry order, refreshed every 5 seconds. Outbox stages — published, waiting for relay,
-shipped — come from `qtaxis_outbox`. Each subscription's queued, running, done, failed and
+shipped — come from `kyu_outbox`. Each subscription's queued, running, done, failed and
 cancelled counts come from the engine, through the SDK's `runs.forEnvelope`, one call per
 message over the newest 200 subscribed messages. `watch-shipping`'s parked count and its
 shipped/timed-out split under "done" come from `shop_handler_log`. A legend under the diagram
@@ -136,7 +136,7 @@ screen rather than being wiped by a failed refresh.
 
 ### Bundle size
 
-Tracked across issue #81 (Tailwind v4, HeroUI v3, Heroicons), `pnpm --filter @qtaxis/shop build`:
+Tracked across issue #81 (Tailwind v4, HeroUI v3, Heroicons), `pnpm --filter @kyuworks/shop build`:
 
 | | JS raw | JS gzip | CSS raw | CSS gzip |
 |---|---|---|---|---|
@@ -148,12 +148,12 @@ Tracked across issue #81 (Tailwind v4, HeroUI v3, Heroicons), `pnpm --filter @qt
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
-| `QTAXIS_SHOP_DATABASE_URL` | yes | — | Postgres connection string for this app's own database. |
-| `QTAXIS_SHOP_NAMESPACE` | no | `shop_` | Shared prefix so the three processes agree on one run. |
-| `QTAXIS_SHOP_LOG_LEVEL` | no | `info` | One of `debug`, `info`, `warn`, `error`. |
-| `QTAXIS_SHOP_WATCH_TIMEOUT` | no | `3m` | `watch-shipping`'s correlated wait timeout; an h/m/s duration string. |
-| `QTAXIS_SHOP_RELAY_BATCH_SIZE` | no | the SDK's default | Read only by `relay`; rows claimed per tick. |
-| `QTAXIS_SHOP_UI_PORT` | no | `3333` | Read only by `ui`; the local port the web page binds to. |
+| `KYU_SHOP_DATABASE_URL` | yes | — | Postgres connection string for this app's own database. |
+| `KYU_SHOP_NAMESPACE` | no | `shop_` | Shared prefix so the three processes agree on one run. |
+| `KYU_SHOP_LOG_LEVEL` | no | `info` | One of `debug`, `info`, `warn`, `error`. |
+| `KYU_SHOP_WATCH_TIMEOUT` | no | `3m` | `watch-shipping`'s correlated wait timeout; an h/m/s duration string. |
+| `KYU_SHOP_RELAY_BATCH_SIZE` | no | the SDK's default | Read only by `relay`; rows claimed per tick. |
+| `KYU_SHOP_UI_PORT` | no | `3333` | Read only by `ui`; the local port the web page binds to. |
 | `HATCHET_CLIENT_TOKEN` | yes | — | Read by the engine client directly, same as the SDK's own integration lane. |
 | `HATCHET_CLIENT_TLS_STRATEGY` | yes | — | Read by the engine client directly. |
 
@@ -166,9 +166,9 @@ is missing.
 pnpm hatchet:up
 export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/token.sh)"
 export HATCHET_CLIENT_TLS_STRATEGY=none
-pnpm --filter @qtaxis/shop build
-pnpm --filter @qtaxis/shop migrate
-pnpm --filter @qtaxis/shop relay
+pnpm --filter @kyuworks/shop build
+pnpm --filter @kyuworks/shop migrate
+pnpm --filter @kyuworks/shop relay
 ```
 
 `relay` blocks in its own terminal, polling the outbox until you stop it with Ctrl-C. Run
@@ -176,8 +176,8 @@ pnpm --filter @qtaxis/shop relay
 the CLI in a third:
 
 ```bash
-pnpm --filter @qtaxis/shop worker
-pnpm --filter @qtaxis/shop publish-cli place-order --tenant <uuid>
+pnpm --filter @kyuworks/shop worker
+pnpm --filter @kyuworks/shop publish-cli place-order --tenant <uuid>
 ```
 
 `HATCHET_CLIENT_TOKEN` and `HATCHET_CLIENT_TLS_STRATEGY` are needed by the relay, the worker and

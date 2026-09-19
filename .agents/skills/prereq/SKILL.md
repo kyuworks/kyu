@@ -37,15 +37,15 @@ lint. There is no browser level in this repository — anything a test cannot re
 `_` — that is the convention for a placeholder, and running a dead command and calling it
 a pass is a real failure mode.
 
-In **Qtaxis** the loop is `pnpm check:changed` (silent on success; on failure prints
+In **Kyu** the loop is `pnpm check:changed` (silent on success; on failure prints
 `FAILED`, the first error, and a log path under `.artifacts/check/`), with `pnpm check` as
-the backstop. Per package: `pnpm --filter @qtaxis/sdk test` for unit,
-`pnpm --filter @qtaxis/sdk test:integration` for integration,
-`pnpm --filter @qtaxis/sdk typecheck`, and `pnpm lint` at the root. Vitest is installed
+the backstop. Per package: `pnpm --filter @kyuworks/sdk test` for unit,
+`pnpm --filter @kyuworks/sdk test:integration` for integration,
+`pnpm --filter @kyuworks/sdk typecheck`, and `pnpm lint` at the root. Vitest is installed
 per package — bare `pnpm vitest` from the root does not work.
 
 **Confirm the Hatchet stack boots** before promising integration evidence: run
-`pnpm hatchet:up`, then `pnpm --filter @qtaxis/sdk test:integration` must be able to
+`pnpm hatchet:up`, then `pnpm --filter @kyuworks/sdk test:integration` must be able to
 connect. Integration tests need the Hatchet Lite + Postgres stack from
 `infra/hatchet/compose.yaml`. Find that path now, not in phase 5 when the report is due.
 

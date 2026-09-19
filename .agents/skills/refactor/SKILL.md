@@ -72,8 +72,8 @@ That selects typecheck, lint, and the tests that own the files you are about
 to split. If you need one package on its own:
 
 ```bash
-pnpm --filter @qtaxis/sdk typecheck
-pnpm --filter @qtaxis/sdk test
+pnpm --filter @kyuworks/sdk typecheck
+pnpm --filter @kyuworks/sdk test
 ```
 
 Do not run the integration suite for a baseline — it needs the Hatchet stack
@@ -188,7 +188,7 @@ A split adds new files, so the graph picks up the new owners on each run. If
 you want to watch one test while iterating, run that file directly:
 
 ```bash
-pnpm --filter @qtaxis/sdk exec vitest run {path/to/relevant.test.ts}
+pnpm --filter @kyuworks/sdk exec vitest run {path/to/relevant.test.ts}
 ```
 
 Vitest is installed per package; bare `pnpm vitest` from the root does not
