@@ -34,12 +34,12 @@ describe('parsePlacedOrder', () => {
       sendInvoiceEnvelopeId: 'envelope-2',
     }
 
-    expect(parsePlacedOrder(JSON.stringify(order))).toEqual(order)
+    expect(parsePlacedOrder(JSON.stringify(order))).toEqual({ ok: true, order })
   })
 
   it('refuses a body that is not the agreed shape', () => {
     const outcome = parsePlacedOrder(JSON.stringify({ orderId: 'order-1' }))
 
-    expect(outcome).toBeUndefined()
+    expect(outcome.ok).toBe(false)
   })
 })
