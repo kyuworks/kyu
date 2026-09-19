@@ -64,8 +64,8 @@ format	pnpm format:check
 lint	pnpm lint
 typecheck	pnpm typecheck
 typecheck-tests	pnpm typecheck:tests
-schemas-test	pnpm --filter @qtaxis/schemas test
-sdk-test	pnpm --filter @qtaxis/sdk test
+schemas-test	pnpm --filter @kyuworks/schemas test
+sdk-test	pnpm --filter @kyuworks/sdk test
 self-tests	bash scripts/verify-self-tests.sh
 EOF
 }

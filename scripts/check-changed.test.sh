@@ -27,7 +27,7 @@ trap 'rm -rf "${DECOY}"' EXIT
 mkdir -p "${DECOY}/packages/decoy-only/src"
 cat > "${DECOY}/packages/decoy-only/package.json" <<'JSON'
 {
-  "name": "@qtaxis/decoy-only",
+  "name": "@kyuworks/decoy-only",
   "scripts": { "lint": "true", "typecheck": "true", "test": "true" }
 }
 JSON
