@@ -9,6 +9,7 @@ const order: ShopOrder = {
   totalCents: 2800,
   paidAt: '2026-09-19T00:00:00.000Z',
   stage: 'invoice-sent',
+  carrier: null,
   lines: [{ productId: 'p1', name: 'Enamel mug', quantity: 2, unitPriceCents: 1400 }],
 }
 

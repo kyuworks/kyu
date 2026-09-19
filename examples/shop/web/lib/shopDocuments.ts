@@ -42,6 +42,7 @@ const shopOrderSchema = z.object({
   totalCents: z.number(),
   paidAt: z.string().nullable(),
   stage: orderStageSchema,
+  carrier: z.string().nullable(),
   lines: z.array(shopOrderLineSchema),
 })
 export type ShopOrder = z.infer<typeof shopOrderSchema>

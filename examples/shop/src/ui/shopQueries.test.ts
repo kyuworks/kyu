@@ -70,6 +70,7 @@ describe('readOrders', () => {
             shipped_at: null,
             invoice_sent_at: '2024-01-01T00:05:00.000Z',
             timed_out: false,
+            carrier: null,
           },
         ],
         [{ order_id: 'order-1', product_id: 'prod-1', name: 'Enamel mug', quantity: 2, unit_price_cents: 1400 }],
@@ -86,9 +87,54 @@ describe('readOrders', () => {
         totalCents: 2800,
         paidAt: '2024-01-01T00:00:00.000Z',
         stage: 'invoice-sent',
+        carrier: null,
         lines: [{ productId: 'prod-1', name: 'Enamel mug', quantity: 2, unitPriceCents: 1400 }],
       },
     ])
+  })
+
+  it('carries the carrier through from the record-shipment log row once the order has shipped', async () => {
+    const pool = fakeQueryPool([
+      [
+        {
+          id: 'order-1',
+          customer_id: 'cust-1',
+          total_cents: 2800,
+          paid_at: '2024-01-01T00:00:00.000Z',
+          shipped_at: '2024-01-01T00:10:00.000Z',
+          invoice_sent_at: '2024-01-01T00:05:00.000Z',
+          timed_out: false,
+          carrier: 'Speedy',
+        },
+      ],
+      [],
+    ])
+
+    const orders = await readOrders(pool, 'tenant-1')
+
+    expect(orders[0]?.carrier).toBe('Speedy')
+  })
+
+  it('has a null carrier for an order that has not shipped', async () => {
+    const pool = fakeQueryPool([
+      [
+        {
+          id: 'order-1',
+          customer_id: 'cust-1',
+          total_cents: 2800,
+          paid_at: '2024-01-01T00:00:00.000Z',
+          shipped_at: null,
+          invoice_sent_at: '2024-01-01T00:05:00.000Z',
+          timed_out: false,
+          carrier: null,
+        },
+      ],
+      [],
+    ])
+
+    const orders = await readOrders(pool, 'tenant-1')
+
+    expect(orders[0]?.carrier).toBeNull()
   })
 
   it('reads shop tables only, never the engine (S5)', async () => {
@@ -104,6 +150,7 @@ describe('readOrders', () => {
             shipped_at: null,
             invoice_sent_at: null,
             timed_out: false,
+            carrier: null,
           },
         ],
         [],

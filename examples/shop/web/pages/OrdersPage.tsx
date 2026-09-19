@@ -123,7 +123,7 @@ export function OrderCard({ order, customerId }: OrderCardProps) {
             <span>Total</span>
             <span>{formatCents(order.totalCents)}</span>
           </p>
-          <OrderTimeline stage={order.stage} />
+          <OrderTimeline stage={order.stage} carrier={order.carrier} />
           <ResendInvoiceAction orderId={order.id} />
         </CardContent>
       </Card>
