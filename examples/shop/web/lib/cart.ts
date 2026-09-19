@@ -31,9 +31,10 @@ export function cartReducer(lines: readonly CartLine[], action: CartAction): Car
 
   // 'set'
   if (action.quantity <= 0) return lines.filter((line) => line.productId !== productId)
+  const quantity = Math.min(action.quantity, MAX_LINE_QUANTITY)
   const existing = lines.find((line) => line.productId === productId)
-  if (existing === undefined) return [...lines, { productId, quantity: action.quantity }]
-  return lines.map((line) => (line.productId === productId ? { ...line, quantity: action.quantity } : line))
+  if (existing === undefined) return [...lines, { productId, quantity }]
+  return lines.map((line) => (line.productId === productId ? { ...line, quantity } : line))
 }
 
 export interface CartPricedLine {
@@ -60,10 +61,6 @@ export function cartSummary(lines: readonly CartLine[], products: readonly ShopP
     totalCents += lineCents
   }
   return { lines: pricedLines, totalCents }
-}
-
-export function cartTotalCents(lines: readonly CartLine[], products: readonly ShopProduct[]): number {
-  return cartSummary(lines, products).totalCents
 }
 
 // Fixed locale and currency, not the browser's: a test's expected string

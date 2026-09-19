@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cartReducer, cartSummary, cartTotalCents, formatCents, readStoredCart, writeStoredCart } from './cart'
+import { cartReducer, cartSummary, formatCents, readStoredCart, writeStoredCart } from './cart'
 import type { ShopProduct } from './shopDocuments'
 
 // A minimal in-memory stand-in for the Storage interface, matching customer.test.ts's fake.
@@ -32,23 +32,6 @@ const products: readonly ShopProduct[] = [
   { id: 'p2', sku: 'QTX-TOTE', name: 'Canvas tote', priceCents: 2200 },
 ]
 
-describe('cartTotalCents', () => {
-  it('totals the lines it holds at their product prices', () => {
-    const lines = [
-      { productId: 'p1', quantity: 2 },
-      { productId: 'p2', quantity: 1 },
-    ]
-
-    expect(cartTotalCents(lines, products)).toBe(1400 * 2 + 2200)
-  })
-
-  it('ignores a line whose product is not in the catalogue', () => {
-    const lines = [{ productId: 'unknown', quantity: 5 }]
-
-    expect(cartTotalCents(lines, products)).toBe(0)
-  })
-})
-
 describe('cartReducer', () => {
   it('adds a new line on add, and increases an existing one', () => {
     const afterFirst = cartReducer([], { kind: 'add', productId: 'p1', quantity: 1 })
@@ -63,6 +46,14 @@ describe('cartReducer', () => {
 
     expect(cartReducer(lines, { kind: 'set', productId: 'p1', quantity: 5 })).toEqual([
       { productId: 'p1', quantity: 5 },
+    ])
+  })
+
+  it('clamps a set quantity to 99, same as add', () => {
+    const lines = [{ productId: 'p1', quantity: 3 }]
+
+    expect(cartReducer(lines, { kind: 'set', productId: 'p1', quantity: 150 })).toEqual([
+      { productId: 'p1', quantity: 99 },
     ])
   })
 
@@ -90,6 +81,21 @@ describe('cartReducer', () => {
 })
 
 describe('cartSummary', () => {
+  it('totals the lines it holds at their product prices', () => {
+    const lines = [
+      { productId: 'p1', quantity: 2 },
+      { productId: 'p2', quantity: 1 },
+    ]
+
+    expect(cartSummary(lines, products).totalCents).toBe(1400 * 2 + 2200)
+  })
+
+  it('ignores a line whose product is not in the catalogue', () => {
+    const lines = [{ productId: 'unknown', quantity: 5 }]
+
+    expect(cartSummary(lines, products).totalCents).toBe(0)
+  })
+
   it('prices each line at its product price and totals them', () => {
     const lines = [
       { productId: 'p1', quantity: 2 },
