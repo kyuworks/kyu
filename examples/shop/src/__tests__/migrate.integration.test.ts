@@ -7,7 +7,17 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { readConfig } from '../config.js'
 import { APP_MIGRATIONS_DIRECTORY, applyPending } from '../db/migrate.js'
 
-const TABLES = ['shop_order', 'shop_invoice', 'shop_handler_log', 'qtaxis_outbox', 'qtaxis_processed']
+// shop_order_line and shop_product are 0002_shop.sql's; shop_order_line
+// references shop_order, so both must drop in the same statement.
+const TABLES = [
+  'shop_order_line',
+  'shop_product',
+  'shop_order',
+  'shop_invoice',
+  'shop_handler_log',
+  'qtaxis_outbox',
+  'qtaxis_processed',
+]
 
 describe('applyPending', () => {
   const { databaseUrl } = readConfig()
@@ -29,13 +39,13 @@ describe('applyPending', () => {
 
   it('applies the SDK migration then the app migration, once', async () => {
     const first = await applyPending(client, [MIGRATIONS_DIRECTORY, APP_MIGRATIONS_DIRECTORY])
-    expect(first).toEqual(['20260916233209_create_outbox.sql', '0001_shop.sql'])
+    expect(first).toEqual(['20260916233209_create_outbox.sql', '0001_shop.sql', '0002_shop.sql'])
 
     const second = await applyPending(client, [MIGRATIONS_DIRECTORY, APP_MIGRATIONS_DIRECTORY])
     expect(second).toEqual([])
 
     const ledger = await client.query('SELECT name FROM shop_migrations')
-    expect(ledger.rows).toHaveLength(2)
+    expect(ledger.rows).toHaveLength(3)
 
     for (const table of TABLES) {
       const exists = await client.query('SELECT 1 FROM information_schema.tables WHERE table_name = $1', [table])

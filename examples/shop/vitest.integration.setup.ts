@@ -3,7 +3,16 @@ import { Client } from 'pg'
 import { MissingConfigError, readConfig } from './src/config.js'
 import { APP_MIGRATIONS_DIRECTORY, applyPending, ensureDatabase } from './src/db/migrate.js'
 
-const CLEAN_TABLES = ['shop_order', 'shop_invoice', 'shop_handler_log', 'qtaxis_outbox', 'qtaxis_processed']
+// shop_order_line references shop_order, so it must truncate in the same
+// statement (0002_shop.sql); shop_product is seed data and is never cleaned.
+const CLEAN_TABLES = [
+  'shop_order_line',
+  'shop_order',
+  'shop_invoice',
+  'shop_handler_log',
+  'qtaxis_outbox',
+  'qtaxis_processed',
+]
 
 // Global setup for the integration suite. A missing database is a failure,
 // not a skip: a suite that silently skips reports green for code it never ran.

@@ -37,7 +37,28 @@ pnpm --filter @qtaxis/shop publish-cli ship-order --tenant <uuid> --order <uuid>
 
 Each command commits one transaction and prints the ids it created as one JSON line. A missing
 `--tenant` (or `--order` for `ship-order`) prints an error and exits 1; an unknown command does
-the same.
+the same. The CLI's `--tenant` is unrelated to the demo tenant the web routes use (below); it
+lets a script exercise the bus under any tenant id.
+
+## The catalogue, orders and the demo tenant
+
+`migrations/0002_shop.sql` adds `shop_product` (a fixed six-row catalogue, seeded with literal
+ids so a product id the browser sends back always matches) and `shop_order_line` (one row per
+line, its unit price copied from the catalogue at order time so a later price change cannot
+rewrite an old order's total). `shop_order` gains `paid_at` (set the moment the order is placed;
+there is no real payment provider, only a note in the UI that it is simulated) and `total_cents`.
+
+The web routes (`POST /orders`, `POST /shipments`, `POST /invoices`, `GET /products.json`,
+`GET /orders.json`) never take a tenant id from the client — there is no sign-in, so every one of
+them uses the single `DEMO_TENANT_ID` constant in `src/shop.ts`. The producer CLI above is
+unaffected: it still takes `--tenant` and can exercise any tenant.
+
+`POST /orders` takes `{ customerId?, lines: [{ productId, quantity }] }`, at least one line and at
+most twenty, and returns `{ orderId, invoiceId, totalCents, orderPlacedEnvelopeId,
+sendInvoiceEnvelopeId }`. An order naming a product id that is not in the catalogue commits
+nothing and publishes nothing — the whole transaction rolls back. `POST /invoices` takes
+`{ orderId, invoiceId? }`; a missing `invoiceId` sends the command for a fresh id with no
+matching `shop_invoice` row, the simulated fault that gives the Bus page a dead letter to show.
 
 ## Web page
 
@@ -58,8 +79,9 @@ unlike `src/`, which is NodeNext and always does. Do not mix the two styles insi
 `typecheck:tests` type-checks `web/` too, through `tsconfig.web.json`. `web/index.html` is not
 picked up by `pnpm format` or by the changed-file selector; it is not worth a glob for one file.
 
-Publishing from the browser is on hold until the shop pages land in a later pull request — use
-the producer CLI above meanwhile.
+The routes the shop pages need (`/products.json`, `/orders.json`, `/orders`, `/shipments`,
+`/invoices`) are live, but the pages themselves land in a later pull request. Until then, use
+`curl` against those routes or the producer CLI above.
 
 `/bus` is a React page now: it draws the producer, the outbox, and one column per subscription
 in registry order, refreshed every 5 seconds. Outbox stages — published, waiting for relay,

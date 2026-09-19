@@ -4,11 +4,14 @@ import type { Pool } from 'pg'
 import type { z } from 'zod'
 import { describeError, log } from '../log.js'
 import { placeOrder } from '../producer/placeOrder.js'
+import { sendInvoiceCommand } from '../producer/sendInvoiceCommand.js'
 import { shipOrder } from '../producer/shipOrder.js'
+import { DEMO_TENANT_ID } from '../shop.js'
 import type { BusTopology } from './busTopology.js'
 import { readBusCounts } from './busCounts.js'
-import type { PlaceOrderRequest, ShipOrderRequest } from './requests.js'
-import { placeOrderRequestSchema, shipOrderRequestSchema } from './requests.js'
+import type { PlaceOrderRequest, SendInvoiceRequest, ShipOrderRequest } from './requests.js'
+import { placeOrderRequestSchema, sendInvoiceRequestSchema, shipOrderRequestSchema } from './requests.js'
+import { readOrders, readProducts } from './shopQueries.js'
 
 export interface UiRequestDeps {
   pool: Pool
@@ -89,12 +92,14 @@ async function handlePlaceOrder(deps: UiRequestDeps, body: string): Promise<UiRe
   if (!parsed.ok) return errorResponse(400, parsed.error)
   try {
     const placed = await placeOrder(deps.pool, deps.qtaxis, {
-      tenantId: parsed.value.tenantId,
+      tenantId: DEMO_TENANT_ID,
       customerId: parsed.value.customerId ?? uuidv7(),
+      lines: parsed.value.lines,
     })
     return jsonResponse(201, {
       orderId: placed.orderId,
       invoiceId: placed.invoiceId,
+      totalCents: placed.totalCents,
       orderPlacedEnvelopeId: placed.envelopeIds.orderPlaced,
       sendInvoiceEnvelopeId: placed.envelopeIds.sendInvoice,
     })
@@ -109,11 +114,27 @@ async function handleShipOrder(deps: UiRequestDeps, body: string): Promise<UiRes
   if (!parsed.ok) return errorResponse(400, parsed.error)
   try {
     const envelopeId = await shipOrder(deps.pool, deps.qtaxis, {
-      tenantId: parsed.value.tenantId,
+      tenantId: DEMO_TENANT_ID,
       orderId: parsed.value.orderId,
       carrier: parsed.value.carrier ?? 'unspecified',
     })
     return jsonResponse(201, { orderId: parsed.value.orderId, envelopeId })
+  } catch (error) {
+    log('ui', 'failed', { message: describeError(error) })
+    return errorResponse(500, describeError(error))
+  }
+}
+
+async function handleSendInvoice(deps: UiRequestDeps, body: string): Promise<UiResponse> {
+  const parsed = parseBody<SendInvoiceRequest>(sendInvoiceRequestSchema, body)
+  if (!parsed.ok) return errorResponse(400, parsed.error)
+  try {
+    const sent = await sendInvoiceCommand(deps.pool, deps.qtaxis, {
+      tenantId: DEMO_TENANT_ID,
+      orderId: parsed.value.orderId,
+      invoiceId: parsed.value.invoiceId ?? uuidv7(),
+    })
+    return jsonResponse(201, { orderId: parsed.value.orderId, invoiceId: sent.invoiceId, envelopeId: sent.envelopeId })
   } catch (error) {
     log('ui', 'failed', { message: describeError(error) })
     return errorResponse(500, describeError(error))
@@ -130,6 +151,26 @@ async function handleBusJson(deps: UiRequestDeps): Promise<UiResponse> {
   }
 }
 
+async function handleProductsJson(deps: UiRequestDeps): Promise<UiResponse> {
+  try {
+    const products = await readProducts(deps.pool)
+    return jsonResponse(200, { products })
+  } catch (error) {
+    log('ui', 'failed', { message: describeError(error) })
+    return errorResponse(500, describeError(error))
+  }
+}
+
+async function handleOrdersJson(deps: UiRequestDeps): Promise<UiResponse> {
+  try {
+    const orders = await readOrders(deps.pool, DEMO_TENANT_ID)
+    return jsonResponse(200, { orders })
+  } catch (error) {
+    log('ui', 'failed', { message: describeError(error) })
+    return errorResponse(500, describeError(error))
+  }
+}
+
 /** Routes the shop: the JSON and POST routes, then the web app's own files, last. */
 export async function handleUiRequest(deps: UiRequestDeps, request: UiRequest): Promise<UiResponse> {
   if (request.method === 'POST' && request.url === '/orders') {
@@ -138,8 +179,17 @@ export async function handleUiRequest(deps: UiRequestDeps, request: UiRequest): 
   if (request.method === 'POST' && request.url === '/shipments') {
     return checkPostBody(request) ?? handleShipOrder(deps, request.body)
   }
+  if (request.method === 'POST' && request.url === '/invoices') {
+    return checkPostBody(request) ?? handleSendInvoice(deps, request.body)
+  }
   if (request.method === 'GET' && request.url === '/bus.json') {
     return handleBusJson(deps)
+  }
+  if (request.method === 'GET' && request.url === '/products.json') {
+    return handleProductsJson(deps)
+  }
+  if (request.method === 'GET' && request.url === '/orders.json') {
+    return handleOrdersJson(deps)
   }
   if (request.method === 'GET' && request.url === '/ui.json') {
     return jsonResponse(200, { dashboardUrl: deps.dashboardUrl })

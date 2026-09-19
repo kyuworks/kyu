@@ -2,6 +2,7 @@ import type { Qtaxis, Queryable, QueryParam, RunOutcome, Unparsed } from '@qtaxi
 import { createEnvelope } from '@qtaxis/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
+import { DEMO_TENANT_ID } from '../shop.js'
 import { ENGINE_WINDOW_LIMIT } from './busCounts.js'
 import type { BusTopology } from './busTopology.js'
 import type { UiRequest, UiRequestDeps, UiResponse } from './handleRequest.js'
@@ -20,12 +21,26 @@ interface RecordedQuery {
   params: readonly (string | null)[]
 }
 
-// Mirrors src/producer/placeOrder.test.ts's fakes, extended to capture query
-// params so a test can assert the producer received the request unchanged.
-function fakeClient(queries: RecordedQuery[]): PoolClient {
+interface FakeQueryResponse {
+  rows?: readonly Unparsed[]
+  rowCount?: number
+}
+
+// Mirrors src/producer/placeOrder.test.ts's fake: a response is matched by
+// the query text's prefix, extended here to capture params too, so a test
+// can assert the producer received the request unchanged.
+function fakeClient(
+  queries: RecordedQuery[],
+  responses: ReadonlyMap<string, FakeQueryResponse> = new Map(),
+): PoolClient {
   const stub: Pick<PoolClient, 'query' | 'release'> = {
     query: ((text: string, params?: readonly (string | null)[]) => {
       queries.push({ text, params: params ?? [] })
+      for (const [prefix, response] of responses) {
+        if (text.startsWith(prefix)) {
+          return Promise.resolve({ rows: response.rows ?? [], rowCount: response.rowCount ?? 0 })
+        }
+      }
       return Promise.resolve({ rows: [], rowCount: 0 })
     }) as PoolClient['query'],
     release: () => undefined,
@@ -90,8 +105,8 @@ function deps(pool: Pool, qtaxis: Qtaxis, topology: BusTopology = fakeTopology, 
   return { pool, qtaxis, dashboardUrl: 'http://localhost:8888', topology, readWeb }
 }
 
-// readBusCounts calls deps.pool.query() directly (no transaction), so this
-// stub only needs `query`, unlike fakePool's `connect` above.
+// readBusCounts/readProducts/readOrders call deps.pool.query() directly (no
+// transaction), so this stub only needs `query`, unlike fakePool's `connect` above.
 function fakeQueryPool(responses: readonly Unparsed[][]): Pool {
   let call = 0
   const stub: Pick<Pool, 'query'> = {
@@ -104,8 +119,11 @@ function fakeQueryPool(responses: readonly Unparsed[][]): Pool {
   return stub as Pool
 }
 
+const productId = '018f0000-0000-7000-8000-000000000009'
+const LINE_INSERT_PREFIX = 'INSERT INTO shop_order_line'
+
 describe('handleUiRequest', () => {
-  it('rejects an empty place-order body with 400 and never opens a connection', async () => {
+  it('rejects an empty place-order body with 400 and never opens a connection (S6)', async () => {
     const connectCalls: number[] = []
     const client = fakeClient([])
     const pool = fakePool(connectCalls, client)
@@ -115,7 +133,7 @@ describe('handleUiRequest', () => {
 
     expect(response.status).toBe(400)
     const parsed: { error: string } = JSON.parse(response.body)
-    expect(parsed.error).toContain('tenantId')
+    expect(parsed.error).toContain('lines')
     expect(connectCalls).toEqual([])
   })
 
@@ -138,7 +156,7 @@ describe('handleUiRequest', () => {
     const client = fakeClient([])
     const pool = fakePool(connectCalls, client)
     const qtaxis = fakeQtaxis([])
-    const oversizedBody = `{"tenantId":"${'a'.repeat(70 * 1024)}"}`
+    const oversizedBody = `{"customerId":"${'a'.repeat(70 * 1024)}"}`
 
     const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/orders', oversizedBody))
 
@@ -156,75 +174,147 @@ describe('handleUiRequest', () => {
       method: 'POST',
       url: '/orders',
       contentType: 'text/plain',
-      body: JSON.stringify({ tenantId: '018f0000-0000-7000-8000-000000000001' }),
+      body: JSON.stringify({ lines: [{ productId, quantity: 1 }] }),
     })
 
     expect(response.status).toBe(415)
     expect(connectCalls).toEqual([])
   })
 
-  it('places an order with the parsed input unchanged', async () => {
+  it('places an order with the parsed lines, the tenant from the server, not the body', async () => {
     const queries: RecordedQuery[] = []
     const connectCalls: number[] = []
-    const client = fakeClient(queries)
+    const responses = new Map<string, FakeQueryResponse>([
+      [LINE_INSERT_PREFIX, { rowCount: 1 }],
+      ['UPDATE shop_order', { rows: [{ total_cents: 1400 }], rowCount: 1 }],
+    ])
+    const client = fakeClient(queries, responses)
     const pool = fakePool(connectCalls, client)
     const publishes: RecordedPublish[] = []
     const qtaxis = fakeQtaxis(publishes)
-    const tenantId = '018f0000-0000-7000-8000-000000000001'
     const customerId = '018f0000-0000-7000-8000-000000000002'
 
     const response = await handleUiRequest(
       deps(pool, qtaxis),
-      jsonPost('/orders', JSON.stringify({ tenantId, customerId })),
+      // A tenantId in the body, if a caller sent one, must be ignored: the
+      // server always supplies DEMO_TENANT_ID.
+      jsonPost(
+        '/orders',
+        JSON.stringify({ tenantId: 'not-the-real-tenant', customerId, lines: [{ productId, quantity: 1 }] }),
+      ),
     )
 
     expect(response.status).toBe(201)
-    const parsed: { orderId: string; invoiceId: string; orderPlacedEnvelopeId: string; sendInvoiceEnvelopeId: string } =
-      JSON.parse(response.body)
+    const parsed: {
+      orderId: string
+      invoiceId: string
+      totalCents: number
+      orderPlacedEnvelopeId: string
+      sendInvoiceEnvelopeId: string
+    } = JSON.parse(response.body)
     expect(parsed.orderId).toEqual(expect.any(String))
     expect(parsed.invoiceId).toEqual(expect.any(String))
+    expect(parsed.totalCents).toBe(1400)
 
-    const orderInsert = queries.find((query) => query.text.startsWith('INSERT INTO shop_order'))
-    expect(orderInsert?.params).toEqual([parsed.orderId, tenantId, customerId])
+    const orderInsert = queries.find((query) => query.text.startsWith('INSERT INTO shop_order ('))
+    expect(orderInsert?.params).toEqual([parsed.orderId, DEMO_TENANT_ID, customerId])
     expect(publishes).toEqual([
-      { name: 'shop.order.placed', tenantId },
-      { name: 'shop.invoice.send', tenantId },
+      { name: 'shop.order.placed', tenantId: DEMO_TENANT_ID },
+      { name: 'shop.invoice.send', tenantId: DEMO_TENANT_ID },
     ])
   })
 
-  it('ships an order and returns its envelope id', async () => {
+  it('rejects an order naming no lines', async () => {
+    const client = fakeClient([])
+    const pool = fakePool([], client)
+    const qtaxis = fakeQtaxis([])
+
+    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/orders', JSON.stringify({ lines: [] })))
+
+    expect(response.status).toBe(400)
+  })
+
+  it('ships an order and returns its envelope id, tenant from the server', async () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
     const publishes: RecordedPublish[] = []
     const qtaxis = fakeQtaxis(publishes)
-    const tenantId = '018f0000-0000-7000-8000-000000000001'
     const orderId = '018f0000-0000-7000-8000-000000000003'
 
     const response = await handleUiRequest(
       deps(pool, qtaxis),
-      jsonPost('/shipments', JSON.stringify({ tenantId, orderId, carrier: 'dhl' })),
+      jsonPost('/shipments', JSON.stringify({ orderId, carrier: 'dhl' })),
     )
 
     expect(response.status).toBe(201)
     const parsed: { orderId: string; envelopeId: string } = JSON.parse(response.body)
     expect(parsed.orderId).toBe(orderId)
     expect(parsed.envelopeId).toEqual(expect.any(String))
-    expect(publishes).toEqual([{ name: 'shop.order.shipped', tenantId }])
+    expect(publishes).toEqual([{ name: 'shop.order.shipped', tenantId: DEMO_TENANT_ID }])
   })
 
-  it('rejects a ship-order body missing the order id', async () => {
+  it('rejects a ship-order body missing the order id (S6)', async () => {
+    const connectCalls: number[] = []
     const client = fakeClient([])
-    const pool = fakePool([], client)
+    const pool = fakePool(connectCalls, client)
     const qtaxis = fakeQtaxis([])
 
-    const response = await handleUiRequest(
-      deps(pool, qtaxis),
-      jsonPost('/shipments', JSON.stringify({ tenantId: '018f0000-0000-7000-8000-000000000001' })),
-    )
+    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/shipments', JSON.stringify({})))
 
     expect(response.status).toBe(400)
     const parsed: { error: string } = JSON.parse(response.body)
     expect(parsed.error).toContain('orderId')
+    expect(connectCalls).toEqual([])
+  })
+
+  it('sends an invoice command for a missing invoice id, tenant from the server (the simulated fault)', async () => {
+    const client = fakeClient([])
+    const pool = fakePool([], client)
+    const publishes: RecordedPublish[] = []
+    const qtaxis = fakeQtaxis(publishes)
+    const orderId = '018f0000-0000-7000-8000-000000000004'
+
+    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/invoices', JSON.stringify({ orderId })))
+
+    expect(response.status).toBe(201)
+    const parsed: { orderId: string; invoiceId: string; envelopeId: string } = JSON.parse(response.body)
+    expect(parsed.orderId).toBe(orderId)
+    expect(parsed.invoiceId).toEqual(expect.any(String))
+    expect(publishes).toEqual([{ name: 'shop.invoice.send', tenantId: DEMO_TENANT_ID }])
+  })
+
+  it('rejects a send-invoice body missing the order id (S6)', async () => {
+    const connectCalls: number[] = []
+    const client = fakeClient([])
+    const pool = fakePool(connectCalls, client)
+    const qtaxis = fakeQtaxis([])
+
+    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/invoices', JSON.stringify({})))
+
+    expect(response.status).toBe(400)
+    expect(connectCalls).toEqual([])
+  })
+
+  it('returns the product catalogue for /products.json', async () => {
+    const qtaxis = fakeQtaxis([])
+    const pool = fakeQueryPool([[{ id: productId, sku: 'QTX-MUG', name: 'Enamel mug', price_cents: 1400 }]])
+
+    const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/products.json'))
+
+    expect(response.status).toBe(200)
+    expect(JSON.parse(response.body)).toEqual({
+      products: [{ id: productId, sku: 'QTX-MUG', name: 'Enamel mug', priceCents: 1400 }],
+    })
+  })
+
+  it('returns the demo tenant orders for /orders.json', async () => {
+    const qtaxis = fakeQtaxis([])
+    const pool = fakeQueryPool([[], []])
+
+    const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/orders.json'))
+
+    expect(response.status).toBe(200)
+    expect(JSON.parse(response.body)).toEqual({ orders: [] })
   })
 
   it('delegates an unmatched GET to the static reader', async () => {
