@@ -91,6 +91,11 @@ load a real `<a href>` nav makes; the browser's own customer id lives under
 on access, and a storage failure must never break the page. `/orders.json`, `/shipments` and
 `/invoices` are live but have no page yet; use `curl` or the producer CLI above.
 
+A request that fails after the server has already committed the order still shows a checkout
+error — the browser has no way to tell "the write failed" from "the response never arrived" — and
+pressing pay again places a second order. The bus is at-least-once and this demo does not
+deduplicate; a real storefront would show the order it already has instead of retrying blind.
+
 `/bus` is a React page now: it draws the producer, the outbox, and one column per subscription
 in registry order, refreshed every 5 seconds. Outbox stages — published, waiting for relay,
 shipped — come from `qtaxis_outbox`. Each subscription's queued, running, done, failed and

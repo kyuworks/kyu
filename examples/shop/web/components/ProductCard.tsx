@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { formatCents } from '../lib/cart'
+import { MAX_LINE_QUANTITY, formatCents } from '../lib/cart'
 import type { ShopProduct } from '../lib/shopDocuments'
 
 export interface ProductCardProps {
@@ -7,18 +7,24 @@ export interface ProductCardProps {
   onAdd: (productId: string, quantity: number) => void
 }
 
-// Mirrors the server's own line schema (src/ui/requests.ts): 1 to 99.
 const MIN_QUANTITY = 1
-const MAX_QUANTITY = 99
 
 function clampQuantity(value: number): number {
   if (Number.isNaN(value)) return MIN_QUANTITY
-  return Math.min(MAX_QUANTITY, Math.max(MIN_QUANTITY, Math.trunc(value)))
+  return Math.min(MAX_LINE_QUANTITY, Math.max(MIN_QUANTITY, Math.trunc(value)))
 }
 
 /** One product: its name, its formatted price, a quantity stepper and an add button. */
 export function ProductCard({ product, onAdd }: ProductCardProps) {
-  const [quantity, setQuantity] = useState(MIN_QUANTITY)
+  // Held as text, not a number: clamping on every keystroke would stop a
+  // person clearing the field to type a new value. Clamped on blur and on add.
+  const [quantityText, setQuantityText] = useState(String(MIN_QUANTITY))
+
+  function commitQuantity(): number {
+    const clamped = clampQuantity(Number(quantityText))
+    setQuantityText(String(clamped))
+    return clamped
+  }
 
   return (
     <div className="card product-card">
@@ -28,11 +34,12 @@ export function ProductCard({ product, onAdd }: ProductCardProps) {
         type="number"
         aria-label={`Quantity of ${product.name}`}
         min={MIN_QUANTITY}
-        max={MAX_QUANTITY}
-        value={quantity}
-        onChange={(event) => setQuantity(clampQuantity(event.target.valueAsNumber))}
+        max={MAX_LINE_QUANTITY}
+        value={quantityText}
+        onChange={(event) => setQuantityText(event.target.value)}
+        onBlur={commitQuantity}
       />
-      <button type="button" onClick={() => onAdd(product.id, quantity)}>
+      <button type="button" onClick={() => onAdd(product.id, commitQuantity())}>
         Add to order
       </button>
     </div>

@@ -1,8 +1,7 @@
 import { CartSummary } from '../components/CartSummary'
-import type { CartSummaryLine } from '../components/CartSummary'
 import { ProductCard } from '../components/ProductCard'
 import type { CartAction, CartLine } from '../lib/cart'
-import { cartTotalCents } from '../lib/cart'
+import { cartSummary } from '../lib/cart'
 import type { ShopProduct } from '../lib/shopDocuments'
 
 export interface ShopPageProps {
@@ -12,18 +11,10 @@ export interface ShopPageProps {
   onCartAction: (action: CartAction) => void
 }
 
-// The catalogue rarely changes; only the cart lines a product still matches are shown.
-function summaryLines(cartLines: readonly CartLine[], products: readonly ShopProduct[]): CartSummaryLine[] {
-  const lines: CartSummaryLine[] = []
-  for (const line of cartLines) {
-    const product = products.find((candidate) => candidate.id === line.productId)
-    if (product !== undefined) lines.push({ product, quantity: line.quantity })
-  }
-  return lines
-}
-
 /** Browse the catalogue, add to the cart, and see the running total before checkout. */
 export function ShopPage({ products, statusMessage, cartLines, onCartAction }: ShopPageProps) {
+  const summary = cartSummary(cartLines, products)
+
   return (
     <div className="shop-layout">
       <div>
@@ -39,7 +30,11 @@ export function ShopPage({ products, statusMessage, cartLines, onCartAction }: S
           ))}
         </div>
       </div>
-      <CartSummary lines={summaryLines(cartLines, products)} totalCents={cartTotalCents(cartLines, products)}>
+      <CartSummary
+        lines={summary.lines}
+        totalCents={summary.totalCents}
+        onRemove={(productId) => onCartAction({ kind: 'set', productId, quantity: 0 })}
+      >
         <a href="/checkout">Go to checkout</a>
       </CartSummary>
     </div>

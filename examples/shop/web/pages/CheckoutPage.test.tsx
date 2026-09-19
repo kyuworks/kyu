@@ -1,29 +1,56 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { PlacedOrder } from '../lib/shopDocuments'
+import type { PlacedOrder, ShopProduct } from '../lib/shopDocuments'
 import { CheckoutConfirmation, CheckoutPage } from './CheckoutPage'
+
+const mug: ShopProduct = { id: 'p1', sku: 'QTX-MUG', name: 'Enamel mug', priceCents: 1400 }
 
 describe('CheckoutPage', () => {
   it('disables the pay button when the cart is empty', () => {
     const markup = renderToStaticMarkup(
-      <CheckoutPage products={[]} cartLines={[]} dashboardUrl="" onOrderPlaced={() => undefined} />,
+      <CheckoutPage
+        products={[mug]}
+        productsStatusMessage=""
+        cartLines={[]}
+        dashboardUrl=""
+        onCartAction={() => undefined}
+        onOrderPlaced={() => undefined}
+      />,
     )
 
     expect(markup).toContain('Pay and place order')
     expect(markup).toMatch(/<button[^>]*disabled[^>]*>Pay and place order/)
   })
 
-  it('enables the pay button once the cart holds a line', () => {
+  it('enables the pay button once the cart holds a priced line', () => {
     const markup = renderToStaticMarkup(
       <CheckoutPage
-        products={[]}
+        products={[mug]}
+        productsStatusMessage=""
         cartLines={[{ productId: 'p1', quantity: 1 }]}
         dashboardUrl=""
+        onCartAction={() => undefined}
         onOrderPlaced={() => undefined}
       />,
     )
 
     expect(markup).not.toMatch(/<button[^>]*disabled[^>]*>Pay and place order/)
+  })
+
+  it('disables the pay button and shows the catalogue status when the catalogue has not priced the cart', () => {
+    const markup = renderToStaticMarkup(
+      <CheckoutPage
+        products={[]}
+        productsStatusMessage="products.json failed: HTTP 500"
+        cartLines={[{ productId: 'p1', quantity: 1 }]}
+        dashboardUrl=""
+        onCartAction={() => undefined}
+        onOrderPlaced={() => undefined}
+      />,
+    )
+
+    expect(markup).toMatch(/<button[^>]*disabled[^>]*>Pay and place order/)
+    expect(markup).toContain('products.json failed: HTTP 500')
   })
 })
 

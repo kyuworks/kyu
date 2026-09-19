@@ -7,7 +7,9 @@ const mug: ShopProduct = { id: 'p1', sku: 'QTX-MUG', name: 'Enamel mug', priceCe
 
 describe('CartSummary', () => {
   it('shows each line with its quantity and line total, and the order total', () => {
-    const markup = renderToStaticMarkup(<CartSummary lines={[{ product: mug, quantity: 2 }]} totalCents={2800} />)
+    const markup = renderToStaticMarkup(
+      <CartSummary lines={[{ product: mug, quantity: 2, lineCents: 2800 }]} totalCents={2800} />,
+    )
 
     expect(markup).toContain('Enamel mug')
     expect(markup).toContain('$28.00')
@@ -27,5 +29,32 @@ describe('CartSummary', () => {
     )
 
     expect(markup).toContain('href="/checkout"')
+  })
+
+  it('renders a Remove button per line when onRemove is given', () => {
+    const markup = renderToStaticMarkup(
+      <CartSummary
+        lines={[
+          { product: mug, quantity: 2, lineCents: 2800 },
+          {
+            product: { id: 'p2', sku: 'QTX-TOTE', name: 'Canvas tote', priceCents: 2200 },
+            quantity: 1,
+            lineCents: 2200,
+          },
+        ]}
+        totalCents={5000}
+        onRemove={() => undefined}
+      />,
+    )
+
+    expect(markup.match(/>Remove</g)).toHaveLength(2)
+  })
+
+  it('omits the Remove button when onRemove is not given', () => {
+    const markup = renderToStaticMarkup(
+      <CartSummary lines={[{ product: mug, quantity: 2, lineCents: 2800 }]} totalCents={2800} />,
+    )
+
+    expect(markup).not.toContain('Remove')
   })
 })

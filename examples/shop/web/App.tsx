@@ -1,9 +1,7 @@
 import { useEffect, useReducer, useState } from 'react'
-import { z } from 'zod'
 import { describeFetchFailure } from './lib/fetchJson'
 import { parseUiConfig } from './lib/uiConfig'
-import type { CartLine } from './lib/cart'
-import { cartReducer } from './lib/cart'
+import { cartReducer, readStoredCart, writeStoredCart } from './lib/cart'
 import { parseProductsDocument } from './lib/shopDocuments'
 import type { ShopProduct } from './lib/shopDocuments'
 import { BusPage } from './pages/BusPage'
@@ -22,32 +20,6 @@ const NAV_LINKS: readonly NavLink[] = [
   { href: '/checkout', label: 'Checkout' },
   { href: '/bus', label: 'Bus' },
 ]
-
-const CART_STORAGE_KEY = 'qtaxis.shop.cart'
-const storedCartSchema = z.array(z.object({ productId: z.string(), quantity: z.number() }))
-
-// The cart must survive the click from Shop to Checkout — the nav is real
-// links, so this reloads the page. Persisting it is required, not a
-// convenience. Guarded like web/lib/customer.ts: a private window throws.
-function readStoredCart(): CartLine[] {
-  try {
-    const raw = localStorage.getItem(CART_STORAGE_KEY)
-    if (raw === null) return []
-    const json: unknown = JSON.parse(raw)
-    const parsed = storedCartSchema.safeParse(json)
-    return parsed.success ? parsed.data : []
-  } catch {
-    return []
-  }
-}
-
-function writeStoredCart(lines: readonly CartLine[]): void {
-  try {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(lines))
-  } catch {
-    // A private window throws on write too; losing the cart is fine, crashing the page is not.
-  }
-}
 
 export function App() {
   // Empty until /ui.json answers: no dashboard link rather than a guessed one.
@@ -120,8 +92,10 @@ export function App() {
       return (
         <CheckoutPage
           products={products}
+          productsStatusMessage={productsStatusMessage}
           cartLines={cartLines}
           dashboardUrl={dashboardUrl}
+          onCartAction={dispatchCart}
           onOrderPlaced={() => dispatchCart({ kind: 'clear' })}
         />
       )
@@ -145,11 +119,13 @@ export function App() {
             {NAV_LINKS.map((link) => (
               <a key={link.href} href={link.href} aria-current={pathname === link.href ? 'page' : undefined}>
                 {link.label}
-                {(link.href === '/' || link.href === '/checkout') && cartCount > 0 && (
-                  <span className="cart-badge">{cartCount}</span>
-                )}
               </a>
             ))}
+            {cartCount > 0 && (
+              <span className="cart-badge" aria-label={`${cartCount} item${cartCount === 1 ? '' : 's'} in your order`}>
+                {cartCount}
+              </span>
+            )}
           </nav>
         </div>
       </header>
