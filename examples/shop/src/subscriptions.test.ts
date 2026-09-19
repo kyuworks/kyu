@@ -43,7 +43,7 @@ function fakeConfig(): ShopConfig {
 }
 
 describe('buildSubscriptions', () => {
-  it('registers record-order, audit-order, send-invoice and watch-shipping', () => {
+  it('registers record-order, audit-order, send-invoice, watch-shipping and record-shipment', () => {
     const subscriptions = buildSubscriptions(buildKyu(), fakePool(), fakeConfig())
 
     expect(subscriptions.map((subscription) => subscription.name)).toEqual([
@@ -51,6 +51,7 @@ describe('buildSubscriptions', () => {
       'audit-order',
       'send-invoice',
       'watch-shipping',
+      'record-shipment',
     ])
   })
 })

@@ -50,7 +50,6 @@ async function watchShipping(pool: Pool, kyu: Kyu, config: ShopConfig, ctx: Orde
   await withTransaction(pool, (tx) =>
     kyu.onceById(tx, ctx.envelope.id, `${WATCH_SHIPPING_NAME}:done`, async () => {
       if (result.kind === 'message') {
-        await tx.query('UPDATE shop_order SET shipped_at = now() WHERE id = $1', [orderId])
         await logRow(tx, WATCH_SHIPPING_COMPLETED, ctx.envelope.id, orderId, tenantId, result.envelope.data.carrier)
       } else {
         await logRow(tx, WATCH_SHIPPING_TIMEOUT, ctx.envelope.id, orderId, tenantId)

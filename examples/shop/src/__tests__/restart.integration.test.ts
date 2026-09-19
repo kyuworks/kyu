@@ -330,3 +330,49 @@ describe('restart: the durable watch-shipping handler', () => {
     }
   }, 180_000)
 })
+
+describe('late shipment: a shipment after the watch timeout', () => {
+  it('still marks the order shipped, and a second shipment does not move the time', async () => {
+    const tenantId = randomUUID()
+    const shop = await startShop('8s')
+    try {
+      await shop.spawnWorker()
+      const placed = await placeOrder(pool, kyu, { tenantId, customerId: randomUUID() })
+      const envelopeId = placed.envelopeIds.orderPlaced
+
+      const timedOut = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:timeout'), 60_000)
+      await expectEventually(shop.engine, envelopeId, 'watch-shipping:timeout row', timedOut)
+
+      // timed-out-stays-timed-out: nothing has shipped yet.
+      const beforeShip = await admin.query('SELECT shipped_at FROM shop_order WHERE id = $1', [placed.orderId])
+      expect(beforeShip.rows[0]?.shipped_at).toBeNull()
+
+      await shipOrder(pool, kyu, { tenantId, orderId: placed.orderId, carrier: 'ups' })
+
+      // late-shipment-marks-shipped: THIS is what fails on main.
+      const shipped = await waitUntil(async () => {
+        const row = await admin.query('SELECT shipped_at FROM shop_order WHERE id = $1', [placed.orderId])
+        return row.rows[0]?.shipped_at != null
+      }, 60_000)
+      expect(shipped, 'shipped_at was never written after a late shipment').toBe(true)
+
+      const first = await admin.query('SELECT shipped_at FROM shop_order WHERE id = $1', [placed.orderId])
+      const firstShippedAt = first.rows[0]?.shipped_at
+
+      // first-shipment-time-wins: a second shipment must not move it.
+      await shipOrder(pool, kyu, { tenantId, orderId: placed.orderId, carrier: 'dhl' })
+      await waitUntil(async () => {
+        const rows = await admin.query(
+          "SELECT 1 FROM shop_handler_log WHERE handler = 'record-shipment' AND order_id = $1",
+          [placed.orderId],
+        )
+        return rows.rows.length === 2
+      }, 60_000)
+
+      const second = await admin.query('SELECT shipped_at FROM shop_order WHERE id = $1', [placed.orderId])
+      expect(second.rows[0]?.shipped_at).toEqual(firstShippedAt)
+    } finally {
+      await shop.stopAll()
+    }
+  }, 180_000)
+})

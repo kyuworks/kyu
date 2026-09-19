@@ -123,11 +123,24 @@ describe('shopFlow: checkout, invoice and shipping against the local engine', ()
       () => `shop_order ${placed.orderId} never recorded shipped_at`,
     )
 
-    const completedLog = await admin.query(
-      "SELECT 1 FROM shop_handler_log WHERE handler = 'watch-shipping:completed' AND order_id = $1",
-      [placed.orderId],
+    // record-shipment (a plain subscriber) and watch-shipping (a parked durable
+    // run woken by the same event) are two independent writers now; shipped_at
+    // can land before watch-shipping's own completed row, so this polls too
+    // instead of assuming the same commit wrote both, as one onceById block did before.
+    let completedRowCount = 0
+    await waitUntil(
+      async () => {
+        const completedLog = await admin.query(
+          "SELECT 1 FROM shop_handler_log WHERE handler = 'watch-shipping:completed' AND order_id = $1",
+          [placed.orderId],
+        )
+        completedRowCount = completedLog.rows.length
+        return completedRowCount === 1
+      },
+      60_000,
+      () =>
+        `shop_handler_log has ${String(completedRowCount)} watch-shipping:completed rows for order ${placed.orderId}, want 1`,
     )
-    expect(completedLog.rows).toHaveLength(1)
   }, 180_000)
 
   it('an unknown product id commits nothing and publishes nothing (S2)', async () => {

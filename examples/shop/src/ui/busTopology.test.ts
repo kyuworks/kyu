@@ -103,6 +103,7 @@ describe('describeBusTopology', () => {
       'audit-order',
       'send-invoice',
       'watch-shipping',
+      'record-shipment',
     ])
   })
 
