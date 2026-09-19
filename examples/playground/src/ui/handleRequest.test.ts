@@ -4,7 +4,7 @@ import type { Pool, PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
 import { ENGINE_WINDOW_LIMIT } from './busCounts.js'
 import type { BusTopology } from './busTopology.js'
-import type { UiRequest } from './handleRequest.js'
+import type { UiRequest, UiRequestDeps, UiResponse } from './handleRequest.js'
 import { handleUiRequest } from './handleRequest.js'
 
 function jsonPost(url: string, body: string): UiRequest {
@@ -80,8 +80,14 @@ const fakeTopology: BusTopology = {
   ],
 }
 
-function deps(pool: Pool, qtaxis: Qtaxis, topology: BusTopology = fakeTopology) {
-  return { pool, qtaxis, dashboardUrl: 'http://localhost:8888', topology }
+type ReadWeb = UiRequestDeps['readWeb']
+
+// undefined means "not mine": the default a real static reader gives every
+// route this suite does not care about.
+const notWebAsset: ReadWeb = () => Promise.resolve(undefined)
+
+function deps(pool: Pool, qtaxis: Qtaxis, topology: BusTopology = fakeTopology, readWeb: ReadWeb = notWebAsset) {
+  return { pool, qtaxis, dashboardUrl: 'http://localhost:8888', topology, readWeb }
 }
 
 // readBusCounts calls deps.pool.query() directly (no transaction), so this
@@ -221,21 +227,19 @@ describe('handleUiRequest', () => {
     expect(parsed.error).toContain('orderId')
   })
 
-  it('serves the page with both form actions and the dashboard link', async () => {
+  it('delegates an unmatched GET to the static reader', async () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
     const qtaxis = fakeQtaxis([])
+    const shell: UiResponse = { status: 200, contentType: 'text/html', body: '<!doctype html>' }
+    const readWeb: ReadWeb = (method, url) => Promise.resolve(method === 'GET' && url === '/' ? shell : undefined)
 
-    const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/'))
+    const response = await handleUiRequest(deps(pool, qtaxis, fakeTopology, readWeb), getRequest('/'))
 
-    expect(response.status).toBe(200)
-    expect(response.contentType).toBe('text/html')
-    expect(response.body).toContain('action="/orders"')
-    expect(response.body).toContain('action="/shipments"')
-    expect(response.body).toContain('http://localhost:8888')
+    expect(response).toEqual(shell)
   })
 
-  it('returns 404 for an unknown route', async () => {
+  it('returns 404 for an unknown route the static reader does not own either', async () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
     const qtaxis = fakeQtaxis([])
@@ -243,6 +247,32 @@ describe('handleUiRequest', () => {
     const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/nope'))
 
     expect(response.status).toBe(404)
+  })
+
+  it('answers /bus.json from the JSON handler even when the static reader would also answer it (W1)', async () => {
+    const qtaxis = fakeQtaxis([])
+    const pool = fakeQueryPool([[{ source: 'playground', published: 0, waiting: 0 }], [], []])
+    const shell: UiResponse = { status: 200, contentType: 'text/html', body: '<!doctype html>shadowed' }
+    // A static reader that would happily serve any path proves the JSON
+    // route wins because it is checked first, not because no file exists.
+    const readWeb: ReadWeb = () => Promise.resolve(shell)
+
+    const response = await handleUiRequest(deps(pool, qtaxis, fakeTopology, readWeb), getRequest('/bus.json'))
+
+    expect(response.contentType).toBe('application/json')
+    expect(response.body).not.toContain('shadowed')
+  })
+
+  it('returns the dashboard url for /ui.json', async () => {
+    const client = fakeClient([])
+    const pool = fakePool([], client)
+    const qtaxis = fakeQtaxis([])
+
+    const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/ui.json'))
+
+    expect(response.status).toBe(200)
+    expect(response.contentType).toBe('application/json')
+    expect(JSON.parse(response.body)).toEqual({ dashboardUrl: 'http://localhost:8888' })
   })
 
   it('serves the bus page with the producer box, the bus box, and a container for the subscription columns', async () => {

@@ -1,4 +1,6 @@
+import fs from 'node:fs/promises'
 import http from 'node:http'
+import path from 'node:path'
 import nodeProcess from 'node:process'
 import type { Pool } from 'pg'
 import { readConfig } from './config.js'
@@ -8,9 +10,13 @@ import { describeError, exitAfterLog, log } from './log.js'
 import { buildSubscriptions } from './subscriptions.js'
 import { describeBusTopology } from './ui/busTopology.js'
 import { handleUiRequest } from './ui/handleRequest.js'
+import { readWebResponse } from './ui/serveWeb.js'
 
 // The engine's own dashboard, not one Qtaxis ships (see infra/hatchet/compose.yaml).
 const DASHBOARD_URL = 'http://localhost:8888'
+
+// ui.js runs from dist/, so this is dist/web — vite's build.outDir.
+const WEB_ROOT = path.resolve(import.meta.dirname, 'web')
 
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -43,21 +49,30 @@ async function main(): Promise<void> {
   // /bus can never name a subscription the worker does not run.
   const topology = describeBusTopology(buildSubscriptions(qtaxis, pool, config))
 
+  // dist/web/index.html missing (the build was skipped) is a hint, not a
+  // reason to refuse to serve the JSON and POST routes.
+  await fs.access(path.join(WEB_ROOT, 'index.html')).catch(() => {
+    log('ui', 'web-missing', { root: WEB_ROOT, hint: 'run `pnpm --filter @qtaxis/playground build`' })
+  })
+
   const server = http.createServer((req, res) => {
     readBody(req)
       .then((body) =>
         handleUiRequest(
-          { pool, qtaxis, dashboardUrl: DASHBOARD_URL, topology },
+          {
+            pool,
+            qtaxis,
+            dashboardUrl: DASHBOARD_URL,
+            topology,
+            readWeb: (method, url) => readWebResponse(WEB_ROOT, method, url),
+          },
           { method: req.method ?? '', url: req.url ?? '', contentType: req.headers['content-type'] ?? '', body },
         ),
       )
       .then((response) => {
-        // /bus.json is read every 2s; without this an intermediary could cache a stale count.
-        if (response.contentType === 'application/json') {
-          res.writeHead(response.status, { 'content-type': response.contentType, 'cache-control': 'no-store' })
-        } else {
-          res.writeHead(response.status, { 'content-type': response.contentType })
-        }
+        // Every response is local-demo output: no reason to cache a JSON
+        // count or a bundle that a rebuild can change under the same url.
+        res.writeHead(response.status, { 'content-type': response.contentType, 'cache-control': 'no-store' })
         res.end(response.body)
       })
       .catch((error) => {

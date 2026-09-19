@@ -41,13 +41,25 @@ the same.
 
 ## Web page
 
+A Vite + React app under `web/`, built to `dist/web/` by `pnpm --filter @qtaxis/playground build`
+(`tsc -b && vite build`) and served from there by the `ui` process:
+
 ```bash
+pnpm --filter @qtaxis/playground build
 pnpm --filter @qtaxis/playground ui
 ```
 
-Serves the same two forms on `http://127.0.0.1:3333` (`QTAXIS_EXAMPLE_UI_PORT` to change the
-port). The page sends ids and shows the ids it got back; it does not read handler logs or run
-status. Watch what happens next in the Hatchet dashboard.
+Open `http://127.0.0.1:3333` (`QTAXIS_EXAMPLE_UI_PORT` to change the port). For hot reload during
+development, run `pnpm --filter @qtaxis/playground web:dev` instead: it proxies the JSON and POST
+routes to the `ui` process, which must already be running.
+
+`web/` uses bundler module resolution, so its own relative imports carry no `.js` extension —
+unlike `src/`, which is NodeNext and always does. Do not mix the two styles inside `web/`.
+`typecheck:tests` type-checks `web/` too, through `tsconfig.web.json`. `web/index.html` is not
+picked up by `pnpm format` or by the changed-file selector; it is not worth a glob for one file.
+
+Publishing from the browser is on hold until the shop pages land in a later pull request — use
+the producer CLI above meanwhile.
 
 `/bus` draws the producer, the outbox, and one box per subscription, refreshed every 5 seconds.
 Outbox stages — published, waiting for relay, shipped — come from `qtaxis_outbox`. Each
