@@ -1,5 +1,6 @@
 import type { CartLine } from './cart'
-import { describeFetchFailure } from './fetchJson'
+import { describeSubmitFailure } from './fetchJson'
+import type { JsonFetchOutcome } from './fetchJson'
 import type { PlacedOrder } from './shopDocuments'
 import { parsePlacedOrder } from './shopDocuments'
 
@@ -14,19 +15,11 @@ export function buildPlaceOrderBody(customerId: string, cartLines: readonly Cart
   })
 }
 
-export interface CheckoutFetchOutcome {
-  ok: boolean
-  status: number
-  bodyText: string
-}
-
 export type CheckoutState = { ok: true; placedOrder: PlacedOrder } | { ok: false; error: string }
 
 // Pure and unit-tested, so reverting the route, the body, or the non-2xx branch fails a test, not just a click.
-export function nextCheckoutState(outcome: CheckoutFetchOutcome): CheckoutState {
-  if (!outcome.ok) {
-    return { ok: false, error: `checkout failed: ${describeFetchFailure(outcome.status, outcome.bodyText)}` }
-  }
+export function nextCheckoutState(outcome: JsonFetchOutcome): CheckoutState {
+  if (!outcome.ok) return { ok: false, error: describeSubmitFailure('checkout', outcome) }
   const parsed = parsePlacedOrder(outcome.bodyText)
   if (!parsed.ok) return { ok: false, error: `checkout failed: ${parsed.error}` }
   return { ok: true, placedOrder: parsed.order }

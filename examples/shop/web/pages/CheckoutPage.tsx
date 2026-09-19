@@ -4,6 +4,7 @@ import type { CartAction, CartLine } from '../lib/cart'
 import { cartSummary, formatCents } from '../lib/cart'
 import { PLACE_ORDER_PATH, buildPlaceOrderBody, nextCheckoutState } from '../lib/checkout'
 import { readCustomerId } from '../lib/customer'
+import { postJsonOutcome } from '../lib/fetchJson'
 import type { PlacedOrder, ShopProduct } from '../lib/shopDocuments'
 
 export interface CheckoutPageProps {
@@ -73,12 +74,7 @@ export function CheckoutPage({
     }
 
     setSubmitting(true)
-    fetch(PLACE_ORDER_PATH, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body,
-    })
-      .then((response) => response.text().then((bodyText) => ({ ok: response.ok, status: response.status, bodyText })))
+    void postJsonOutcome(PLACE_ORDER_PATH, body)
       .then((outcome) => {
         const state = nextCheckoutState(outcome)
         if (state.ok) {
@@ -87,9 +83,6 @@ export function CheckoutPage({
         } else {
           setStatusMessage(state.error)
         }
-      })
-      .catch((error) => {
-        setStatusMessage(`checkout failed: ${error instanceof Error ? error.message : String(error)}`)
       })
       .finally(() => {
         setSubmitting(false)

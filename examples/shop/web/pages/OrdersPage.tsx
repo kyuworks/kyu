@@ -1,15 +1,75 @@
-import { useState } from 'react'
+import { useReducer, useState } from 'react'
 import { OrderTimeline } from '../components/OrderTimeline'
 import { formatCents } from '../lib/cart'
 import { readCustomerId } from '../lib/customer'
+import { describeSubmitFailure, postJsonOutcome } from '../lib/fetchJson'
+import { RESEND_INVOICE_PATH, buildResendInvoiceBody } from '../lib/resendInvoice'
 import type { ShopOrder } from '../lib/shopDocuments'
+import { shortOrderId } from '../lib/shopDocuments'
+import type { SubmitPhase } from '../lib/submitPhase'
+import { canSubmit, nextSubmitPhase } from '../lib/submitPhase'
 import { useOrders } from '../lib/useOrders'
 
 // Fixed locale, not the browser's: a test's expected string must not depend on the machine it runs on.
 const ORDER_DATE_FORMAT = new Intl.DateTimeFormat('en-NZ', { dateStyle: 'medium', timeStyle: 'short' })
 
-function shortOrderId(id: string): string {
-  return id.slice(0, 8)
+export interface ResendInvoiceActionViewProps {
+  phase: SubmitPhase
+  onSubmit: () => void
+}
+
+// Pure and presentational: a real submit can't run under renderToStaticMarkup
+// (it drops effects), so tests render this directly with a fixed phase.
+export function ResendInvoiceActionView({ phase, onSubmit }: ResendInvoiceActionViewProps) {
+  const submitting = phase.kind === 'submitting'
+  const sent = phase.kind === 'done'
+
+  return (
+    <div className="order-resend-invoice">
+      <button type="button" onClick={onSubmit} disabled={submitting || sent}>
+        Resend invoice (simulated fault)
+      </button>
+      <p className="muted">
+        Sends the invoice command for an id with no row, so the bus page has a dead letter to show.
+      </p>
+      <p className={sent ? 'status status-ok' : 'status'} aria-live="polite">
+        {sent ? 'Sent, check the bus page for the failed run.' : phase.kind === 'failed' ? phase.error : ''}
+      </p>
+    </div>
+  )
+}
+
+export interface ResendInvoiceActionProps {
+  orderId: string
+}
+
+// The simulated fault: no invoice id means the server sends the command for
+// one with no shop_invoice row, so handleSendInvoice throws and the run
+// becomes the dead letter the Bus page's send-invoice column shows.
+/** A small action that gives the Bus page a dead letter to show. */
+export function ResendInvoiceAction({ orderId }: ResendInvoiceActionProps) {
+  const [phase, dispatch] = useReducer(nextSubmitPhase, { kind: 'idle' })
+
+  function resend(): void {
+    if (!canSubmit(phase)) return
+    dispatch({ kind: 'submit' })
+    void postJsonOutcome(RESEND_INVOICE_PATH, buildResendInvoiceBody(orderId))
+      .then((outcome) => {
+        if (outcome.ok) {
+          dispatch({ kind: 'succeeded' })
+        } else {
+          dispatch({ kind: 'failed', error: describeSubmitFailure('resend invoice', outcome) })
+        }
+      })
+      .catch((error) => {
+        dispatch({
+          kind: 'failed',
+          error: `resend invoice failed: ${error instanceof Error ? error.message : String(error)}`,
+        })
+      })
+  }
+
+  return <ResendInvoiceActionView phase={phase} onSubmit={resend} />
 }
 
 export interface OrderCardProps {
@@ -45,6 +105,7 @@ export function OrderCard({ order, customerId }: OrderCardProps) {
         <span>{formatCents(order.totalCents)}</span>
       </p>
       <OrderTimeline stage={order.stage} />
+      <ResendInvoiceAction orderId={order.id} />
     </li>
   )
 }

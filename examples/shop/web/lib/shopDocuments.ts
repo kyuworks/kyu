@@ -34,6 +34,7 @@ const shopOrderLineSchema = z.object({
   quantity: z.number(),
   unitPriceCents: z.number(),
 })
+export type ShopOrderLine = z.infer<typeof shopOrderLineSchema>
 
 const shopOrderSchema = z.object({
   id: z.string(),
@@ -44,6 +45,11 @@ const shopOrderSchema = z.object({
   lines: z.array(shopOrderLineSchema),
 })
 export type ShopOrder = z.infer<typeof shopOrderSchema>
+
+/** The order id's first 8 characters — enough to tell orders apart on screen without the full uuid. */
+export function shortOrderId(id: string): string {
+  return id.slice(0, 8)
+}
 
 const ordersDocumentSchema = z.object({ orders: z.array(shopOrderSchema), limit: z.number() })
 export type OrdersDocumentOutcome = { ok: true; orders: ShopOrder[]; limit: number } | { ok: false; error: string }

@@ -30,3 +30,23 @@ export function firstIssueMessage(error: z.ZodError): string {
   const path = issue.path.join('.')
   return path === '' ? issue.message : `${path}: ${issue.message}`
 }
+
+// Never rejects: a network failure (offline, refused connection) becomes an
+// outcome too, with no HTTP status, so every submit action has one place —
+// describeSubmitFailure below — to turn an outcome into a message, instead
+// of a separate .catch for the reject case.
+export async function postJsonOutcome(path: string, body: string): Promise<JsonFetchOutcome> {
+  try {
+    const response = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body })
+    const bodyText = await response.text()
+    return { ok: response.ok, status: response.status, bodyText }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { ok: false, status: 0, bodyText: JSON.stringify({ error: message }) }
+  }
+}
+
+/** `"<label> failed: <reason>"` — the message every submit action shows on a non-2xx or network outcome. */
+export function describeSubmitFailure(label: string, outcome: JsonFetchOutcome): string {
+  return `${label} failed: ${describeFetchFailure(outcome.status, outcome.bodyText)}`
+}

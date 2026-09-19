@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ShopOrder as ServerShopOrder, ShopProduct as ServerShopProduct } from '../../src/ui/shopQueries.js'
 import { ORDER_HISTORY_LIMIT } from '../../src/ui/shopQueries.js'
-import { parseOrdersDocument, parsePlacedOrder, parseProductsDocument } from './shopDocuments'
+import { parseOrdersDocument, parsePlacedOrder, parseProductsDocument, shortOrderId } from './shopDocuments'
 
 describe('parseProductsDocument', () => {
   it('parses a GET /products.json body typed from the server’s own ShopProduct', () => {
@@ -93,5 +93,11 @@ describe('parsePlacedOrder', () => {
     const outcome = parsePlacedOrder(JSON.stringify({ orderId: 'order-1' }))
 
     expect(outcome.ok).toBe(false)
+  })
+})
+
+describe('shortOrderId', () => {
+  it('keeps the first 8 characters, so a full id never shows on screen', () => {
+    expect(shortOrderId('018f0000-0000-7000-8000-000000000004')).toBe('018f0000')
   })
 })
