@@ -47,3 +47,16 @@ export class EnvelopeRejectedError extends NonRetryableError {
     if (options !== undefined) this.cause = options.cause
   }
 }
+
+/**
+ * A durable handler reached `sleepFor`/`waitFor` after its worker began
+ * stopping. Retryable on purpose: the engine SDK's durable listener has
+ * already stopped, so registering the wait would never settle and would hold
+ * `stop()` open; failing the attempt lets the engine re-dispatch the run.
+ */
+export class WorkerStoppingError extends KyuError {
+  constructor() {
+    super('worker is stopping; the wait was not registered')
+    this.name = 'WorkerStoppingError'
+  }
+}

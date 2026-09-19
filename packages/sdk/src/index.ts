@@ -65,6 +65,7 @@ export {
   MessageDataError,
   MessageDefinitionError,
   KyuError,
+  WorkerStoppingError,
 } from './errors.js'
 export type { EnvelopeOptionIssue, MessageDataIssue } from './errors.js'
 

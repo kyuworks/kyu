@@ -184,3 +184,71 @@ describe('durable: correlated waitFor', () => {
     expect(results.get(trigerEnvelope.id)).toEqual({ kind: 'timeout' })
   }, 120_000)
 })
+
+describe('durable: a stop while the body is executing', () => {
+  const trigger = defineEvent({
+    name: 'kyu.durable.restart_trigger',
+    version: 1,
+    data: z.object({ marker: z.string() }),
+  })
+  type TriggerData = { marker: string }
+
+  // Last-write-wins: the retry re-runs the body, so the final entry names the
+  // worker that actually carried the run.
+  const enteredBy = new Map<string, string>()
+  const completedBy = new Map<string, string>()
+  let workerB: KyuWorker | undefined
+
+  function makeSubscription(tag: 'a' | 'b') {
+    return durable(hatchet, trigger, {
+      name: 'restart-continues',
+      handler: async (ctx: DurableHandlerContext<TriggerData>) => {
+        enteredBy.set(ctx.envelope.id, tag)
+        // Plain sleep: the body is executing, not parked in a durable wait,
+        // when the worker below is stopped. The sleepFor after it is entered
+        // while the worker is stopping — the case this test is about.
+        await sleep(4_000)
+        await ctx.sleepFor('1s')
+        completedBy.set(ctx.envelope.id, tag)
+      },
+    })
+  }
+
+  afterAll(async () => {
+    await workerB?.stop()
+  })
+
+  it('stops worker A without hanging and completes on worker B with no retries set by the caller', async () => {
+    const workerA = await createWorker(hatchet, 'kyu-durable-restart-a', {
+      subscriptions: [makeSubscription('a')],
+      durableSlots: 5,
+    })
+    void workerA.start()
+    await workerA.waitUntilReady()
+
+    const envelope = await createEnvelope(trigger, { marker: 'go' }, { tenantId: null, source: 'sdk.test' })
+    await hatchet.events.push(trigger.name, envelope, {
+      additionalMetadata: toEnvelopeMetadata(envelope),
+      scope: eventScope(envelope),
+    })
+
+    expect(await waitUntil(() => enteredBy.get(envelope.id) === 'a', 60_000)).toBe(true)
+    const stopStartedAt = Date.now()
+    await workerA.stop()
+    // The engine SDK's graceful exit awaits every running body; without the
+    // fail-fast entry check the body's first wait never settles and this
+    // never returns.
+    expect(Date.now() - stopStartedAt).toBeLessThan(60_000)
+
+    workerB = await createWorker(hatchet, 'kyu-durable-restart-b', {
+      subscriptions: [makeSubscription('b')],
+      durableSlots: 5,
+    })
+    void workerB.start()
+    await workerB.waitUntilReady()
+
+    expect(await waitUntil(() => completedBy.has(envelope.id), 150_000)).toBe(true)
+    expect(completedBy.get(envelope.id)).toBe('b')
+    expect(enteredBy.get(envelope.id)).toBe('b')
+  }, 240_000)
+})

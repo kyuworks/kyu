@@ -2,8 +2,14 @@ import { createEnvelope, defineEvent, toEnvelopeMetadata } from '@kyuworks/schem
 import type { Envelope, MessageDataShape } from '@kyuworks/schemas'
 import { z } from 'zod'
 import { describe, expect, it, vi } from 'vitest'
-import { EnvelopeRejectedError, KyuError } from '../errors.js'
-import { ConcurrencyLimitStrategy, OrCondition, SleepCondition, UserEventCondition } from '../hatchet.js'
+import { EnvelopeRejectedError, KyuError, WorkerStoppingError } from '../errors.js'
+import {
+  ConcurrencyLimitStrategy,
+  NonRetryableError,
+  OrCondition,
+  SleepCondition,
+  UserEventCondition,
+} from '../hatchet.js'
 import type {
   CreateDurableTaskWorkflowOpts,
   DurableContext,
@@ -407,19 +413,52 @@ describe('durable: option wiring', () => {
 
     expect(capturedOptions()?.executionTimeout).toBe('10m')
   })
+
+  it('defaults retries to 3 so a stop during execution is re-dispatched, and keeps an explicit 0', () => {
+    const { client, capturedOptions } = fakeHatchetClient()
+    durable(client, orderPlaced, { name: 'follow-up', handler: () => undefined })
+    expect(capturedOptions()?.retries).toBe(3)
+
+    const explicit = fakeHatchetClient()
+    durable(explicit.client, orderPlaced, { name: 'follow-up', handler: () => undefined, retries: 0 })
+    expect(explicit.capturedOptions()?.retries).toBe(0)
+  })
 })
 
 function asIncoming<T extends object>(value: T): JsonObject {
   return JSON.parse(JSON.stringify(value)) as JsonObject
 }
 
-// DurableContext carries private fields, so a Pick of just `additionalMetadata`
-// needs the same single, unchained `as` cast as subscribe.test.ts's fakeHatchetContext.
-function fakeDurableHatchetContext(additionalMetadata: Record<string, string>): DurableContext<JsonObject> {
-  const stub: Pick<DurableContext<JsonObject>, 'additionalMetadata'> = {
+interface FakeDurableHatchetContext {
+  context: DurableContext<JsonObject>
+  sleepForCalls: () => number
+}
+
+// DurableContext carries private fields, so a Pick of just these members needs
+// the same single, unchained `as` cast as subscribe.test.ts's fakeHatchetContext.
+// `sleepFor` throws: a wrapper that reaches the engine must fail loudly here.
+// buildHandlerContext reads retryCount/workflowRunId/abortController/logger
+// unconditionally when building the handler context, so a fake that drives a
+// handler through to completion (not just the additionalMetadata trust edge)
+// needs those stubbed too.
+function fakeDurableHatchetContext(additionalMetadata: Record<string, string>): FakeDurableHatchetContext {
+  const calls = { sleepFor: 0 }
+  const noopLog = (): Promise<void> => Promise.resolve()
+  const stub: Pick<
+    DurableContext<JsonObject>,
+    'additionalMetadata' | 'sleepFor' | 'retryCount' | 'workflowRunId' | 'abortController' | 'logger'
+  > = {
     additionalMetadata: () => additionalMetadata,
+    sleepFor: () => {
+      calls.sleepFor += 1
+      throw new Error('sleepFor reached the engine')
+    },
+    retryCount: () => 0,
+    workflowRunId: () => 'fake-run-id',
+    abortController: new AbortController(),
+    logger: { info: noopLog, debug: noopLog, warn: noopLog, error: noopLog, util: noopLog },
   }
-  return stub as DurableContext<JsonObject>
+  return { context: stub as DurableContext<JsonObject>, sleepForCalls: () => calls.sleepFor }
 }
 
 // Drives the captured workflow `fn` the way the engine would, mirroring
@@ -431,7 +470,7 @@ function durableCapturing() {
   const fn = capturedOptions()?.fn
   if (fn === undefined) throw new Error('durable did not capture a task fn')
   const deliver = (input: JsonObject, additionalMetadata: Record<string, string>): Promise<void> =>
-    Promise.resolve(fn(input, fakeDurableHatchetContext(additionalMetadata)))
+    Promise.resolve(fn(input, fakeDurableHatchetContext(additionalMetadata).context))
   return { handler, deliver }
 }
 
@@ -447,5 +486,31 @@ describe('durable: additionalMetadata trust edge', () => {
 
     await expect(deliver(asIncoming(envelope), metadata)).rejects.toBeInstanceOf(EnvelopeRejectedError)
     expect(handler).not.toHaveBeenCalled()
+  })
+})
+
+describe('durable: a wait entered after the worker began stopping', () => {
+  it('fails the attempt with a retryable error instead of registering the wait', async () => {
+    const { client, capturedOptions } = fakeHatchetClient()
+    const subscription = durable(client, orderPlaced, {
+      name: 'follow-up',
+      handler: async (ctx) => {
+        // Flag flips from inside the body: the run started before the stop
+        // began, so it is one of the bodies stop() is waiting on.
+        subscription.stopDurableWaits?.()
+        await ctx.sleepFor('1s')
+      },
+    })
+    const fn = capturedOptions()?.fn
+    if (fn === undefined) throw new Error('durable did not capture a task fn')
+    const envelope = await createEnvelope(orderPlaced, { orderId: 'order-1' }, { tenantId: null, source: 'sdk.test' })
+    const { context, sleepForCalls } = fakeDurableHatchetContext(toEnvelopeMetadata(envelope))
+
+    const error: unknown = await Promise.resolve(fn(asIncoming(envelope), context)).catch((cause: unknown) => cause)
+
+    expect(error).toBeInstanceOf(WorkerStoppingError)
+    // Retryable on purpose: the engine re-dispatches the failed attempt.
+    expect(error).not.toBeInstanceOf(NonRetryableError)
+    expect(sleepForCalls()).toBe(0)
   })
 })

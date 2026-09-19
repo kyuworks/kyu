@@ -44,10 +44,18 @@ function fakeHatchetClient(worker: (name: string) => Promise<Worker>): FakeHatch
   }
 }
 
-function stubSubscription(name: string, kind: Subscription['kind'], messageName: string): Subscription {
+function stubSubscription(
+  name: string,
+  kind: Subscription['kind'],
+  messageName: string,
+  onStopDurableWaits?: () => void,
+): Subscription {
   // The workflow field is never read by assertSingleCommandSubscriber; a
-  // stub keeps this unit test free of the engine.
-  return { name, kind, messageName, workflow: {} as Subscription['workflow'] }
+  // stub keeps this unit test free of the engine. onStopDurableWaits, when
+  // given, records a call to stopDurableWaits() for the stop() ordering test.
+  // exactOptionalPropertyTypes forbids setting it to `undefined` explicitly.
+  const base: Subscription = { name, kind, messageName, workflow: {} as Subscription['workflow'] }
+  return onStopDurableWaits === undefined ? base : { ...base, stopDurableWaits: onStopDurableWaits }
 }
 
 describe('assertSingleCommandSubscriber', () => {
@@ -167,5 +175,127 @@ describe('KyuWorker.waitUntilReady', () => {
     rejectStart(startError)
 
     await expect(ready).rejects.toBe(startError)
+  })
+})
+
+describe('KyuWorker.stop', () => {
+  it('resolves within the configured bound when the engine stop never settles', async () => {
+    const unhandled: unknown[] = []
+    const onUnhandledRejection: NodeJS.UnhandledRejectionListener = (reason) => {
+      unhandled.push(reason)
+    }
+    process.on('unhandledRejection', onUnhandledRejection)
+
+    try {
+      const { client } = fakeHatchetClient(() =>
+        Promise.resolve(fakeWorker({ stop: () => new Promise<void>(() => undefined) })),
+      )
+      const subscription = stubSubscription('notify-ops', 'event', 'shop.order.placed')
+      const worker = await createWorker(client, 'worker', { subscriptions: [subscription], stopTimeoutMs: 50 })
+
+      const start = Date.now()
+      await worker.stop()
+      const elapsed = Date.now() - start
+
+      expect(elapsed).toBeLessThan(5_000)
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection)
+    }
+  })
+
+  it('refuses a stopTimeoutMs that is not a positive finite number', async () => {
+    const { client } = fakeHatchetClient(() => Promise.resolve(fakeWorker({})))
+    const subscription = stubSubscription('notify-ops', 'event', 'shop.order.placed')
+
+    await expect(
+      createWorker(client, 'worker', { subscriptions: [subscription], stopTimeoutMs: 0 }),
+    ).rejects.toBeInstanceOf(RangeError)
+    await expect(
+      createWorker(client, 'worker', { subscriptions: [subscription], stopTimeoutMs: Number.NaN }),
+    ).rejects.toBeInstanceOf(RangeError)
+    await expect(
+      createWorker(client, 'worker', { subscriptions: [subscription], stopTimeoutMs: -1 }),
+    ).rejects.toBeInstanceOf(RangeError)
+    await expect(
+      createWorker(client, 'worker', { subscriptions: [subscription], stopTimeoutMs: Number.POSITIVE_INFINITY }),
+    ).rejects.toBeInstanceOf(RangeError)
+  })
+
+  it('waits for the engine stop when no bound is set', async () => {
+    let resolveEngineStop: () => void = () => undefined
+    const engineStop = new Promise<void>((resolve) => {
+      resolveEngineStop = resolve
+    })
+    const { client } = fakeHatchetClient(() => Promise.resolve(fakeWorker({ stop: () => engineStop })))
+    const subscription = stubSubscription('notify-ops', 'event', 'shop.order.placed')
+    const worker = await createWorker(client, 'worker', { subscriptions: [subscription] })
+
+    let settled = false
+    const stopped = worker.stop().then(() => {
+      settled = true
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(settled).toBe(false)
+
+    resolveEngineStop()
+    await stopped
+    expect(settled).toBe(true)
+  })
+
+  it('calls stopDurableWaits on every subscription before the engine stop', async () => {
+    const order: string[] = []
+    const { client } = fakeHatchetClient(() =>
+      Promise.resolve(
+        fakeWorker({
+          stop: () => {
+            order.push('engine')
+            return Promise.resolve()
+          },
+        }),
+      ),
+    )
+    const subscriptionA = stubSubscription('notify-ops', 'event', 'shop.order.placed', () => order.push('flag'))
+    const subscriptionB = stubSubscription('notify-billing', 'event', 'shop.order.placed', () => order.push('flag'))
+    const worker = await createWorker(client, 'worker', { subscriptions: [subscriptionA, subscriptionB] })
+
+    await worker.stop()
+
+    expect(order).toEqual(['flag', 'flag', 'engine'])
+  })
+
+  it('does not leave an unhandled rejection when an unbounded stop is not awaited', async () => {
+    const unhandled: unknown[] = []
+    const onUnhandledRejection: NodeJS.UnhandledRejectionListener = (reason) => {
+      unhandled.push(reason)
+    }
+    process.on('unhandledRejection', onUnhandledRejection)
+
+    try {
+      const { client } = fakeHatchetClient(() =>
+        Promise.resolve(
+          fakeWorker({
+            stop: () =>
+              new Promise<void>((_resolve, reject) => {
+                setTimeout(() => reject(new Error('engine stop failed')), 20)
+              }),
+          }),
+        ),
+      )
+      const subscription = stubSubscription('notify-ops', 'event', 'shop.order.placed')
+      const worker = await createWorker(client, 'worker', { subscriptions: [subscription] })
+
+      // Fire-and-forget, like a caller who does not await worker.stop(). With
+      // no stopTimeoutMs there is no Promise.race to attach its own handler to
+      // engineStop, so only this file's own `.catch` keeps the engine's later
+      // rejection from reaching the process as an unhandled rejection.
+      void worker.stop()
+
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection)
+    }
   })
 })
