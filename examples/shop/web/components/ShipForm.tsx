@@ -3,7 +3,6 @@ import { TruckIcon } from '@heroicons/react/24/outline'
 import { useReducer, useState } from 'react'
 import { describeSubmitFailure, postJsonOutcome } from '../lib/fetchJson'
 import { SHIP_ORDER_PATH, buildShipOrderBody } from '../lib/shipOrder'
-import { shortOrderId } from '../lib/shopDocuments'
 import type { SubmitPhase } from '../lib/submitPhase'
 import { canSubmit, nextSubmitPhase } from '../lib/submitPhase'
 
@@ -40,7 +39,7 @@ export function ShipFormView({ orderId, carrier, phase, onCarrierChange, onSubmi
             an aria-label here would be silently ignored and every row would read just "Carrier". */}
         <Label>
           Carrier
-          <span className="sr-only"> for order {shortOrderId(orderId)}</span>
+          <span className="sr-only"> for order {orderId}</span>
         </Label>
         <Input value={carrier} onChange={(event) => onCarrierChange(event.target.value)} />
       </TextField>

@@ -35,4 +35,27 @@ describe('ShopPage', () => {
 
     expect(markup).toContain('products.json failed: HTTP 500')
   })
+
+  it('composes the error as a danger alert, not a bare string HeroUI cannot colour', () => {
+    const markup = renderToStaticMarkup(
+      <ShopPage
+        products={[]}
+        statusMessage="products.json failed: HTTP 500"
+        cartLines={[]}
+        onCartAction={() => undefined}
+      />,
+    )
+
+    expect(markup).toContain('alert--danger')
+    expect(markup).toContain('data-slot="alert-title"')
+    expect(markup).toContain('role="alert"')
+  })
+
+  it('draws no alert while the catalogue status is empty', () => {
+    const markup = renderToStaticMarkup(
+      <ShopPage products={[mug]} statusMessage="" cartLines={[]} onCartAction={() => undefined} />,
+    )
+
+    expect(markup).not.toContain('role="alert"')
+  })
 })

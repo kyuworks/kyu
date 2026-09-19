@@ -71,7 +71,7 @@ export function WarehousePage({ dashboardUrl }: WarehousePageProps) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-2">
-        <h1>Warehouse</h1>
+        <h1 className="text-2xl font-bold">Warehouse</h1>
         <p>
           <Link href="/orders">See all orders</Link>
           {dashboardUrl !== '' && (

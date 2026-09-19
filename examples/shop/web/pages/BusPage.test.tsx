@@ -22,6 +22,6 @@ describe('BusPage', () => {
     const markup = renderToStaticMarkup(<BusPage dashboardUrl="" />)
 
     expect(markup).not.toContain('Producer:')
-    expect(markup).not.toContain('bus-legend')
+    expect(markup).not.toContain('<dt>Producer</dt>')
   })
 })

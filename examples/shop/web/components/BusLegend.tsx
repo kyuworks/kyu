@@ -80,7 +80,7 @@ function legendEntries(engineWindowLimit: number): readonly LegendEntry[] {
 /** The fourteen sentences that explain every term the diagram draws. */
 export function BusLegend({ engineWindowLimit }: BusLegendProps) {
   return (
-    <dl className="bus-legend">
+    <dl className="mt-6 [&_dt]:mt-3 [&_dt]:font-semibold [&_dd]:mt-0.5 [&_dd]:text-muted">
       {legendEntries(engineWindowLimit).map((entry) => (
         <Fragment key={entry.term}>
           <dt>{entry.term}</dt>

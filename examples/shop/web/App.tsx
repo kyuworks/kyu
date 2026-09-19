@@ -109,7 +109,9 @@ export function App() {
 
   return (
     <AppShellView pathname={pathname} cartCount={cartCount}>
-      <p className="status">{statusMessage}</p>
+      <p aria-live="polite" className="empty:hidden font-mono text-sm text-danger">
+        {statusMessage}
+      </p>
       {renderPage()}
     </AppShellView>
   )

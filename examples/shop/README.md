@@ -83,8 +83,8 @@ Styling is Tailwind CSS v4 through `@tailwindcss/vite`, with HeroUI v3 component
 The entry is `web/theme.css`, which imports only the HeroUI component stylesheets the pages
 actually use. Light and dark follow the OS: an inline script in `web/index.html` sets the class
 before first paint, and `web/lib/theme.ts`'s `watchSystemTheme` keeps it in sync afterwards from
-a guarded effect in `App.tsx`. Nothing is persisted and there is no HeroUI provider. `web/styles.css`
-is what is left of the old hand-written stylesheet; it shrinks to nothing over the rest of #81.
+a guarded effect in `App.tsx`. Nothing is persisted and there is no HeroUI provider. Every page's
+own typography and layout come from Tailwind utilities; there is no separate hand-written stylesheet.
 
 `/` is the Shop page: a grid of product cards from `GET /products.json`, each with a quantity
 stepper (increment and decrement buttons either side of the number) and an "Add to order" button,
@@ -133,6 +133,16 @@ shipped/timed-out split under "done" come from `shop_handler_log`. A legend unde
 explains every term. The ui process now needs a reachable engine to serve `/bus.json`; the page
 shows a status line instead of stale counts when it is down, and the last good counts stay on
 screen rather than being wiped by a failed refresh.
+
+### Bundle size
+
+Tracked across issue #81 (Tailwind v4, HeroUI v3, Heroicons), `pnpm --filter @qtaxis/shop build`:
+
+| | JS raw | JS gzip | CSS raw | CSS gzip |
+|---|---|---|---|---|
+| `main` (before #81) | 325.69 kB | 97.61 kB | 6.38 kB | 1.65 kB |
+| after PR 3 (Warehouse, ship form, shell) | 476.51 kB | 145.08 kB | 81.53 kB | 10.10 kB |
+| after PR 4 (Bus page, `styles.css` deleted) | 478.01 kB | 145.23 kB | 80.89 kB | 9.82 kB |
 
 ## Environment variables
 

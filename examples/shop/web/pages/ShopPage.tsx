@@ -1,4 +1,4 @@
-import { Link } from '@heroui/react'
+import { Alert, AlertContent, AlertIndicator, AlertTitle, Link } from '@heroui/react'
 import { CartSummary } from '../components/CartSummary'
 import { ProductCard } from '../components/ProductCard'
 import type { CartAction, CartLine } from '../lib/cart'
@@ -18,9 +18,16 @@ export function ShopPage({ products, statusMessage, cartLines, onCartAction }: S
 
   return (
     <div className="grid gap-6 items-start md:grid-cols-[1fr_18rem]">
-      <div>
-        <h1>Qtaxis shop</h1>
-        <p className="status">{statusMessage}</p>
+      <div className="flex flex-col gap-4">
+        <h1 className="text-2xl font-bold">Qtaxis shop</h1>
+        {statusMessage !== '' && (
+          <Alert status="danger" role="alert">
+            <AlertIndicator />
+            <AlertContent>
+              <AlertTitle>{statusMessage}</AlertTitle>
+            </AlertContent>
+          </Alert>
+        )}
         <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(12rem,1fr))]">
           {products.map((product) => (
             <ProductCard

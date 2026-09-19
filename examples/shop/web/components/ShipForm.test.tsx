@@ -44,6 +44,24 @@ describe('ShipForm', () => {
     expect(labelText).toContain('order-1')
   })
 
+  it('carries the full order id in the label, not just its shared 8-character prefix', () => {
+    // Two uuid v7 ids minted close together share the same time-derived
+    // first 8 characters — shortOrderId(orderId) would name both rows
+    // identically. Only the full id tells them apart.
+    const orderA = '01930000-1111-7000-8000-000000000001'
+    const orderB = '01930000-2222-7000-8000-000000000002'
+
+    const markupA = renderToStaticMarkup(<ShipForm orderId={orderA} />)
+    const markupB = renderToStaticMarkup(<ShipForm orderId={orderB} />)
+
+    const labelTextA = labelTextForId(markupA, labelledById(markupA))
+    const labelTextB = labelTextForId(markupB, labelledById(markupB))
+
+    expect(labelTextA).toContain(orderA)
+    expect(labelTextB).toContain(orderB)
+    expect(labelTextA).not.toBe(labelTextB)
+  })
+
   it('marks its status paragraph aria-live="polite"', () => {
     const markup = renderToStaticMarkup(<ShipForm orderId="order-1" />)
 
