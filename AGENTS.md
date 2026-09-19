@@ -94,7 +94,7 @@ Before writing code, stop at the first rung that holds:
 ## Migrations
 
 - `packages/sdk/migrations/<YYYYMMDDHHMMSS>_<slug>.sql`. Consumers apply them with their own runner.
-- Write new files only; never edit, rename, or delete a file that exists on `main`. Revert with a new file. Gate: `check-migration-immutability.sh`. Disarmed for the rename to Kyu (#89); until re-armed, treat the rule as policy, not as enforced.
+- Write new files only; never edit, rename, or delete a file that exists on `main`. Revert with a new file. Gate: `check-migration-immutability.sh`.
 - Timestamp with `date +%Y%m%d%H%M%S`, greater than the latest file.
 
 ## Lint
