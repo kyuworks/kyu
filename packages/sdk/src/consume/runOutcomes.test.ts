@@ -1,6 +1,6 @@
-import { uuidv7 } from '@qtaxis/schemas'
+import { uuidv7 } from '@kyuworks/schemas'
 import { describe, expect, it } from 'vitest'
-import { QtaxisError } from '../hatchet.js'
+import { KyuError } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
 import { readRunOutcomes, toRunOutcome } from './runOutcomes.js'
 import type { RunsReader } from './runOutcomes.js'
@@ -234,7 +234,7 @@ describe('readRunOutcomes', () => {
     expect(call?.additionalMetadata).toEqual({ envelopeId })
   })
 
-  it('throws QtaxisError when the engine reports more than one page', async () => {
+  it('throws KyuError when the engine reports more than one page', async () => {
     const calls: Array<unknown> = []
     const reader: RunsReader = {
       config: { namespace: 'ns_' },
@@ -246,24 +246,24 @@ describe('readRunOutcomes', () => {
       },
     }
 
-    await expect(readRunOutcomes(reader, uuidv7())).rejects.toThrow(QtaxisError)
+    await expect(readRunOutcomes(reader, uuidv7())).rejects.toThrow(KyuError)
   })
 
-  it('throws QtaxisError and never calls runs.list for a malformed envelope id', async () => {
+  it('throws KyuError and never calls runs.list for a malformed envelope id', async () => {
     const { reader, listCalls } = fakeRunsReader('ns_', [])
 
-    await expect(readRunOutcomes(reader, 'not-a-uuid')).rejects.toThrow(QtaxisError)
+    await expect(readRunOutcomes(reader, 'not-a-uuid')).rejects.toThrow(KyuError)
     expect(listCalls()).toHaveLength(0)
   })
 
-  it('throws QtaxisError and never calls runs.list for a uuid v4 (not a v7 envelope id)', async () => {
+  it('throws KyuError and never calls runs.list for a uuid v4 (not a v7 envelope id)', async () => {
     const { reader, listCalls } = fakeRunsReader('ns_', [])
 
-    await expect(readRunOutcomes(reader, '4c9b6e2a-6e3a-4b8b-9f1e-0f1a2b3c4d5e')).rejects.toThrow(QtaxisError)
+    await expect(readRunOutcomes(reader, '4c9b6e2a-6e3a-4b8b-9f1e-0f1a2b3c4d5e')).rejects.toThrow(KyuError)
     expect(listCalls()).toHaveLength(0)
   })
 
-  it('wraps a rejected engine call in QtaxisError with the original error as cause', async () => {
+  it('wraps a rejected engine call in KyuError with the original error as cause', async () => {
     const cause = new Error('econnrefused')
     const { reader } = fakeRunsReader('ns_', [], cause)
 
@@ -271,7 +271,7 @@ describe('readRunOutcomes', () => {
     try {
       await readRunOutcomes(reader, uuidv7())
     } catch (error) {
-      expect(error).toBeInstanceOf(QtaxisError)
+      expect(error).toBeInstanceOf(KyuError)
       expect(error).toHaveProperty('cause', cause)
     }
   })

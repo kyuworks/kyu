@@ -32,7 +32,7 @@ export function AppShellView({ pathname, cartCount, children }: AppShellViewProp
         <div className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-4">
           <p className="m-0 flex items-center gap-2 text-lg font-semibold">
             <ShoppingBagIcon className="size-5" aria-hidden="true" />
-            Qtaxis shop
+            Kyu shop
           </p>
           <nav className="flex flex-1 items-center gap-4">
             {NAV_LINKS.map((link) => (

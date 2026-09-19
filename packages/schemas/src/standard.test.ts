@@ -9,7 +9,7 @@ const orderSchema = z.object({ orderId: z.uuid() })
 const asyncEchoSchema: StandardSchemaV1<string, string> = {
   '~standard': {
     version: 1,
-    vendor: 'qtaxis-fixture',
+    vendor: 'kyu-fixture',
     validate: (value) => Promise.resolve({ value: String(value) }),
   },
 }
@@ -17,7 +17,7 @@ const asyncEchoSchema: StandardSchemaV1<string, string> = {
 const asyncFailingSchema: StandardSchemaV1<string, string> = {
   '~standard': {
     version: 1,
-    vendor: 'qtaxis-fixture',
+    vendor: 'kyu-fixture',
     validate: () =>
       Promise.resolve({
         issues: [

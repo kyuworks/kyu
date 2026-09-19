@@ -2,7 +2,7 @@ import { CommandHasTwoSubscribersError } from '../errors.js'
 import type { CreateWorkerOpts, HatchetClient } from '../hatchet.js'
 import type { Subscription } from './subscribe.js'
 
-export interface QtaxisWorker {
+export interface KyuWorker {
   /** The engine's own `worker.start()` promise: resolves only once the worker stops. Await it to keep the process alive. */
   start(): Promise<void>
   stop(): Promise<void>
@@ -37,7 +37,7 @@ export async function createWorker(
   hatchet: HatchetClient,
   name: string,
   options: CreateWorkerOptions,
-): Promise<QtaxisWorker> {
+): Promise<KyuWorker> {
   assertSingleCommandSubscriber(options.subscriptions)
 
   const workerOptions: CreateWorkerOpts = {

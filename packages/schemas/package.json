@@ -1,7 +1,7 @@
 {
-  "name": "@qtaxis/schemas",
+  "name": "@kyuworks/schemas",
   "version": "0.0.0",
-  "description": "Qtaxis message envelope, naming rules and schema adapters. Runtime-light; depends on Zod only.",
+  "description": "Kyu message envelope, naming rules and schema adapters. Runtime-light; depends on Zod only.",
   "type": "module",
   "license": "UNLICENSED",
   "main": "./dist/index.js",

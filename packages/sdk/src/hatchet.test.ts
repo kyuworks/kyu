@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ClientConfigSchema } from '@hatchet-dev/typescript-sdk/clients/hatchet-client/client-config.js'
-import { QtaxisError } from './errors.js'
+import { KyuError } from './errors.js'
 import { createHatchetClient, toHatchetClientConfig } from './hatchet.js'
 
 // A syntactically valid but unsigned JWT: header.payload.signature. Good
@@ -38,11 +38,11 @@ describe('toHatchetClientConfig', () => {
         tlsRootCaFile: 'ca.pem',
         tlsServerName: 'engine.internal',
       }),
-    ).toThrow(QtaxisError)
+    ).toThrow(KyuError)
   })
 
   it('throws when tls is mtls without all three file options', () => {
-    expect(() => toHatchetClientConfig({ tls: 'mtls' })).toThrow(QtaxisError)
+    expect(() => toHatchetClientConfig({ tls: 'mtls' })).toThrow(KyuError)
   })
 
   it('maps tls: mtls with all three file options onto tls_config', () => {

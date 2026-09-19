@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import { createEnvelope, defineEvent, toEnvelopeMetadata } from '@qtaxis/schemas'
-import type { Envelope } from '@qtaxis/schemas'
+import { createEnvelope, defineEvent, toEnvelopeMetadata } from '@kyuworks/schemas'
+import type { Envelope } from '@kyuworks/schemas'
 import { z } from 'zod'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { eventScope } from '../eventScope.js'
@@ -9,7 +9,7 @@ import type { HatchetClient } from '../hatchet.js'
 import type { DurableHandlerContext, WaitForResult } from './durable.js'
 import { durable } from './durable.js'
 import { createWorker } from './worker.js'
-import type { QtaxisWorker } from './worker.js'
+import type { KyuWorker } from './worker.js'
 
 // Envelopes go straight to `hatchet.events.push` — no relay or outbox — the
 // same pattern as subscribe.integration.test.ts. Namespaced per run.
@@ -31,7 +31,7 @@ async function waitUntil(predicate: () => boolean, timeoutMs: number, intervalMs
 }
 
 const orderShipped = defineEvent({
-  name: 'qtaxis.durable.order_shipped',
+  name: 'kyu.durable.order_shipped',
   version: 1,
   data: z.object({ orderId: z.string() }),
 })
@@ -47,7 +47,7 @@ async function pushShipped(orderId: string, tenantId: string | null): Promise<En
 
 describe('durable: sleepFor', () => {
   const trigger = defineEvent({
-    name: 'qtaxis.durable.sleep_trigger',
+    name: 'kyu.durable.sleep_trigger',
     version: 1,
     data: z.object({ marker: z.string() }),
   })
@@ -56,7 +56,7 @@ describe('durable: sleepFor', () => {
   // the latest entry pairs with the sleep that actually completes.
   const enteredAt = new Map<string, number>()
   const completedAt = new Map<string, number>()
-  let worker: QtaxisWorker | undefined
+  let worker: KyuWorker | undefined
 
   beforeAll(async () => {
     const subscription = durable(hatchet, trigger, {
@@ -71,7 +71,7 @@ describe('durable: sleepFor', () => {
         completedAt.set(ctx.envelope.id, Date.now())
       },
     })
-    worker = await createWorker(hatchet, 'qtaxis-durable-sleep', { subscriptions: [subscription], durableSlots: 5 })
+    worker = await createWorker(hatchet, 'kyu-durable-sleep', { subscriptions: [subscription], durableSlots: 5 })
     void worker.start()
     await worker.waitUntilReady()
   }, 90_000)
@@ -100,7 +100,7 @@ describe('durable: sleepFor', () => {
 
 describe('durable: correlated waitFor', () => {
   const trigger = defineEvent({
-    name: 'qtaxis.durable.wait_trigger',
+    name: 'kyu.durable.wait_trigger',
     version: 1,
     data: z.object({ orderId: z.string(), timeout: z.enum(['3s', '5s', '30s']) }),
   })
@@ -108,7 +108,7 @@ describe('durable: correlated waitFor', () => {
 
   const results = new Map<string, WaitForResult<typeof orderShipped.data>>()
   const entered = new Set<string>()
-  let worker: QtaxisWorker | undefined
+  let worker: KyuWorker | undefined
 
   async function triggerWait(
     tenantId: string,
@@ -138,7 +138,7 @@ describe('durable: correlated waitFor', () => {
         results.set(ctx.envelope.id, result)
       },
     })
-    worker = await createWorker(hatchet, 'qtaxis-durable-wait', { subscriptions: [subscription], durableSlots: 5 })
+    worker = await createWorker(hatchet, 'kyu-durable-wait', { subscriptions: [subscription], durableSlots: 5 })
     void worker.start()
     await worker.waitUntilReady()
   }, 120_000)

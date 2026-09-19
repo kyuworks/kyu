@@ -1,4 +1,4 @@
-import type { Queryable, QueryParam, RunOutcome, RunStatus, Unparsed } from '@qtaxis/sdk'
+import type { Queryable, QueryParam, RunOutcome, RunStatus, Unparsed } from '@kyuworks/sdk'
 import { describe, expect, it } from 'vitest'
 import type { BusTopology } from './busTopology.js'
 import type { RunsSource } from './busCounts.js'

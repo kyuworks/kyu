@@ -1,14 +1,14 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import path from 'node:path'
-import type { HatchetClient, Qtaxis } from '@qtaxis/sdk'
-import { createHatchetClient } from '@qtaxis/sdk'
+import type { HatchetClient, Kyu } from '@kyuworks/sdk'
+import { createHatchetClient } from '@kyuworks/sdk'
 import { Client } from 'pg'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { ShopConfig } from '../config.js'
 import { readConfig } from '../config.js'
 import { createPool } from '../db/pool.js'
-import { createShopQtaxis } from '../qtaxis.js'
+import { createShopKyu } from '../kyu.js'
 import { placeOrder } from '../producer/placeOrder.js'
 import { shipOrder } from '../producer/shipOrder.js'
 import { spawnProcess, stopAllSpawnedProcesses } from './processes.js'
@@ -24,7 +24,7 @@ const WORKER_SCRIPT = path.resolve(import.meta.dirname, '../../dist/worker.js')
 
 let baseConfig: ShopConfig
 let pool: Pool
-let qtaxis: Qtaxis
+let kyu: Kyu
 let admin: Client
 
 async function waitUntil(predicate: () => Promise<boolean>, timeoutMs: number, intervalMs = 250): Promise<boolean> {
@@ -85,7 +85,7 @@ interface Shop {
 }
 
 // One namespace, one relay, per test. Every worker a test spawns shares this
-// namespace and this one watch timeout (config.ts's QTAXIS_SHOP_WATCH_TIMEOUT):
+// namespace and this one watch timeout (config.ts's KYU_SHOP_WATCH_TIMEOUT):
 // a run parked by a worker on one timeout and replayed by a worker on another
 // fails with a non-determinism error, since the timeout is read inside the
 // durable body and becomes part of the recorded wait.
@@ -93,10 +93,10 @@ async function startShop(watchTimeout?: string): Promise<Shop> {
   const namespace = `shop_${randomBytes(4).toString('hex')}_`
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    QTAXIS_SHOP_DATABASE_URL: baseConfig.databaseUrl,
-    QTAXIS_SHOP_NAMESPACE: namespace,
+    KYU_SHOP_DATABASE_URL: baseConfig.databaseUrl,
+    KYU_SHOP_NAMESPACE: namespace,
   }
-  if (watchTimeout !== undefined) env['QTAXIS_SHOP_WATCH_TIMEOUT'] = watchTimeout
+  if (watchTimeout !== undefined) env['KYU_SHOP_WATCH_TIMEOUT'] = watchTimeout
 
   const engine = createHatchetClient({ namespace })
   const relay = spawnProcess(RELAY_SCRIPT, env)
@@ -124,7 +124,7 @@ beforeAll(async () => {
   pool = createPool(baseConfig.databaseUrl)
   // publish()/onceById() only ever touch Postgres (never the engine), so one
   // shared client is fine for placeOrder/shipOrder across every test below.
-  qtaxis = createShopQtaxis(baseConfig)
+  kyu = createShopKyu(baseConfig)
   admin = new Client({ connectionString: baseConfig.databaseUrl })
   await admin.connect()
 }, 60_000)
@@ -142,7 +142,7 @@ describe('restart: the durable watch-shipping handler', () => {
     try {
       await shop.spawnWorker()
 
-      const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
+      const placed = await placeOrder(pool, kyu, { tenantId, customerId: randomUUID() })
       const envelopeId = placed.envelopeIds.orderPlaced
 
       const waiting = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:waiting'), 60_000)
@@ -150,7 +150,7 @@ describe('restart: the durable watch-shipping handler', () => {
 
       await sleep(2_000)
       const carrier = 'ups'
-      await shipOrder(pool, qtaxis, { tenantId, orderId: placed.orderId, carrier })
+      await shipOrder(pool, kyu, { tenantId, orderId: placed.orderId, carrier })
 
       const completed = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:completed'), 90_000)
       await expectEventually(shop.engine, envelopeId, 'watch-shipping:completed row', completed)
@@ -172,7 +172,7 @@ describe('restart: the durable watch-shipping handler', () => {
     try {
       await shop.spawnWorker()
 
-      const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
+      const placed = await placeOrder(pool, kyu, { tenantId, customerId: randomUUID() })
       const envelopeId = placed.envelopeIds.orderPlaced
 
       const timedOut = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:timeout'), 60_000)
@@ -192,13 +192,13 @@ describe('restart: the durable watch-shipping handler', () => {
     try {
       await shop.spawnWorker()
 
-      const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
+      const placed = await placeOrder(pool, kyu, { tenantId, customerId: randomUUID() })
       const envelopeId = placed.envelopeIds.orderPlaced
 
       const waiting = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:waiting'), 60_000)
       await expectEventually(shop.engine, envelopeId, 'watch-shipping:waiting row', waiting)
 
-      await shipOrder(pool, qtaxis, { tenantId: otherTenantId, orderId: placed.orderId, carrier: 'dhl' })
+      await shipOrder(pool, kyu, { tenantId: otherTenantId, orderId: placed.orderId, carrier: 'dhl' })
 
       const timedOut = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:timeout'), 60_000)
       await expectEventually(shop.engine, envelopeId, 'watch-shipping:timeout row', timedOut)
@@ -217,7 +217,7 @@ describe('restart: the durable watch-shipping handler', () => {
       const workerA = await shop.spawnWorker()
       const workerAPid = workerA.child.pid
 
-      const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
+      const placed = await placeOrder(pool, kyu, { tenantId, customerId: randomUUID() })
       const envelopeId = placed.envelopeIds.orderPlaced
 
       const waiting = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:waiting'), 60_000)
@@ -250,7 +250,7 @@ describe('restart: the durable watch-shipping handler', () => {
 
       // The relay stays up, so the event reaches the engine while no worker runs.
       const carrier = 'fedex'
-      await shipOrder(pool, qtaxis, { tenantId, orderId: placed.orderId, carrier })
+      await shipOrder(pool, kyu, { tenantId, orderId: placed.orderId, carrier })
 
       const workerB = await shop.spawnWorker()
       const workerBPid = workerB.child.pid
@@ -287,7 +287,7 @@ describe('restart: the durable watch-shipping handler', () => {
       const workerA = await shop.spawnWorker()
       const workerAPid = workerA.child.pid
 
-      const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
+      const placed = await placeOrder(pool, kyu, { tenantId, customerId: randomUUID() })
       const envelopeId = placed.envelopeIds.orderPlaced
 
       // The old (wrong) headline timing, on purpose: stop worker A the instant
@@ -306,7 +306,7 @@ describe('restart: the durable watch-shipping handler', () => {
       await workerA.stop()
 
       const carrier = 'ups'
-      await shipOrder(pool, qtaxis, { tenantId, orderId: placed.orderId, carrier })
+      await shipOrder(pool, kyu, { tenantId, orderId: placed.orderId, carrier })
 
       const workerB = await shop.spawnWorker()
       const workerBPid = workerB.child.pid

@@ -19,7 +19,7 @@ export function ShopPage({ products, statusMessage, cartLines, onCartAction }: S
   return (
     <div className="grid gap-6 items-start md:grid-cols-[1fr_18rem]">
       <div className="flex flex-col gap-4">
-        <h1 className="text-2xl font-bold">Qtaxis shop</h1>
+        <h1 className="text-2xl font-bold">Kyu shop</h1>
         {statusMessage !== '' && (
           <Alert status="danger" role="alert">
             <AlertIndicator />

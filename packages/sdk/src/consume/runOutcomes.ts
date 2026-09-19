@@ -1,5 +1,5 @@
-import { envelopeSchema } from '@qtaxis/schemas'
-import { QtaxisError } from '../hatchet.js'
+import { envelopeSchema } from '@kyuworks/schemas'
+import { KyuError } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
 
 // A durable run parked in `sleepFor`/`waitFor` reads as `running`: the
@@ -27,7 +27,7 @@ export interface ReadRunOutcomesOptions {
   since?: Date
 }
 
-export interface QtaxisRuns {
+export interface KyuRuns {
   forEnvelope(envelopeId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
 }
 
@@ -101,14 +101,14 @@ export async function readRunOutcomes(
 ): Promise<readonly RunOutcome[]> {
   const id = envelopeSchema.shape.id.safeParse(envelopeId)
   if (!id.success) {
-    throw new QtaxisError(`runs.forEnvelope: "${envelopeId}" is not a uuid v7 envelope id`)
+    throw new KyuError(`runs.forEnvelope: "${envelopeId}" is not a uuid v7 envelope id`)
   }
 
   const since = options?.since ?? new Date(envelopeIdTimestamp(envelopeId).getTime() - SINCE_MARGIN_MS)
 
   let result: Awaited<ReturnType<RunsReader['runs']['list']>>
   try {
-    // `onlyTasks` is left unset (defaults false): every Qtaxis subscription
+    // `onlyTasks` is left unset (defaults false): every Kyu subscription
     // is a single-task workflow, so the broader default returns the same rows.
     result = await hatchet.runs.list({
       additionalMetadata: { envelopeId },
@@ -117,13 +117,13 @@ export async function readRunOutcomes(
       includePayloads: false,
     })
   } catch (cause) {
-    throw new QtaxisError(`runs.forEnvelope: could not read runs for envelope ${envelopeId}`, {
+    throw new KyuError(`runs.forEnvelope: could not read runs for envelope ${envelopeId}`, {
       cause: cause instanceof Error ? cause : new Error(String(cause)),
     })
   }
 
   if ((result.pagination.num_pages ?? 1) > 1) {
-    throw new QtaxisError(
+    throw new KyuError(
       `runs.forEnvelope: envelope ${envelopeId} has more than ${RUN_PAGE_LIMIT} runs; narrow the window with options.since`,
     )
   }

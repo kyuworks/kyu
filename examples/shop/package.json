@@ -1,5 +1,5 @@
 {
-  "name": "@qtaxis/shop",
+  "name": "@kyuworks/shop",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -25,7 +25,7 @@
     "@heroui/react": "^3.2.5",
     "@heroui/styles": "^3.2.5",
     "@internationalized/date": "^3.12.4",
-    "@qtaxis/sdk": "workspace:*",
+    "@kyuworks/sdk": "workspace:*",
     "@react-aria/ssr": "^3.10.1",
     "@react-aria/utils": "^3.34.1",
     "pg": "^8.23.0",

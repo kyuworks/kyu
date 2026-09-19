@@ -1,4 +1,4 @@
-import type { MessageName } from '@qtaxis/schemas'
+import type { MessageName } from '@kyuworks/schemas'
 import type { Queryable } from '../db/queryable.js'
 import type { HatchetClient } from '../hatchet.js'
 import { claimPendingRows, markPublished, recordPublishFailure, releaseClaims } from '../outbox/outboxRepository.js'

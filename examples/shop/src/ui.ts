@@ -5,14 +5,14 @@ import nodeProcess from 'node:process'
 import type { Pool } from 'pg'
 import { readConfig } from './config.js'
 import { createPool } from './db/pool.js'
-import { createShopQtaxis } from './qtaxis.js'
+import { createShopKyu } from './kyu.js'
 import { describeError, exitAfterLog, log } from './log.js'
 import { buildSubscriptions } from './subscriptions.js'
 import { describeBusTopology } from './ui/busTopology.js'
 import { handleUiRequest } from './ui/handleRequest.js'
 import { readWebResponse } from './ui/serveWeb.js'
 
-// The engine's own dashboard, not one Qtaxis ships (see infra/hatchet/compose.yaml).
+// The engine's own dashboard, not one Kyu ships (see infra/hatchet/compose.yaml).
 const DASHBOARD_URL = 'http://localhost:8888'
 
 // ui.js runs from dist/, so this is dist/web — vite's build.outDir.
@@ -44,15 +44,15 @@ function onShutdownSignal(server: http.Server, pool: Pool): void {
 async function main(): Promise<void> {
   const config = readConfig()
   const pool = createPool(config.databaseUrl)
-  const qtaxis = createShopQtaxis(config)
+  const kyu = createShopKyu(config)
   // Built once from the same registry the worker uses, so the diagram at
   // /bus can never name a subscription the worker does not run.
-  const topology = describeBusTopology(buildSubscriptions(qtaxis, pool, config))
+  const topology = describeBusTopology(buildSubscriptions(kyu, pool, config))
 
   // dist/web/index.html missing (the build was skipped) is a hint, not a
   // reason to refuse to serve the JSON and POST routes.
   await fs.access(path.join(WEB_ROOT, 'index.html')).catch(() => {
-    log('ui', 'web-missing', { root: WEB_ROOT, hint: 'run `pnpm --filter @qtaxis/shop build`' })
+    log('ui', 'web-missing', { root: WEB_ROOT, hint: 'run `pnpm --filter @kyuworks/shop build`' })
   })
 
   const server = http.createServer((req, res) => {
@@ -61,7 +61,7 @@ async function main(): Promise<void> {
         handleUiRequest(
           {
             pool,
-            qtaxis,
+            kyu,
             dashboardUrl: DASHBOARD_URL,
             topology,
             readWeb: (method, url) => readWebResponse(WEB_ROOT, method, url),

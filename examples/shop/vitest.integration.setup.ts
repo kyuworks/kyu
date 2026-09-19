@@ -1,4 +1,4 @@
-import { MIGRATIONS_DIRECTORY } from '@qtaxis/sdk'
+import { MIGRATIONS_DIRECTORY } from '@kyuworks/sdk'
 import { Client } from 'pg'
 import { MissingConfigError, readConfig } from './src/config.js'
 import { APP_MIGRATIONS_DIRECTORY, applyPending, ensureDatabase } from './src/db/migrate.js'
@@ -10,8 +10,8 @@ const CLEAN_TABLES = [
   'shop_order',
   'shop_invoice',
   'shop_handler_log',
-  'qtaxis_outbox',
-  'qtaxis_processed',
+  'kyu_outbox',
+  'kyu_processed',
 ]
 
 // Global setup for the integration suite. A missing database is a failure,
@@ -24,10 +24,10 @@ export default async function setup(): Promise<void> {
     if (!(error instanceof MissingConfigError)) throw error
     throw new Error(
       [
-        'QTAXIS_SHOP_DATABASE_URL is not set, so the integration suite has no database.',
+        'KYU_SHOP_DATABASE_URL is not set, so the integration suite has no database.',
         'Start the local stack and point this lane at its own database:',
         '  pnpm hatchet:up',
-        '  export QTAXIS_SHOP_DATABASE_URL="postgresql://hatchet:hatchet@localhost:15432/qtaxis_shop_pr3"',
+        '  export KYU_SHOP_DATABASE_URL="postgresql://hatchet:hatchet@localhost:15432/kyu_shop_pr3"',
       ].join('\n'),
       { cause: error },
     )

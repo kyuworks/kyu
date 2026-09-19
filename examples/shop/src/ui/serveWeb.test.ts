@@ -12,7 +12,7 @@ let root: string
 let stolenFile: string
 
 beforeEach(async () => {
-  parent = await mkdtemp(path.join(tmpdir(), 'qtaxis-serve-web-'))
+  parent = await mkdtemp(path.join(tmpdir(), 'kyu-serve-web-'))
   root = path.join(parent, 'web')
   await mkdir(root)
   await writeFile(path.join(root, 'index.html'), '<!doctype html><title>shell</title>')

@@ -10,7 +10,7 @@ export {
   messageNameSchema,
   parseEnvelope,
   uuidv7,
-} from '@qtaxis/schemas'
+} from '@kyuworks/schemas'
 export type {
   CreateEnvelopeOptions,
   Envelope,
@@ -24,12 +24,12 @@ export type {
   MessageKind,
   MessageSchema,
   Unparsed,
-} from '@qtaxis/schemas'
+} from '@kyuworks/schemas'
 export { SDK_VERSION } from './version.js'
 export { MIGRATIONS_DIRECTORY } from './migrations.js'
 
-export { createQtaxis } from './createQtaxis.js'
-export type { CreateQtaxisOptions, Qtaxis, QtaxisRelayOptions } from './createQtaxis.js'
+export { createKyu } from './createKyu.js'
+export type { CreateKyuOptions, Kyu, KyuRelayOptions } from './createKyu.js'
 
 export type { Queryable, QueryParam, QueryRows } from './db/queryable.js'
 
@@ -64,7 +64,7 @@ export {
   EnvelopeRejectedError,
   MessageDataError,
   MessageDefinitionError,
-  QtaxisError,
+  KyuError,
 } from './errors.js'
 export type { EnvelopeOptionIssue, MessageDataIssue } from './errors.js'
 
@@ -84,8 +84,8 @@ export type { DurableHandlerContext, DurableOptions, WaitForOptions, WaitForResu
 
 // readRunOutcomes/toRunOutcome are not exported: their RunsReader parameter
 // type is derived from HatchetClient and not exported either, so a consumer
-// could not name it. Reach this through qtaxis.runs.forEnvelope instead.
-export type { QtaxisRuns, ReadRunOutcomesOptions, RunOutcome, RunStatus } from './consume/runOutcomes.js'
+// could not name it. Reach this through kyu.runs.forEnvelope instead.
+export type { KyuRuns, ReadRunOutcomesOptions, RunOutcome, RunStatus } from './consume/runOutcomes.js'
 
 export { createWorker } from './consume/worker.js'
-export type { CreateWorkerOptions, QtaxisWorker } from './consume/worker.js'
+export type { CreateWorkerOptions, KyuWorker } from './consume/worker.js'

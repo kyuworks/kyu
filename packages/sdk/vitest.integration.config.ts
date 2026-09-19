@@ -5,7 +5,7 @@ import { defineConfig } from 'vitest/config'
 // Every suite must fail loudly, never skip, when the stack is missing.
 export default defineConfig({
   resolve: {
-    alias: { '@qtaxis/schemas': path.resolve(import.meta.dirname, '../schemas/src/index.ts') },
+    alias: { '@kyuworks/schemas': path.resolve(import.meta.dirname, '../schemas/src/index.ts') },
   },
   test: {
     globalSetup: ['./vitest.integration.setup.ts'],

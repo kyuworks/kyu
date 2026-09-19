@@ -1,4 +1,4 @@
-import type { Subscription } from '@qtaxis/sdk'
+import type { Subscription } from '@kyuworks/sdk'
 import {
   WATCH_SHIPPING_COMPLETED,
   WATCH_SHIPPING_NAME,
@@ -6,7 +6,7 @@ import {
   WATCH_SHIPPING_WAITING,
 } from '../handlers/watchShipping.js'
 import { orderShipped } from '../messages.js'
-import { SHOP_SOURCE } from '../qtaxis.js'
+import { SHOP_SOURCE } from '../kyu.js'
 
 /** One way a subscription can finish, under the handler name it writes to shop_handler_log. */
 export interface TopologyDoneOutcome {

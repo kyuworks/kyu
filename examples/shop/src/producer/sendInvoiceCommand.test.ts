@@ -1,5 +1,5 @@
-import type { Qtaxis, Queryable, Unparsed } from '@qtaxis/sdk'
-import { createEnvelope } from '@qtaxis/sdk'
+import type { Kyu, Queryable, Unparsed } from '@kyuworks/sdk'
+import { createEnvelope } from '@kyuworks/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
 import { OrderNotFoundError, sendInvoiceCommand } from './sendInvoiceCommand.js'
@@ -41,14 +41,14 @@ function fakePool(client: PoolClient): Pool {
   return stub as Pool
 }
 
-function fakeQtaxis(events: string[]): Qtaxis {
-  const publish: Qtaxis['publish'] = (tx: Queryable, definition, data, options) => {
+function fakeKyu(events: string[]): Kyu {
+  const publish: Kyu['publish'] = (tx: Queryable, definition, data, options) => {
     const name: string = definition.name
     events.push(`publish ${name}`)
     return Promise.resolve(createEnvelope(definition, data, { tenantId: options.tenantId, source: 'test' }))
   }
-  const stub: Pick<Qtaxis, 'publish'> = { publish }
-  return stub as Qtaxis
+  const stub: Pick<Kyu, 'publish'> = { publish }
+  return stub as Kyu
 }
 
 const input = {
@@ -62,9 +62,9 @@ describe('sendInvoiceCommand', () => {
     const events: string[] = []
     const client = fakeClient(events)
     const pool = fakePool(client)
-    const qtaxis = fakeQtaxis(events)
+    const kyu = fakeKyu(events)
 
-    const sent = await sendInvoiceCommand(pool, qtaxis, input)
+    const sent = await sendInvoiceCommand(pool, kyu, input)
 
     expect(sent.invoiceId).toBe(input.invoiceId)
     expect(sent.envelopeId).toEqual(expect.any(String))
@@ -88,9 +88,9 @@ describe('sendInvoiceCommand', () => {
     const responses = new Map<string, FakeQueryResponse>([[ORDER_EXISTS_PREFIX, { rowCount: 0 }]])
     const client = fakeClient(events, responses)
     const pool = fakePool(client)
-    const qtaxis = fakeQtaxis(events)
+    const kyu = fakeKyu(events)
 
-    await expect(sendInvoiceCommand(pool, qtaxis, input)).rejects.toThrow(OrderNotFoundError)
+    await expect(sendInvoiceCommand(pool, kyu, input)).rejects.toThrow(OrderNotFoundError)
 
     expect(events).toEqual([
       'BEGIN',

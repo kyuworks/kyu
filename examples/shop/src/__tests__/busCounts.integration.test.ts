@@ -1,14 +1,14 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import path from 'node:path'
-import type { Qtaxis } from '@qtaxis/sdk'
-import { uuidv7 } from '@qtaxis/sdk'
+import type { Kyu } from '@kyuworks/sdk'
+import { uuidv7 } from '@kyuworks/sdk'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { ShopConfig } from '../config.js'
 import { readConfig } from '../config.js'
 import { createPool, withTransaction } from '../db/pool.js'
 import { sendInvoice } from '../messages.js'
-import { createShopQtaxis } from '../qtaxis.js'
+import { createShopKyu } from '../kyu.js'
 import { placeOrder } from '../producer/placeOrder.js'
 import { shipOrder } from '../producer/shipOrder.js'
 import { buildSubscriptions } from '../subscriptions.js'
@@ -20,7 +20,7 @@ import { spawnProcess, stopAllSpawnedProcesses } from './processes.js'
 import type { SpawnedProcess } from './processes.js'
 
 // Drives the relay and worker as real child processes against the local
-// engine and reads counts straight off the pool plus one qtaxis.runs.forEnvelope
+// engine and reads counts straight off the pool plus one kyu.runs.forEnvelope
 // call per window envelope, proving readBusCounts's queries and engine fan-out
 // against real rows, not fakes. The database is shared across every
 // integration file in this suite, so every assertion below is a delta from a
@@ -31,13 +31,13 @@ const namespace = `bc${randomBytes(3).toString('hex')}_`
 
 let config: ShopConfig
 let pool: Pool
-let qtaxis: Qtaxis
+let kyu: Kyu
 let topology: BusTopology
 let relay: SpawnedProcess
 let worker: SpawnedProcess
 
 function childEnv(): NodeJS.ProcessEnv {
-  return { ...process.env, QTAXIS_SHOP_DATABASE_URL: config.databaseUrl, QTAXIS_SHOP_NAMESPACE: namespace }
+  return { ...process.env, KYU_SHOP_DATABASE_URL: config.databaseUrl, KYU_SHOP_NAMESPACE: namespace }
 }
 
 async function waitUntil(
@@ -55,7 +55,7 @@ async function waitUntil(
 }
 
 function readCounts(): Promise<BusCounts> {
-  return readBusCounts(pool, qtaxis.runs, topology)
+  return readBusCounts(pool, kyu.runs, topology)
 }
 
 const EMPTY_SUBSCRIPTION_COUNTS: Omit<SubscriptionRunCounts, 'name'> = {
@@ -84,8 +84,8 @@ beforeAll(async () => {
   const base = readConfig()
   config = { ...base, namespace }
   pool = createPool(config.databaseUrl)
-  qtaxis = createShopQtaxis(config)
-  topology = describeBusTopology(buildSubscriptions(qtaxis, pool, config))
+  kyu = createShopKyu(config)
+  topology = describeBusTopology(buildSubscriptions(kyu, pool, config))
 
   relay = spawnProcess(RELAY_SCRIPT, childEnv())
   worker = spawnProcess(WORKER_SCRIPT, childEnv())
@@ -104,7 +104,7 @@ describe('readBusCounts: against the local engine', () => {
     const baseline = await readCounts()
 
     const tenantId = randomUUID()
-    const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
+    const placed = await placeOrder(pool, kyu, { tenantId, customerId: randomUUID() })
 
     let afterPlace: BusCounts = baseline
     await waitUntil(
@@ -128,7 +128,7 @@ describe('readBusCounts: against the local engine', () => {
     // once the relay has pushed them — this test never stops the relay.
     expect(afterPlace.outbox.shipped).toBe(baseline.outbox.shipped + 2)
 
-    await shipOrder(pool, qtaxis, { tenantId, orderId: placed.orderId, carrier: 'ups' })
+    await shipOrder(pool, kyu, { tenantId, orderId: placed.orderId, carrier: 'ups' })
 
     let afterShip: BusCounts = afterPlace
     await waitUntil(
@@ -153,7 +153,7 @@ describe('readBusCounts: against the local engine', () => {
 
     const baseline = await readCounts()
     const tenantId = randomUUID()
-    const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
+    const placed = await placeOrder(pool, kyu, { tenantId, customerId: randomUUID() })
 
     // A failing assertion below must not leave the relay dead for the rest of
     // this file — every later test would then burn a 60s waitUntil timeout.
@@ -196,7 +196,7 @@ describe('readBusCounts: against the local engine', () => {
 
     // Ship the order so its watch-shipping run does not stay parked past this
     // test — a parked run makes afterAll's stop() wait per eviction ack.
-    await shipOrder(pool, qtaxis, { tenantId, orderId: placed.orderId, carrier: 'ups' })
+    await shipOrder(pool, kyu, { tenantId, orderId: placed.orderId, carrier: 'ups' })
     await waitUntil(
       async () => {
         const current = await readCounts()
@@ -215,7 +215,7 @@ describe('readBusCounts: against the local engine', () => {
   it('reports watch-shipping parked while the order is unshipped, then shipped once it ships', async () => {
     const baseline = await readCounts()
     const tenantId = randomUUID()
-    const placed = await placeOrder(pool, qtaxis, { tenantId, customerId: randomUUID() })
+    const placed = await placeOrder(pool, kyu, { tenantId, customerId: randomUUID() })
 
     await waitUntil(
       async () => parkedCount(await readCounts(), 'watch-shipping') === parkedCount(baseline, 'watch-shipping') + 1,
@@ -223,7 +223,7 @@ describe('readBusCounts: against the local engine', () => {
       () => 'watch-shipping never parked after placeOrder',
     )
 
-    await shipOrder(pool, qtaxis, { tenantId, orderId: placed.orderId, carrier: 'fedex' })
+    await shipOrder(pool, kyu, { tenantId, orderId: placed.orderId, carrier: 'fedex' })
 
     await waitUntil(
       async () => {
@@ -248,7 +248,7 @@ describe('readBusCounts: against the local engine', () => {
     const missingInvoiceId = uuidv7()
 
     await withTransaction(pool, (tx) =>
-      qtaxis.publish(tx, sendInvoice, { orderId, invoiceId: missingInvoiceId }, { tenantId }),
+      kyu.publish(tx, sendInvoice, { orderId, invoiceId: missingInvoiceId }, { tenantId }),
     )
 
     await waitUntil(
