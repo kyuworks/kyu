@@ -67,10 +67,11 @@ describe('ResendInvoiceAction', () => {
     expect(markup).toContain('Sends the invoice command for an id with no row')
   })
 
-  it('marks its status paragraph aria-live="polite"', () => {
+  it('marks its status paragraph aria-live="polite" and hides it while empty, so an idle card carries no dead gap', () => {
     const markup = renderToStaticMarkup(<ResendInvoiceAction orderId="order-1" />)
 
     expect(markup).toMatch(/<p[^>]*aria-live="polite"/)
+    expect(markup).toContain('empty:hidden')
   })
 })
 
@@ -132,5 +133,6 @@ describe('OrdersPage', () => {
     const markup = renderToStaticMarkup(<OrdersPage dashboardUrl="" />)
 
     expect(markup).toMatch(/<p[^>]*aria-live="polite"/)
+    expect(markup).toContain('empty:hidden')
   })
 })

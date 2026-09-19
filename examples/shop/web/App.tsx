@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useState } from 'react'
+import { AppShellView } from './components/AppShell'
 import { describeFetchFailure } from './lib/fetchJson'
 import { parseUiConfig } from './lib/uiConfig'
 import { cartReducer, readStoredCart, writeStoredCart } from './lib/cart'
@@ -10,21 +11,6 @@ import { CheckoutPage } from './pages/CheckoutPage'
 import { OrdersPage } from './pages/OrdersPage'
 import { ShopPage } from './pages/ShopPage'
 import { WarehousePage } from './pages/WarehousePage'
-
-interface NavLink {
-  href: string
-  label: string
-}
-
-// One entry per page. Adding one here also means adding its path to
-// src/ui/serveWeb.ts's APP_ROUTES — nothing ties the two lists together.
-const NAV_LINKS: readonly NavLink[] = [
-  { href: '/', label: 'Shop' },
-  { href: '/checkout', label: 'Checkout' },
-  { href: '/orders', label: 'Orders' },
-  { href: '/warehouse', label: 'Warehouse' },
-  { href: '/bus', label: 'Bus' },
-]
 
 export function App() {
   // Empty until /ui.json answers: no dashboard link rather than a guessed one.
@@ -122,32 +108,9 @@ export function App() {
   }
 
   return (
-    <>
-      <header className="app-header">
-        <div className="app-header-inner">
-          <p className="app-title">Qtaxis shop</p>
-          <nav className="app-nav">
-            {NAV_LINKS.map((link) => (
-              <a key={link.href} href={link.href} aria-current={pathname === link.href ? 'page' : undefined}>
-                {link.label}
-              </a>
-            ))}
-            {cartCount > 0 && (
-              <span
-                className="cart-badge"
-                role="status"
-                aria-label={`${cartCount} item${cartCount === 1 ? '' : 's'} in your order`}
-              >
-                {cartCount}
-              </span>
-            )}
-          </nav>
-        </div>
-      </header>
-      <main className="app-main">
-        <p className="status">{statusMessage}</p>
-        {renderPage()}
-      </main>
-    </>
+    <AppShellView pathname={pathname} cartCount={cartCount}>
+      <p className="status">{statusMessage}</p>
+      {renderPage()}
+    </AppShellView>
   )
 }

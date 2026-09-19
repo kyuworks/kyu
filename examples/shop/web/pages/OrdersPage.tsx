@@ -41,7 +41,7 @@ export function ResendInvoiceActionView({ phase, onSubmit }: ResendInvoiceAction
       <p
         data-tone={tone}
         aria-live="polite"
-        className="font-mono text-sm data-[tone=ok]:text-success data-[tone=error]:text-danger"
+        className="empty:hidden font-mono text-sm data-[tone=ok]:text-success data-[tone=error]:text-danger"
       >
         {sent ? 'Sent, check the bus page for the failed run.' : phase.kind === 'failed' ? phase.error : ''}
       </p>

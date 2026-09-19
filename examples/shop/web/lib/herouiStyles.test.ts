@@ -33,40 +33,67 @@ function namedImportsFrom(source: string): string[] {
     const braceClose = source.lastIndexOf('}', markerStart)
     const braceOpen = source.lastIndexOf('{', braceClose)
     if (braceOpen === -1 || braceClose === -1) continue
+    const importStart = source.lastIndexOf('import', braceOpen)
+    // "import type { … }" names no runtime component, so it needs no stylesheet.
+    if (source.slice(importStart + 'import'.length, braceOpen).trim() === 'type') continue
     for (const raw of source.slice(braceOpen + 1, braceClose).split(',')) {
-      const name = (raw.split(' as ')[0] ?? '').trim()
+      // A mixed import can type one specifier at a time ("{ type X, Y }"); strip that prefix too.
+      const name = (raw.split(' as ')[0] ?? '').trim().replace(/^type\s+/, '')
       if (name !== '') names.push(name)
     }
   }
 }
 
 // One entry per @heroui/react export family this app uses, to the component
-// stylesheet web/theme.css must import for it. An unmapped import name
+// stylesheet(s) web/theme.css must import for it. An unmapped import name
 // throws so a newly-used HeroUI component cannot ship silently unstyled —
 // the failure that let a bare <Chip> render as plain text with no CSS.
-const HEROUI_STYLESHEET_BY_PREFIX: readonly (readonly [string, string])[] = [
-  ['Card', 'card.css'],
-  ['Alert', 'alert.css'],
-  ['NumberField', 'number-field.css'],
-  ['TextField', 'textfield.css'],
-  ['Chip', 'chip.css'],
-  ['Button', 'button.css'],
-  ['Separator', 'separator.css'],
-  ['Link', 'link.css'],
-  ['Input', 'input.css'],
-  ['Label', 'label.css'],
+// A component that composes shared markup (NumberField renders through the
+// same input/label structure Input and TextField do) lists every stylesheet
+// it depends on, not just its own, so dropping a shared one goes red here.
+const HEROUI_STYLESHEETS_BY_PREFIX: readonly (readonly [string, readonly string[]])[] = [
+  ['Card', ['card.css']],
+  ['Alert', ['alert.css']],
+  ['NumberField', ['number-field.css', 'input.css', 'label.css']],
+  ['TextField', ['textfield.css']],
+  ['Chip', ['chip.css']],
+  ['Button', ['button.css']],
+  ['Separator', ['separator.css']],
+  ['Link', ['link.css']],
+  ['Input', ['input.css']],
+  ['Label', ['label.css']],
 ]
 
-function stylesheetFor(importName: string): string {
-  const entry = HEROUI_STYLESHEET_BY_PREFIX.find(([prefix]) => importName.startsWith(prefix))
+function stylesheetsFor(importName: string): readonly string[] {
+  const entry = HEROUI_STYLESHEETS_BY_PREFIX.find(([prefix]) => importName.startsWith(prefix))
   if (entry === undefined) {
     throw new Error(
       `web/lib/herouiStyles.test.ts has no stylesheet mapping for the HeroUI import "${importName}". ` +
-        'Add one, and import its stylesheet in web/theme.css.',
+        'Add one, and import its stylesheet(s) in web/theme.css.',
     )
   }
   return entry[1]
 }
+
+describe('namedImportsFrom', () => {
+  it('ignores a type-only import, which names no runtime component to style', () => {
+    const source = "import type { ButtonProps } from '@heroui/react'\n"
+
+    expect(namedImportsFrom(source)).toEqual([])
+  })
+
+  it('still collects a value import', () => {
+    const source = "import { Alert, Button } from '@heroui/react'\n"
+
+    expect(namedImportsFrom(source)).toEqual(['Alert', 'Button'])
+  })
+
+  it('strips a leading "type " from a mixed import, so an unmapped name is never reported as "type X"', () => {
+    const source = "import { type AlertProps, Button } from '@heroui/react'\n"
+
+    expect(namedImportsFrom(source)).toEqual(['AlertProps', 'Button'])
+  })
+})
 
 describe('heroui component stylesheets', () => {
   it('imports a stylesheet in theme.css for every HeroUI component web/**/*.tsx uses', () => {
@@ -75,7 +102,7 @@ describe('heroui component stylesheets', () => {
 
     for (const file of listTsxFiles(WEB_DIR)) {
       for (const name of namedImportsFrom(readFileSync(file, 'utf8'))) {
-        usedStylesheets.add(stylesheetFor(name))
+        for (const stylesheet of stylesheetsFor(name)) usedStylesheets.add(stylesheet)
       }
     }
 

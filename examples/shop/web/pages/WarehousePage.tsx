@@ -1,3 +1,4 @@
+import { Card, CardContent, CardHeader, CardTitle, Link } from '@heroui/react'
 import { formatCents } from '../lib/cart'
 import type { ShopOrder, ShopOrderLine } from '../lib/shopDocuments'
 import { shortOrderId } from '../lib/shopDocuments'
@@ -30,15 +31,19 @@ export interface WarehouseRowProps {
 /** One unshipped order: its id, its lines in one line of text, the total, and the ship action. */
 export function WarehouseRow({ order }: WarehouseRowProps) {
   return (
-    <li className="card warehouse-row">
-      <div className="warehouse-row-header">
-        <h2>
-          Order <code>{shortOrderId(order.id)}</code>
-        </h2>
-        <p className="order-total">{formatCents(order.totalCents)}</p>
-      </div>
-      <p className="muted">{summarizeLines(order.lines)}</p>
-      <ShipForm orderId={order.id} />
+    <li>
+      <Card>
+        <CardHeader className="flex-row items-baseline justify-between gap-4">
+          <CardTitle render={(props) => <h2 {...props} />}>
+            Order <code>{shortOrderId(order.id)}</code>
+          </CardTitle>
+          <p className="text-sm text-muted">{formatCents(order.totalCents)}</p>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          <p className="text-muted">{summarizeLines(order.lines)}</p>
+          <ShipForm orderId={order.id} />
+        </CardContent>
+      </Card>
     </li>
   )
 }
@@ -50,7 +55,7 @@ export interface WarehouseListProps {
 /** The unshipped orders, oldest first. */
 export function WarehouseList({ orders }: WarehouseListProps) {
   return (
-    <ul className="warehouse-list" role="list">
+    <ul className="m-0 mt-4 flex list-none flex-col gap-4 p-0" role="list">
       {orders.map((order) => (
         <WarehouseRow key={order.id} order={order} />
       ))}
@@ -64,25 +69,27 @@ export function WarehousePage({ dashboardUrl }: WarehousePageProps) {
   const unshipped = orders !== undefined ? unshippedOldestFirst(orders) : undefined
 
   return (
-    <div className="card">
-      <h1>Warehouse</h1>
-      <p>
-        <a href="/orders">See all orders</a>
-        {dashboardUrl !== '' && (
-          <>
-            {' '}
-            &middot;{' '}
-            <a href={dashboardUrl} target="_blank" rel="noreferrer">
-              Hatchet dashboard
-            </a>
-          </>
-        )}
-      </p>
-      <p className="status" aria-live="polite">
-        {error ?? ''}
-      </p>
-      {unshipped !== undefined && unshipped.length === 0 && <p className="muted">Nothing to ship.</p>}
-      {unshipped !== undefined && unshipped.length > 0 && <WarehouseList orders={unshipped} />}
-    </div>
+    <Card>
+      <CardContent className="flex flex-col gap-2">
+        <h1>Warehouse</h1>
+        <p>
+          <Link href="/orders">See all orders</Link>
+          {dashboardUrl !== '' && (
+            <>
+              {' '}
+              &middot;{' '}
+              <Link href={dashboardUrl} target="_blank" rel="noreferrer">
+                Hatchet dashboard
+              </Link>
+            </>
+          )}
+        </p>
+        <p aria-live="polite" className="empty:hidden font-mono text-sm text-danger">
+          {error ?? ''}
+        </p>
+        {unshipped !== undefined && unshipped.length === 0 && <p className="text-muted">Nothing to ship.</p>}
+        {unshipped !== undefined && unshipped.length > 0 && <WarehouseList orders={unshipped} />}
+      </CardContent>
+    </Card>
   )
 }

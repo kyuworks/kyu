@@ -2,7 +2,7 @@
    inherit everything and strips their UA defaults. Restored here, unlayered, for the pages
    this PR series has not reached yet — an unlayered rule outranks every @layer, so this wins
    over both preflight and @layer utilities regardless of import order. :where(...) keeps the
-   specificity at zero, like the UA styles it replaces, so .app-title, .status and every other
+   specificity at zero, like the UA styles it replaces, so .status and every other
    class rule below still wins without a fight; :not([data-slot]) keeps it off HeroUI's own
    <Link> and <CardTitle>, which render <a>/<h3> too. Deleted page by page as #81 restyles them. */
 :where(a:not([data-slot])) {
@@ -38,50 +38,6 @@
   margin: 0;
 }
 
-.app-header {
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
-}
-
-.app-header-inner {
-  max-width: 64rem;
-  margin: 0 auto;
-  padding: calc(var(--space) * 2) calc(var(--space) * 2);
-  display: flex;
-  align-items: center;
-  gap: calc(var(--space) * 3);
-}
-
-.app-title {
-  font-weight: 600;
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.app-nav {
-  display: flex;
-  gap: calc(var(--space) * 2);
-  flex: 1;
-}
-
-.app-nav a {
-  text-decoration: none;
-  color: var(--muted);
-  padding: calc(var(--space) / 2) 0;
-  border-bottom: 2px solid transparent;
-}
-
-.app-nav a[aria-current='page'] {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-}
-
-.app-main {
-  max-width: 64rem;
-  margin: 0 auto;
-  padding: calc(var(--space) * 3) calc(var(--space) * 2);
-}
-
 /* :not([data-slot]) keeps this off HeroUI's own <Card>, which also carries the "card" class —
    unlayered rules beat every @layer, so without the guard this would clobber it outright. */
 .card:not([data-slot]) {
@@ -89,23 +45,6 @@
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: calc(var(--space) * 2);
-}
-
-/* :not([data-slot]) keeps this off HeroUI's own <Button> — unlayered rules beat every
-   @layer, so without the guard this would clobber HeroUI's button styling outright. */
-button:not([data-slot]) {
-  font: inherit;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--accent-text);
-  border-radius: var(--radius);
-  padding: calc(var(--space) / 1.5) calc(var(--space) * 1.5);
-  cursor: pointer;
-}
-
-button:not([data-slot]):disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .status {
@@ -116,14 +55,6 @@ button:not([data-slot]):disabled {
 
 .status:empty {
   display: none;
-}
-
-.status-ok {
-  color: var(--ok);
-}
-
-.muted {
-  color: var(--muted);
 }
 
 .bus-diagram {
@@ -234,56 +165,4 @@ button:not([data-slot]):disabled {
 .bus-legend dd {
   margin: 2px 0 0;
   color: var(--muted);
-}
-
-.cart-badge {
-  display: inline-block;
-  margin-left: calc(var(--space) / 2);
-  padding: 0 calc(var(--space) / 2);
-  border-radius: var(--radius);
-  background: var(--accent);
-  color: var(--accent-text);
-  font-size: 0.75rem;
-  line-height: 1.4;
-}
-
-.warehouse-list {
-  list-style: none;
-  margin: calc(var(--space) * 2) 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: calc(var(--space) * 2);
-}
-
-.warehouse-row-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: calc(var(--space) * 2);
-}
-
-.ship-form {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--space) * 1.5);
-  margin-top: calc(var(--space) * 1.5);
-}
-
-.ship-form label {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--space) / 2);
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-.ship-form input {
-  width: 8rem;
-  font: inherit;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: calc(var(--space) / 3) calc(var(--space) / 2);
-  background: var(--surface);
-  color: var(--text);
 }

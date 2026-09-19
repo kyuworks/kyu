@@ -67,6 +67,7 @@ describe('CheckoutPage', () => {
 
     expect(markup).toContain('alert--danger')
     expect(markup).toContain('data-slot="alert-title"')
+    expect(markup).toContain('role="alert"')
   })
 })
 
