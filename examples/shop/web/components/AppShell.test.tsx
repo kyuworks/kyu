@@ -14,6 +14,20 @@ function anchorTagFor(markup: string, href: string): string {
   return markup.slice(tagStart, tagEnd + 1)
 }
 
+// The nav already has its own "Checkout" link to /checkout, so the badge
+// can't be found by href alone. role="status" is unique to the badge's
+// count element, so this anchors on that instead and walks out to its
+// enclosing <a>, then in to that anchor's closing tag.
+function cartBadgeAnchor(markup: string): string {
+  const statusIndex = markup.indexOf('role="status"')
+  if (statusIndex === -1) throw new Error('no role="status" element found in markup')
+  const tagStart = markup.lastIndexOf('<a ', statusIndex)
+  if (tagStart === -1) throw new Error('the role="status" element is not inside an <a>')
+  const closeIndex = markup.indexOf('</a>', statusIndex)
+  if (closeIndex === -1) throw new Error('no closing </a> found after role="status"')
+  return markup.slice(tagStart, closeIndex + '</a>'.length)
+}
+
 describe('AppShellView', () => {
   it('marks only the link matching pathname aria-current="page"', () => {
     const markup = renderToStaticMarkup(
@@ -32,7 +46,7 @@ describe('AppShellView', () => {
     }
   })
 
-  it('gives the cart badge role="status" and an aria-label naming the exact count, pluralized', () => {
+  it('gives the cart badge role="status" and an aria-label naming the exact count, pluralized, agreeing with the visible count', () => {
     const one = renderToStaticMarkup(
       <AppShellView pathname="/" cartCount={1}>
         <p>content</p>
@@ -40,7 +54,7 @@ describe('AppShellView', () => {
     )
     expect(one).toContain('role="status"')
     expect(one).toContain('aria-label="1 item in your order"')
-    expect(one).toContain('>1<')
+    expect(cartBadgeAnchor(one)).toContain('Cart 1')
 
     const three = renderToStaticMarkup(
       <AppShellView pathname="/" cartCount={3}>
@@ -48,7 +62,30 @@ describe('AppShellView', () => {
       </AppShellView>,
     )
     expect(three).toContain('aria-label="3 items in your order"')
-    expect(three).toContain('>3<')
+    expect(cartBadgeAnchor(three)).toContain('Cart 3')
+  })
+
+  it('shows the shopping bag icon and the visible word "Cart" beside the count', () => {
+    const markup = renderToStaticMarkup(
+      <AppShellView pathname="/" cartCount={2}>
+        <p>content</p>
+      </AppShellView>,
+    )
+
+    const badge = cartBadgeAnchor(markup)
+    expect(badge).toContain('data-slot="icon"')
+    expect(badge).toContain('aria-hidden="true"')
+    expect(badge).toContain('Cart')
+  })
+
+  it('links the cart badge to /checkout', () => {
+    const markup = renderToStaticMarkup(
+      <AppShellView pathname="/" cartCount={2}>
+        <p>content</p>
+      </AppShellView>,
+    )
+
+    expect(cartBadgeAnchor(markup)).toContain('href="/checkout"')
   })
 
   it('omits the cart badge entirely when the cart is empty', () => {

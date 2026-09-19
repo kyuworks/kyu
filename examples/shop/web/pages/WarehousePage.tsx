@@ -17,11 +17,11 @@ function summarizeLines(lines: readonly ShopOrderLine[]): string {
   return lines.map(summarizeLine).join(', ')
 }
 
-// Reverses rather than re-sorting: assumes its input is already newest
-// first, the order GET /orders.json returns (ORDER BY o.id DESC).
-/** The tenant's orders with no shipped_at yet, oldest first: a worklist, not a shop view. */
-export function unshippedOldestFirst(orders: readonly ShopOrder[]): ShopOrder[] {
-  return orders.filter((order) => order.stage !== 'shipped').reverse()
+// No re-sort: assumes its input is already newest first, the order
+// GET /orders.json returns (ORDER BY o.id DESC).
+/** The tenant's orders with no shipped_at yet, newest first, matching the Orders page. */
+export function unshippedNewestFirst(orders: readonly ShopOrder[]): ShopOrder[] {
+  return orders.filter((order) => order.stage !== 'shipped')
 }
 
 export interface WarehouseRowProps {
@@ -52,7 +52,7 @@ export interface WarehouseListProps {
   orders: readonly ShopOrder[]
 }
 
-/** The unshipped orders, oldest first. */
+/** The unshipped orders, in the order given: WarehousePage passes them newest first. */
 export function WarehouseList({ orders }: WarehouseListProps) {
   return (
     <ul className="m-0 mt-4 flex list-none flex-col gap-4 p-0" role="list">
@@ -63,10 +63,10 @@ export function WarehouseList({ orders }: WarehouseListProps) {
   )
 }
 
-/** The orders with no shipped_at, oldest first: the warehouse's own worklist. */
+/** The orders with no shipped_at, newest first: the warehouse's own worklist. */
 export function WarehousePage({ dashboardUrl }: WarehousePageProps) {
   const { orders, error } = useOrders()
-  const unshipped = orders !== undefined ? unshippedOldestFirst(orders) : undefined
+  const unshipped = orders !== undefined ? unshippedNewestFirst(orders) : undefined
 
   return (
     <Card>
@@ -87,6 +87,7 @@ export function WarehousePage({ dashboardUrl }: WarehousePageProps) {
         <p aria-live="polite" className="empty:hidden font-mono text-sm text-danger">
           {error ?? ''}
         </p>
+        <p className="text-sm text-muted">Newest first.</p>
         {unshipped !== undefined && unshipped.length === 0 && <p className="text-muted">Nothing to ship.</p>}
         {unshipped !== undefined && unshipped.length > 0 && <WarehouseList orders={unshipped} />}
       </CardContent>

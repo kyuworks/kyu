@@ -46,14 +46,17 @@ export function AppShellView({ pathname, cartCount, children }: AppShellViewProp
               </a>
             ))}
             {cartCount > 0 && (
-              <Chip
-                color="default"
-                size="sm"
-                role="status"
-                aria-label={`${cartCount} item${cartCount === 1 ? '' : 's'} in your order`}
-              >
-                {cartCount}
-              </Chip>
+              <a href="/checkout" className="no-underline">
+                <Chip
+                  color="default"
+                  size="sm"
+                  role="status"
+                  aria-label={`${cartCount} item${cartCount === 1 ? '' : 's'} in your order`}
+                >
+                  <ShoppingBagIcon className="size-4" aria-hidden="true" />
+                  Cart {cartCount}
+                </Chip>
+              </a>
             )}
           </nav>
         </div>

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { ShopOrder } from '../lib/shopDocuments'
-import { WarehouseList, WarehousePage, WarehouseRow, unshippedOldestFirst } from './WarehousePage'
+import { WarehouseList, WarehousePage, WarehouseRow, unshippedNewestFirst } from './WarehousePage'
 
 function order(id: string, stage: ShopOrder['stage'], totalCents: number): ShopOrder {
   return {
@@ -15,15 +15,21 @@ function order(id: string, stage: ShopOrder['stage'], totalCents: number): ShopO
 }
 
 describe('WarehousePage', () => {
-  it('lists only the orders that have not shipped, oldest first', () => {
+  it('lists only the orders that have not shipped, newest first', () => {
     const placed = order('order-1', 'placed', 1000)
     const invoiceSent = order('order-2', 'invoice-sent', 2000)
     const shipped = order('order-3', 'shipped', 3000)
     const timedOut = order('order-4', 'timed-out', 4000)
 
-    const result = unshippedOldestFirst([placed, invoiceSent, shipped, timedOut])
+    const result = unshippedNewestFirst([placed, invoiceSent, shipped, timedOut])
 
-    expect(result).toEqual([timedOut, invoiceSent, placed])
+    expect(result).toEqual([placed, invoiceSent, timedOut])
+  })
+
+  it('shows "Newest first." above the list', () => {
+    const markup = renderToStaticMarkup(<WarehousePage dashboardUrl="" />)
+
+    expect(markup).toContain('Newest first.')
   })
 
   it('shows no worklist yet before the first orders.json response arrives', () => {
