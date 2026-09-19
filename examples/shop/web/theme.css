@@ -7,26 +7,39 @@
 @import '@heroui/styles/utilities';
 @import '@heroui/styles/variants';
 
-/* Shared component structures first: @heroui/styles/components/index.css says so. */
-@import '@heroui/styles/components/close-button.css' layer(components);
+/* Shared component structures first, then every other group in @heroui/styles/components/index.css's
+   own order (Navigation, Buttons, DataDisplay, Feedback, Forms, Layout), not the order each PR added them.
+   close-button.css and error-message.css are skipped: nothing this app uses (Alert, Button, Card, Chip,
+   Input, TextField, NumberField, Separator, Link, Label) references either — only search-field, tag-group
+   and toast do, and none of those are used here. */
 @import '@heroui/styles/components/description.css' layer(components);
-@import '@heroui/styles/components/error-message.css' layer(components);
 @import '@heroui/styles/components/label.css' layer(components);
+@import '@heroui/styles/components/link.css' layer(components);
+@import '@heroui/styles/components/button.css' layer(components);
 @import '@heroui/styles/components/chip.css' layer(components);
 @import '@heroui/styles/components/alert.css' layer(components);
-@import '@heroui/styles/components/button.css' layer(components);
-@import '@heroui/styles/components/card.css' layer(components);
 @import '@heroui/styles/components/input.css' layer(components);
 @import '@heroui/styles/components/number-field.css' layer(components);
 @import '@heroui/styles/components/textfield.css' layer(components);
+@import '@heroui/styles/components/card.css' layer(components);
 @import '@heroui/styles/components/separator.css' layer(components);
-@import '@heroui/styles/components/link.css' layer(components);
+
+/* .link's own no-underline default (link.css, this same layer) only shows an underline on
+   hover/press/focus. This must be in @layer components, after link.css's @import: a rule in
+   @layer base always loses to one in @layer components regardless of specificity or source
+   order, because base comes first in the top-of-file @layer statement — an earlier attempt at
+   this in @layer base was silently overridden by .link's own rule for exactly that reason. */
+@layer components {
+  [data-slot='link'] {
+    text-decoration-line: underline;
+  }
+}
 
 @source './';
 @source not './**/*.test.tsx';
 
 @layer base {
-  /* Our palette over HeroUI's. Same values as the old styles.css, in oklch. */
+  /* Our palette over HeroUI's, in oklch. */
   :root,
   [data-theme='light'] {
     --background: oklch(0.9878 0.0013 106.42);
@@ -42,6 +55,8 @@
     --success-foreground: oklch(1 0 0);
     --danger: oklch(0.4913 0.1452 29.97);
     --radius: 0.375rem;
+    /* HeroUI's own default is var(--foreground): an in-page link would read as plain body text. */
+    --link: var(--accent);
   }
 
   .dark,
@@ -59,18 +74,7 @@
     --success-foreground: oklch(0.2407 0.0227 171.42);
     --danger: oklch(0.7097 0.1155 31.43);
     --radius: 0.375rem;
-  }
-
-  /* Bridges the rules still left in styles.css. Deleted with styles.css in the last PR of #81. */
-  :root {
-    --bg: var(--background);
-    --raised: var(--surface-secondary);
-    --text: var(--foreground);
-    --line: var(--border);
-    /* The exact old stack, not HeroUI's --font-sans: keeps untouched pages pixel-identical. */
-    --font: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    --mono: var(--font-mono);
-    --space: 8px;
+    --link: var(--accent);
   }
 
   /* HeroUI's base layer sets no page canvas; without this the body stays browser-default in dark. */

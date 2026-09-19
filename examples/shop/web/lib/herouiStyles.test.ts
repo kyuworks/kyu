@@ -75,6 +75,29 @@ function stylesheetsFor(importName: string): readonly string[] {
   return entry[1]
 }
 
+// A shared structure another used stylesheet's own rules @apply into (alert.css, card.css,
+// number-field.css and textfield.css all reference .description), not something any single
+// @heroui/react import name maps to. web/theme.css's own base/themes/utilities/variants
+// imports are not under components/ and never reach importedComponentStylesheets below, so
+// they need no entry here.
+const SHARED_STYLESHEETS: readonly string[] = ['description.css']
+
+const COMPONENT_IMPORT_MARKER = "@import '@heroui/styles/components/"
+
+// Every "components/X.css" filename web/theme.css actually imports, in source order.
+function importedComponentStylesheets(themeCss: string): string[] {
+  const names: string[] = []
+  let searchFrom = 0
+  for (;;) {
+    const markerStart = themeCss.indexOf(COMPONENT_IMPORT_MARKER, searchFrom)
+    if (markerStart === -1) return names
+    const nameStart = markerStart + COMPONENT_IMPORT_MARKER.length
+    const nameEnd = themeCss.indexOf("'", nameStart)
+    names.push(themeCss.slice(nameStart, nameEnd))
+    searchFrom = nameEnd
+  }
+}
+
 describe('namedImportsFrom', () => {
   it('ignores a type-only import, which names no runtime component to style', () => {
     const source = "import type { ButtonProps } from '@heroui/react'\n"
@@ -109,5 +132,22 @@ describe('heroui component stylesheets', () => {
     for (const stylesheet of usedStylesheets) {
       expect(themeCss).toContain(`components/${stylesheet}`)
     }
+  })
+
+  it('imports no component stylesheet that nothing used maps to and SHARED_STYLESHEETS does not allow', () => {
+    const themeCss = readFileSync(join(WEB_DIR, 'theme.css'), 'utf8')
+    const requiredStylesheets = new Set<string>()
+
+    for (const file of listTsxFiles(WEB_DIR)) {
+      for (const name of namedImportsFrom(readFileSync(file, 'utf8'))) {
+        for (const stylesheet of stylesheetsFor(name)) requiredStylesheets.add(stylesheet)
+      }
+    }
+
+    const unexplained = importedComponentStylesheets(themeCss).filter(
+      (stylesheet) => !requiredStylesheets.has(stylesheet) && !SHARED_STYLESHEETS.includes(stylesheet),
+    )
+
+    expect(unexplained).toEqual([])
   })
 })

@@ -113,8 +113,8 @@ export function CheckoutPage({
 
   return (
     <div className="grid gap-6 items-start md:grid-cols-[1fr_18rem]">
-      <div>
-        <h1>Checkout</h1>
+      <div className="flex flex-col gap-4">
+        <h1 className="text-2xl font-bold">Checkout</h1>
         {displayStatus !== '' && (
           <Alert status="danger" role="alert">
             <AlertIndicator />

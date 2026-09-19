@@ -165,7 +165,7 @@ export function OrdersPage({ dashboardUrl }: OrdersPageProps) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-2">
-        <h1>Orders</h1>
+        <h1 className="text-2xl font-bold">Orders</h1>
         <p>
           <Link href="/">Back to the shop</Link>
           {dashboardUrl !== '' && (
