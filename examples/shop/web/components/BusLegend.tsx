@@ -9,9 +9,8 @@ interface LegendEntry {
   description: string
 }
 
-// Reproduced verbatim from the design's legend, one dt/dd pair per entry.
-// Entry 14's number comes from engineWindowLimit so it cannot drift from the
-// server constant it describes; the other thirteen are string literals.
+// This page's own copy; BusLegend.test.tsx pins the wording. Entry 14's
+// number comes from engineWindowLimit so it cannot drift from the server.
 function legendEntries(engineWindowLimit: number): readonly LegendEntry[] {
   return [
     {

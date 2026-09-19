@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { describeFetchFailure } from './lib/fetchJson'
 import { parseUiConfig } from './lib/uiConfig'
 import { BusPage } from './pages/BusPage'
 import { HomePage } from './pages/HomePage'
@@ -8,8 +9,8 @@ interface NavLink {
   label: string
 }
 
-// One entry per page; a click is a full page load, not a client-side
-// route, so this cannot desynchronise from src/ui/serveWeb.ts's APP_ROUTES.
+// One entry per page. Adding one here also means adding its path to
+// src/ui/serveWeb.ts's APP_ROUTES — nothing ties the two lists together.
 const NAV_LINKS: readonly NavLink[] = [
   { href: '/', label: 'Shop' },
   { href: '/bus', label: 'Bus' },
@@ -23,14 +24,18 @@ export function App() {
   useEffect(() => {
     let cancelled = false
     fetch('/ui.json')
-      .then((response) => response.text())
-      .then((body) => {
+      .then((response) => response.text().then((bodyText) => ({ ok: response.ok, status: response.status, bodyText })))
+      .then((outcome) => {
         if (cancelled) return
-        const outcome = parseUiConfig(body)
-        if (outcome.ok) {
-          setDashboardUrl(outcome.config.dashboardUrl)
+        if (!outcome.ok) {
+          setStatusMessage(`ui.json failed: ${describeFetchFailure(outcome.status, outcome.bodyText)}`)
+          return
+        }
+        const parsed = parseUiConfig(outcome.bodyText)
+        if (parsed.ok) {
+          setDashboardUrl(parsed.config.dashboardUrl)
         } else {
-          setStatusMessage(`ui.json failed: ${outcome.error}`)
+          setStatusMessage(`ui.json failed: ${parsed.error}`)
         }
       })
       .catch((error) => {

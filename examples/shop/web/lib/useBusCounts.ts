@@ -1,44 +1,65 @@
 import { useEffect, useRef, useState } from 'react'
 import { parseBusDocument } from './busDocument'
 import type { BusDocument } from './busDocument'
+import { describeFetchFailure } from './fetchJson'
 
 export interface BusCountsState {
   busDocument: BusDocument | undefined
   statusMessage: string
 }
 
-const REFRESH_INTERVAL_MS = 5000
+interface BusState {
+  document: BusDocument | undefined
+  error: string | undefined
+}
 
-/**
- * Fetches /bus.json once on mount, then every 5s. An in-flight guard drops a
- * tick that would overlap a slow request instead of stacking it. A failure
- * never rewrites busDocument — the last good counts stay on screen.
- */
+export interface BusFetchOutcome {
+  ok: boolean
+  status: number
+  bodyText: string
+}
+
+const REFRESH_INTERVAL_MS = 5000
+const EMPTY_STATE: BusState = { document: undefined, error: undefined }
+
+// A good body clears any previous error; a bad one keeps the last good
+// document. Pure and unit-tested — a hook cannot run under renderToStaticMarkup.
+export function nextBusState(previous: BusState, outcome: BusFetchOutcome): BusState {
+  if (!outcome.ok) {
+    return {
+      document: previous.document,
+      error: `bus.json failed: ${describeFetchFailure(outcome.status, outcome.bodyText)}`,
+    }
+  }
+  const parsed = parseBusDocument(outcome.bodyText)
+  if (parsed.ok) return { document: parsed.document, error: undefined }
+  return { document: previous.document, error: `bus.json failed: ${parsed.error}` }
+}
+
+// Each mount resets the in-flight flag and owns its own AbortController —
+// otherwise a StrictMode remount finds the flag stuck from the aborted first mount.
 export function useBusCounts(): BusCountsState {
-  const [busDocument, setBusDocument] = useState<BusDocument | undefined>(undefined)
-  const [statusMessage, setStatusMessage] = useState('')
+  const [state, setState] = useState<BusState>(EMPTY_STATE)
   const fetching = useRef(false)
 
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
+    fetching.current = false
 
     function refresh(): void {
       if (fetching.current) return
       fetching.current = true
-      fetch('/bus.json')
-        .then((response) => response.text())
-        .then((body) => {
-          if (cancelled) return
-          const outcome = parseBusDocument(body)
-          if (outcome.ok) {
-            setBusDocument(outcome.document)
-            setStatusMessage('')
-          } else {
-            setStatusMessage(`bus.json failed: ${outcome.error}`)
-          }
+      fetch('/bus.json', { signal: controller.signal })
+        .then((response) =>
+          response.text().then((bodyText): BusFetchOutcome => ({ ok: response.ok, status: response.status, bodyText })),
+        )
+        .then((outcome) => {
+          setState((previous) => nextBusState(previous, outcome))
         })
         .catch((error) => {
-          if (!cancelled) setStatusMessage(`bus.json failed: ${error instanceof Error ? error.message : String(error)}`)
+          if (controller.signal.aborted) return
+          const message = error instanceof Error ? error.message : String(error)
+          setState((previous) => ({ document: previous.document, error: `bus.json failed: ${message}` }))
         })
         .finally(() => {
           fetching.current = false
@@ -49,10 +70,11 @@ export function useBusCounts(): BusCountsState {
     const interval = setInterval(refresh, REFRESH_INTERVAL_MS)
 
     return () => {
-      cancelled = true
+      controller.abort()
+      fetching.current = false
       clearInterval(interval)
     }
   }, [])
 
-  return { busDocument, statusMessage }
+  return { busDocument: state.document, statusMessage: state.error ?? '' }
 }

@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest'
 import type { BusDocument } from '../lib/busDocument'
 import { BusDiagram } from './BusDiagram'
 
+// Every number below is distinct across the whole fixture, so a swapped pair
+// of fields (e.g. queued and running, or waitingForRelay and shipped) fails
+// a test tying that exact label to that exact value, not just "12 appears
+// somewhere".
 const fixture: BusDocument = {
   topology: {
     producer: { source: 'shop' },
@@ -23,62 +27,85 @@ const fixture: BusDocument = {
     ],
   },
   counts: {
-    producers: [{ source: 'shop', published: 12 }],
-    outbox: { published: 12, waitingForRelay: 2, shipped: 10 },
+    producers: [{ source: 'shop', published: 101 }],
+    outbox: { published: 205, waitingForRelay: 102, shipped: 103 },
     subscriptions: [
-      { name: 'record-order', queued: 0, running: 0, completed: 12, failed: 0, cancelled: 0 },
-      { name: 'audit-order', queued: 0, running: 0, completed: 11, failed: 1, cancelled: 0 },
+      { name: 'record-order', queued: 1, running: 2, completed: 3, failed: 4, cancelled: 5 },
+      { name: 'audit-order', queued: 6, running: 7, completed: 8, failed: 9, cancelled: 10 },
       {
         name: 'watch-shipping',
-        queued: 0,
-        running: 3,
-        completed: 8,
-        failed: 0,
-        cancelled: 0,
-        parked: 2,
+        queued: 11,
+        running: 12,
+        completed: 13,
+        failed: 14,
+        cancelled: 15,
+        parked: 16,
         doneOutcomes: [
-          { label: 'shipped', count: 6 },
-          { label: 'timed out', count: 2 },
+          { label: 'shipped', count: 17 },
+          { label: 'timed out', count: 18 },
         ],
       },
     ],
-    window: { limit: 200, envelopes: 12, engineCalls: 12 },
+    window: { limit: 200, envelopes: 104, engineCalls: 104 },
   },
+}
+
+// Ties a label to its exact value: the two sit in adjacent <span>s, so this
+// fails if the value moves to a different label instead of just vanishing.
+function statRow(label: string, value: number | string): string {
+  return `<span>${label}</span><span>${value}</span>`
+}
+
+function failedRow(value: number): string {
+  return `<span>failed</span><span><strong>${value}</strong> dead letter</span>`
 }
 
 describe('BusDiagram', () => {
   it('draws one box per subscription in the document', () => {
-    const markup = renderToStaticMarkup(<BusDiagram document={fixture} />)
+    const markup = renderToStaticMarkup(<BusDiagram busDocument={fixture} />)
 
     expect(markup).toContain('record-order')
     expect(markup).toContain('audit-order')
     expect(markup).toContain('watch-shipping')
   })
 
-  it('shows the outbox waiting-for-relay and shipped counts', () => {
-    const markup = renderToStaticMarkup(<BusDiagram document={fixture} />)
+  it('ties the producer published count to its label', () => {
+    const markup = renderToStaticMarkup(<BusDiagram busDocument={fixture} />)
 
-    expect(markup).toContain('waiting for relay')
-    expect(markup).toContain('shipped')
+    expect(markup).toContain(statRow('published', 101))
   })
 
-  it('adds an "of those, parked" line for a subscription with a waitingHandler', () => {
-    const markup = renderToStaticMarkup(<BusDiagram document={fixture} />)
+  it('ties the outbox waiting-for-relay and shipped counts to their labels', () => {
+    const markup = renderToStaticMarkup(<BusDiagram busDocument={fixture} />)
 
-    expect(markup).toContain('of those, parked')
+    expect(markup).toContain(statRow('waiting for relay', 102))
+    expect(markup).toContain(statRow('shipped', 103))
   })
 
-  it('adds "of those, <label>" lines for a subscription with doneOutcomes', () => {
-    const markup = renderToStaticMarkup(<BusDiagram document={fixture} />)
+  it('ties one subscription’s queued, running, done, failed and cancelled counts to their labels', () => {
+    const markup = renderToStaticMarkup(<BusDiagram busDocument={fixture} />)
 
-    expect(markup).toContain('of those, shipped')
-    expect(markup).toContain('of those, timed out')
+    expect(markup).toContain(statRow('queued', 1))
+    expect(markup).toContain(statRow('running', 2))
+    expect(markup).toContain(statRow('done', 3))
+    expect(markup).toContain(failedRow(4))
+    expect(markup).toContain(statRow('cancelled', 5))
   })
 
-  it('adds the wake line for a subscription with wakesOn', () => {
-    const markup = renderToStaticMarkup(<BusDiagram document={fixture} />)
+  it('ties watch-shipping’s parked count and both done-outcome counts to their labels', () => {
+    const markup = renderToStaticMarkup(<BusDiagram busDocument={fixture} />)
 
+    expect(markup).toContain(statRow('of those, parked', 16))
+    expect(markup).toContain(statRow('of those, shipped', 17))
+    expect(markup).toContain(statRow('of those, timed out', 18))
+  })
+
+  it('draws an upward arrowhead into the box for a subscription with wakesOn, not just the character', () => {
+    const markup = renderToStaticMarkup(<BusDiagram busDocument={fixture} />)
+
+    expect(markup).toContain('points="5,12 19,12 12,0"')
     expect(markup).toContain('shop.order.shipped wakes a parked run')
+    expect(markup).not.toContain('↑')
   })
 
   it('never omits a box: a topology entry with no matching counts entry still draws with zeros', () => {
@@ -87,21 +114,29 @@ describe('BusDiagram', () => {
       counts: { ...fixture.counts, subscriptions: [] },
     }
 
-    const markup = renderToStaticMarkup(<BusDiagram document={noCountsFixture} />)
+    const markup = renderToStaticMarkup(<BusDiagram busDocument={noCountsFixture} />)
 
     expect(markup).toContain('record-order')
     expect(markup).toContain('watch-shipping')
+    expect(markup).toContain(statRow('queued', 0))
   })
 
-  it('renders the engine window from counts.window.limit', () => {
-    const markup = renderToStaticMarkup(<BusDiagram document={fixture} />)
+  it('always draws the producer box, even with no producer counts yet', () => {
+    const freshFixture: BusDocument = {
+      ...fixture,
+      counts: { ...fixture.counts, producers: [] },
+    }
+
+    const markup = renderToStaticMarkup(<BusDiagram busDocument={freshFixture} />)
+
+    expect(markup).toContain('Producer: shop')
+    expect(markup).toContain(statRow('published', 0))
+  })
+
+  it('renders the engine window from counts.window.limit and counts.window.envelopes', () => {
+    const markup = renderToStaticMarkup(<BusDiagram busDocument={fixture} />)
 
     expect(markup).toContain('newest 200 messages')
-  })
-
-  it('marks failed as a dead letter', () => {
-    const markup = renderToStaticMarkup(<BusDiagram document={fixture} />)
-
-    expect(markup).toContain('dead letter')
+    expect(markup).toContain('(104 so far)')
   })
 })

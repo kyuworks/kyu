@@ -217,13 +217,6 @@ button:disabled {
   background: var(--line);
 }
 
-.bus-wake-note {
-  font-size: 0.75rem;
-  color: var(--muted);
-  text-align: center;
-  max-width: 12rem;
-}
-
 .bus-window-note {
   font-size: 0.8rem;
   color: var(--muted);

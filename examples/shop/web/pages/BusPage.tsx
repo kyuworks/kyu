@@ -28,7 +28,7 @@ export function BusPage({ dashboardUrl }: BusPageProps) {
       <p className="status">{statusMessage}</p>
       {busDocument !== undefined && (
         <>
-          <BusDiagram document={busDocument} />
+          <BusDiagram busDocument={busDocument} />
           <BusLegend engineWindowLimit={busDocument.counts.window.limit} />
         </>
       )}
