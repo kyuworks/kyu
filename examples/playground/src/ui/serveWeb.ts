@@ -2,6 +2,8 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { UiResponse } from './handleRequest.js'
 
+// The allowlist and the utf8 read below are text-only by design: a binary
+// asset (an image, a font) needs both changed, not just the map extended.
 const CONTENT_TYPES = new Map<string, string>([
   ['.html', 'text/html'],
   ['.js', 'text/javascript'],
@@ -12,17 +14,18 @@ const CONTENT_TYPES = new Map<string, string>([
 ])
 
 /** The urls that return the app shell. One entry per page; never a wildcard. */
-const APP_ROUTES = new Set(['/', '/bus'])
+const APP_ROUTES = new Set(['/'])
 
-interface WebAsset {
+export interface WebAsset {
   filePath: string
   contentType: string
 }
 
 // Every reason to refuse a url is checked before the file is ever read:
 // wrong method, a malformed escape, a NUL or `..` segment, a resolved path
-// outside root, or an extension outside the allowlist.
-function resolveWebAsset(root: string, url: string): WebAsset | undefined {
+// outside root, or an extension outside the allowlist. Exported so a test
+// can prove each check independently, without a filesystem in the way.
+export function resolveWebAsset(root: string, url: string): WebAsset | undefined {
   const cut = url.split(/[?#]/)[0] ?? ''
   if (APP_ROUTES.has(cut)) return { filePath: path.join(root, 'index.html'), contentType: 'text/html' }
 

@@ -11,4 +11,11 @@ describe('HomePage', () => {
     expect(markup).toContain('href="/bus"')
     expect(markup).toContain('publish-cli place-order')
   })
+
+  it('omits the dashboard link until a url arrives', () => {
+    const markup = renderToStaticMarkup(<HomePage dashboardUrl="" />)
+
+    expect(markup).not.toContain('<a href=""')
+    expect(markup).toContain('href="/bus"')
+  })
 })

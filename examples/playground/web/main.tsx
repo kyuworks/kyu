@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import './styles.css'
 
-/** The element `index.html` is missing this entry point's own mount point, not a user-facing failure. */
+/** `index.html` is missing its own `<div id="root">` mount point — a build defect, not a visitor's fault. */
 export class MissingRootElementError extends Error {
   constructor() {
     super('index.html is missing <div id="root">')

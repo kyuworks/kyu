@@ -85,15 +85,6 @@ a {
   border-bottom-color: var(--accent);
 }
 
-.cart-badge {
-  background: var(--accent);
-  color: var(--accent-text);
-  border-radius: 999px;
-  padding: 0 calc(var(--space) / 1.5);
-  font-size: 0.75rem;
-  line-height: 1.6;
-}
-
 .app-main {
   max-width: 64rem;
   margin: 0 auto;
@@ -107,14 +98,7 @@ a {
   padding: calc(var(--space) * 2);
 }
 
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-  gap: calc(var(--space) * 2);
-}
-
-button,
-.button {
+button {
   font: inherit;
   border: 1px solid var(--accent);
   background: var(--accent);
@@ -127,12 +111,6 @@ button,
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-button.secondary {
-  background: transparent;
-  color: var(--text);
-  border-color: var(--line);
 }
 
 .status {

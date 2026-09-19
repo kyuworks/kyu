@@ -14,11 +14,8 @@ export default defineConfig({
     proxy: {
       '/ui.json': uiOrigin,
       '/bus.json': uiOrigin,
-      '/products.json': uiOrigin,
-      '/orders.json': uiOrigin,
       '/orders': uiOrigin,
       '/shipments': uiOrigin,
-      '/invoices': uiOrigin,
     },
   },
 })

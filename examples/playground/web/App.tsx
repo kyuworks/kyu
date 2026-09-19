@@ -7,23 +7,19 @@ interface NavLink {
   label: string
 }
 
-// One entry per page; a click is a full page load served by the SPA
-// fallback in src/ui/serveWeb.ts's APP_ROUTES. No client-side router: for a
-// five-page demo this is less code and it cannot desync from that list.
+// One entry per page; a click is a full page load, not a client-side
+// route. Shop is served by the SPA fallback in src/ui/serveWeb.ts's
+// APP_ROUTES; Bus still goes to the legacy busPage.ts HTML page — it is
+// not in APP_ROUTES and not rendered by this app until a later pull
+// request replaces it with React.
 const NAV_LINKS: readonly NavLink[] = [
   { href: '/', label: 'Shop' },
   { href: '/bus', label: 'Bus' },
 ]
 
-const DEFAULT_DASHBOARD_URL = 'http://localhost:8888'
-
-function pageFor(pathname: string, dashboardUrl: string) {
-  if (pathname === '/bus') return <p className="muted">The bus diagram lands in the next pull request.</p>
-  return <HomePage dashboardUrl={dashboardUrl} />
-}
-
 export function App() {
-  const [dashboardUrl, setDashboardUrl] = useState(DEFAULT_DASHBOARD_URL)
+  // Empty until /ui.json answers: no dashboard link rather than a guessed one.
+  const [dashboardUrl, setDashboardUrl] = useState('')
   const [statusMessage, setStatusMessage] = useState('')
 
   useEffect(() => {
@@ -65,7 +61,7 @@ export function App() {
       </header>
       <main className="app-main">
         <p className="status">{statusMessage}</p>
-        {pageFor(pathname, dashboardUrl)}
+        <HomePage dashboardUrl={dashboardUrl} />
       </main>
     </>
   )

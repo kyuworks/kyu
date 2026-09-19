@@ -8,11 +8,18 @@ export function HomePage({ dashboardUrl }: HomePageProps) {
     <div className="card">
       <h1>Qtaxis playground</h1>
       <p>
-        A small app that uses <code>@qtaxis/sdk</code> the way a real project would. Watch what happens on the{' '}
-        <a href={dashboardUrl} target="_blank" rel="noreferrer">
-          Hatchet dashboard
-        </a>{' '}
-        or on the <a href="/bus">bus diagram</a>.
+        A small app that uses <code>@qtaxis/sdk</code> the way a real project would. See what happens on the{' '}
+        <a href="/bus">bus diagram</a>
+        {dashboardUrl !== '' && (
+          <>
+            {' '}
+            or the{' '}
+            <a href={dashboardUrl} target="_blank" rel="noreferrer">
+              Hatchet dashboard
+            </a>
+          </>
+        )}
+        .
       </p>
       <p className="muted">
         The shop pages are not built yet. Publish a message from the terminal instead:
