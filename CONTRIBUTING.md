@@ -1,6 +1,6 @@
 # Contributing to Kyu
 
-Kyu is the company message bus ([`kyuworks/kyu`](https://github.com/kyuworks/kyu)). Rules for agents and people are in [`AGENTS.md`](AGENTS.md); shared words in [`CONTEXT.md`](CONTEXT.md); the design in [`docs/design/kyu-requirements-and-design.md`](docs/design/kyu-requirements-and-design.md); decisions in [`docs/architecture/adr/`](docs/architecture/adr/).
+Kyu is the company message bus ([`Camba-nz/kyu`](https://github.com/Camba-nz/kyu)). Rules for agents and people are in [`AGENTS.md`](AGENTS.md); shared words in [`CONTEXT.md`](CONTEXT.md); the design in [`docs/design/kyu-requirements-and-design.md`](docs/design/kyu-requirements-and-design.md); decisions in [`docs/architecture/adr/`](docs/architecture/adr/).
 
 ## People
 

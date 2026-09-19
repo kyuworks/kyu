@@ -27,7 +27,7 @@ One project had a working Postgres job queue with retries, dead-lettering, prior
 
 ## Decision
 
-1. **Kyu lives in `github.com/kyuworks/kyu`** and ships `@kyuworks/schemas` and `@kyuworks/sdk`.
+1. **Kyu lives in `github.com/Camba-nz/kyu`** and ships `@kyuworks/schemas` and `@kyuworks/sdk`.
 2. **The bus knows no domain.** No product's entities enter the SDK. Business tenant identity is metadata on the envelope.
 3. **Consumers migrate onto it one job type at a time**, keeping their own domain ledgers.
 

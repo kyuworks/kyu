@@ -410,7 +410,7 @@ Synchronous third-party lookups get a shared HTTP client with timeouts, retries 
 
 ## 14. Open questions
 
-1. **npm scope and home — resolved.** The `@kyuworks` npm scope is registered. The SDK lives in this repository (`kyuworks/kyu`), with the Hatchet deployment config alongside.
+1. **npm scope and home — resolved.** The `@kyuworks` npm scope is registered. The SDK lives in this repository (`Camba-nz/kyu`), with the Hatchet deployment config alongside.
 2. **Relay placement.** In every producer process (simplest) or as a sidecar per project (one fewer thing in app code, one more deployable)?
 3. **Outbox retention and the audit question.** Is the outbox also the producer's durable event log, or is Hatchet's history enough?
 4. **Non-TypeScript projects.** Which languages will the other company projects use, and does the outbox SDK need a second implementation soon?

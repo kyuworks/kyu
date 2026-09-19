@@ -1,6 +1,6 @@
 # Agent notes — Kyu
 
-This repository is **Kyu** (`kyuworks/kyu`, once Matt transfers it there by hand; until then it is `Camba-nz/qtaxis`): the company message bus, built on self-hosted Hatchet. It is a TypeScript library plus deployment config, consumed by every company project through its SDK. Do not open issues, PRs or automation against any other repository from here.
+This repository is **Kyu** (`Camba-nz/kyu`; renamed from `Camba-nz/qtaxis` on 2026-09-19): the company message bus, built on self-hosted Hatchet. It is a TypeScript library plus deployment config, consumed by every company project through its SDK. Do not open issues, PRs or automation against any other repository from here.
 
 Read this file in full before any task. It applies to every harness, not only Claude Code. Shared words: [`CONTEXT.md`](CONTEXT.md). The design: [`docs/design/kyu-requirements-and-design.md`](docs/design/kyu-requirements-and-design.md). Decisions: [`docs/architecture/adr/`](docs/architecture/adr/).
 
