@@ -79,9 +79,17 @@ unlike `src/`, which is NodeNext and always does. Do not mix the two styles insi
 `typecheck:tests` type-checks `web/` too, through `tsconfig.web.json`. `web/index.html` is not
 picked up by `pnpm format` or by the changed-file selector; it is not worth a glob for one file.
 
-The routes the shop pages need (`/products.json`, `/orders.json`, `/orders`, `/shipments`,
-`/invoices`) are live, but the pages themselves land in a later pull request. Until then, use
-`curl` against those routes or the producer CLI above.
+`/` is the Shop page: a grid of product cards from `GET /products.json`, each with a quantity
+stepper and an "Add to order" button, next to a cart summary with the running total. `/checkout`
+shows the cart's lines and total and one button, **Pay and place order** — there is no payment
+provider, so pressing it writes the order with `paid_at = now()` in the same transaction and
+posts to `POST /orders`. On success the page shows the order id, the total, and the two envelope
+ids, with a link to `/bus`; the Orders page these will link to instead lands in a later pull
+request. The cart is kept in `localStorage` under `qtaxis.shop.cart` so it survives the full page
+load a real `<a href>` nav makes; the browser's own customer id lives under
+`qtaxis.shop.customerId`. Both are read and written through a try/catch — a private window throws
+on access, and a storage failure must never break the page. `/orders.json`, `/shipments` and
+`/invoices` are live but have no page yet; use `curl` or the producer CLI above.
 
 `/bus` is a React page now: it draws the producer, the outbox, and one column per subscription
 in registry order, refreshed every 5 seconds. Outbox stages — published, waiting for relay,

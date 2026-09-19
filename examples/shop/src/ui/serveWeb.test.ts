@@ -61,6 +61,12 @@ describe('readWebResponse', () => {
     expect(response).toEqual({ status: 200, contentType: 'text/html', body: '<!doctype html><title>shell</title>' })
   })
 
+  it('returns the app shell for /checkout, now that the shop pages are React', async () => {
+    const response = await readWebResponse(root, 'GET', '/checkout')
+
+    expect(response).toEqual({ status: 200, contentType: 'text/html', body: '<!doctype html><title>shell</title>' })
+  })
+
   it('returns undefined for an unlisted route with no matching file', async () => {
     const response = await readWebResponse(root, 'GET', '/nope')
 
