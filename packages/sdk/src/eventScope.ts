@@ -1,4 +1,4 @@
-import type { Envelope } from '@qtaxis/schemas'
+import type { Envelope } from '@kyuworks/schemas'
 
 // Shared by the relay push (toEvents.ts) and durable waitFor's default
 // (consume/durable.ts) so the engine event scope never diverges between them.

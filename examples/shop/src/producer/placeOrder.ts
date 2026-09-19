@@ -1,5 +1,5 @@
-import type { Qtaxis } from '@qtaxis/sdk'
-import { uuidv7 } from '@qtaxis/sdk'
+import type { Kyu } from '@kyuworks/sdk'
+import { uuidv7 } from '@kyuworks/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { z } from 'zod'
 import { withTransaction } from '../db/pool.js'
@@ -58,7 +58,7 @@ async function insertLines(client: PoolClient, orderId: string, lines: readonly 
 
 // Interior: runs on a caller-supplied client without opening or closing a
 // transaction, so an integration test can drive it inside its own BEGIN/ROLLBACK.
-export async function placeOrderOn(client: PoolClient, qtaxis: Qtaxis, input: PlaceOrderInput): Promise<PlacedOrder> {
+export async function placeOrderOn(client: PoolClient, kyu: Kyu, input: PlaceOrderInput): Promise<PlacedOrder> {
   const orderId = uuidv7()
   const invoiceId = uuidv7()
 
@@ -76,13 +76,13 @@ export async function placeOrderOn(client: PoolClient, qtaxis: Qtaxis, input: Pl
   const lines = input.lines ?? []
   const totalCents = lines.length > 0 ? await insertLines(client, orderId, lines) : 0
 
-  const orderPlacedEnvelope = await qtaxis.publish(
+  const orderPlacedEnvelope = await kyu.publish(
     client,
     orderPlaced,
     { orderId, customerId: input.customerId },
     { tenantId: input.tenantId },
   )
-  const sendInvoiceEnvelope = await qtaxis.publish(
+  const sendInvoiceEnvelope = await kyu.publish(
     client,
     sendInvoice,
     { orderId, invoiceId },
@@ -98,6 +98,6 @@ export async function placeOrderOn(client: PoolClient, qtaxis: Qtaxis, input: Pl
 }
 
 /** One transaction: two INSERTs then two publishes, committed together. */
-export function placeOrder(pool: Pool, qtaxis: Qtaxis, input: PlaceOrderInput): Promise<PlacedOrder> {
-  return withTransaction(pool, (client) => placeOrderOn(client, qtaxis, input))
+export function placeOrder(pool: Pool, kyu: Kyu, input: PlaceOrderInput): Promise<PlacedOrder> {
+  return withTransaction(pool, (client) => placeOrderOn(client, kyu, input))
 }

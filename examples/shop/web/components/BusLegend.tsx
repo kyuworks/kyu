@@ -26,7 +26,7 @@ function legendEntries(engineWindowLimit: number): readonly LegendEntry[] {
     {
       term: 'Outbox',
       description:
-        'The outbox is a table in the shop\'s own database, qtaxis_outbox. "Waiting for relay" counts rows the relay has not sent yet. "Shipped" counts the rest. Stop the relay and place an order: waiting for relay goes up and nothing below this box moves.',
+        'The outbox is a table in the shop\'s own database, kyu_outbox. "Waiting for relay" counts rows the relay has not sent yet. "Shipped" counts the rest. Stop the relay and place an order: waiting for relay goes up and nothing below this box moves.',
     },
     {
       term: 'Relay',
@@ -68,7 +68,7 @@ function legendEntries(engineWindowLimit: number): readonly LegendEntry[] {
     {
       term: 'Where the numbers come from',
       description:
-        "Published, waiting for relay and shipped are counted from qtaxis_outbox in the shop's database. Queued, running, done, failed and cancelled come from the engine, one call per message through qtaxis.runs.forEnvelope. Parked, shipped and timed out come from shop_handler_log, a table the shop writes itself.",
+        "Published, waiting for relay and shipped are counted from kyu_outbox in the shop's database. Queued, running, done, failed and cancelled come from the engine, one call per message through kyu.runs.forEnvelope. Parked, shipped and timed out come from shop_handler_log, a table the shop writes itself.",
     },
     {
       term: 'What the numbers cover',

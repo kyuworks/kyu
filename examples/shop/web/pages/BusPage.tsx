@@ -14,7 +14,7 @@ export function BusPage({ dashboardUrl }: BusPageProps) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold">Qtaxis shop: the bus</h1>
+        <h1 className="text-2xl font-bold">Kyu shop: the bus</h1>
         <p>
           <Link href="/">Back to the shop</Link>
           {dashboardUrl !== '' && (

@@ -10,29 +10,29 @@ echo "=== check-package-boundaries tests ==="
 mkdir -p "${WORK}/ok/packages/a/src/inner" "${WORK}/ok/packages/b/src"
 printf "import { x } from '../x.js'\nexport const y = x\n" > "${WORK}/ok/packages/a/src/inner/y.ts"
 printf "export const x = 1\n" > "${WORK}/ok/packages/a/src/x.ts"
-printf "import { y } from '@qtaxis/a'\nexport const z = y\n" > "${WORK}/ok/packages/b/src/z.ts"
+printf "import { y } from '@kyuworks/a'\nexport const z = y\n" > "${WORK}/ok/packages/b/src/z.ts"
 assert_exit "in-package relative and by-name imports pass" 0 env ROOT_DIR="${WORK}/ok" bash "${CHECK}"
 mkdir -p "${WORK}/bad/packages/a/src" "${WORK}/bad/packages/b/src"
 printf "export const x = 1\n" > "${WORK}/bad/packages/a/src/x.ts"
 printf "import { x } from '../../a/src/x.js'\nexport const z = x\n" > "${WORK}/bad/packages/b/src/z.ts"
 assert_exit "relative import into another package fails" 1 env ROOT_DIR="${WORK}/bad" bash "${CHECK}"
 mkdir -p "${WORK}/deep/packages/b/src"
-printf "import { x } from '@qtaxis/a/src/x.js'\nexport const z = x\n" > "${WORK}/deep/packages/b/src/z.ts"
+printf "import { x } from '@kyuworks/a/src/x.js'\nexport const z = x\n" > "${WORK}/deep/packages/b/src/z.ts"
 assert_exit "deep import past the exports map fails" 1 env ROOT_DIR="${WORK}/deep" bash "${CHECK}"
 
 mkdir -p "${WORK}/example-ok/examples/shop/src"
-printf "import { publish } from '@qtaxis/sdk'\nexport const p = publish\n" > "${WORK}/example-ok/examples/shop/src/index.ts"
-assert_exit "example importing @qtaxis/sdk passes" 0 env ROOT_DIR="${WORK}/example-ok" bash "${CHECK}"
+printf "import { publish } from '@kyuworks/sdk'\nexport const p = publish\n" > "${WORK}/example-ok/examples/shop/src/index.ts"
+assert_exit "example importing @kyuworks/sdk passes" 0 env ROOT_DIR="${WORK}/example-ok" bash "${CHECK}"
 
 mkdir -p "${WORK}/example-hatchet/examples/shop/src"
 printf "import { Hatchet } from '@hatchet-dev/typescript-sdk'\nexport const h = Hatchet\n" > "${WORK}/example-hatchet/examples/shop/src/index.ts"
 assert_exit "example importing @hatchet-dev/ fails" 1 env ROOT_DIR="${WORK}/example-hatchet" bash "${CHECK}"
-assert_output_contains "failure says examples consume @qtaxis/sdk only" "@qtaxis/sdk only" env ROOT_DIR="${WORK}/example-hatchet" bash "${CHECK}"
+assert_output_contains "failure says examples consume @kyuworks/sdk only" "@kyuworks/sdk only" env ROOT_DIR="${WORK}/example-hatchet" bash "${CHECK}"
 
 mkdir -p "${WORK}/example-schemas/examples/shop/src"
-printf "import { parseEnvelope } from '@qtaxis/schemas'\nexport const p = parseEnvelope\n" > "${WORK}/example-schemas/examples/shop/src/index.ts"
-assert_exit "example importing @qtaxis/schemas fails" 1 env ROOT_DIR="${WORK}/example-schemas" bash "${CHECK}"
-assert_output_contains "failure says examples consume @qtaxis/sdk only (schemas case)" "@qtaxis/sdk only" env ROOT_DIR="${WORK}/example-schemas" bash "${CHECK}"
+printf "import { parseEnvelope } from '@kyuworks/schemas'\nexport const p = parseEnvelope\n" > "${WORK}/example-schemas/examples/shop/src/index.ts"
+assert_exit "example importing @kyuworks/schemas fails" 1 env ROOT_DIR="${WORK}/example-schemas" bash "${CHECK}"
+assert_output_contains "failure says examples consume @kyuworks/sdk only (schemas case)" "@kyuworks/sdk only" env ROOT_DIR="${WORK}/example-schemas" bash "${CHECK}"
 
 # --- Every import form of a banned package is caught, not just `from` (#review) ---
 mkdir -p "${WORK}/example-bare-import/examples/shop/src"
@@ -48,15 +48,15 @@ printf "const h = require('@hatchet-dev/typescript-sdk')\nexport { h }\n" > "${W
 assert_exit "require() of @hatchet-dev/ fails" 1 env ROOT_DIR="${WORK}/example-require" bash "${CHECK}"
 
 mkdir -p "${WORK}/example-schemas-dynamic/examples/shop/src"
-printf "export const s = await import('@qtaxis/schemas')\n" > "${WORK}/example-schemas-dynamic/examples/shop/src/index.ts"
-assert_exit "dynamic import() of @qtaxis/schemas fails" 1 env ROOT_DIR="${WORK}/example-schemas-dynamic" bash "${CHECK}"
+printf "export const s = await import('@kyuworks/schemas')\n" > "${WORK}/example-schemas-dynamic/examples/shop/src/index.ts"
+assert_exit "dynamic import() of @kyuworks/schemas fails" 1 env ROOT_DIR="${WORK}/example-schemas-dynamic" bash "${CHECK}"
 
 # --- The dependency itself in package.json fails too, not just the import (#review) ---
 mkdir -p "${WORK}/example-pkg-dep/examples/shop/src"
 printf "export const p = 1\n" > "${WORK}/example-pkg-dep/examples/shop/src/index.ts"
 cat > "${WORK}/example-pkg-dep/examples/shop/package.json" <<'JSON'
 {
-  "name": "@qtaxis/example-shop",
+  "name": "@kyuworks/example-shop",
   "dependencies": { "@hatchet-dev/typescript-sdk": "^1.0.0" }
 }
 JSON
@@ -66,21 +66,21 @@ mkdir -p "${WORK}/example-pkg-devdep/examples/shop/src"
 printf "export const p = 1\n" > "${WORK}/example-pkg-devdep/examples/shop/src/index.ts"
 cat > "${WORK}/example-pkg-devdep/examples/shop/package.json" <<'JSON'
 {
-  "name": "@qtaxis/example-shop",
-  "devDependencies": { "@qtaxis/schemas": "workspace:*" }
+  "name": "@kyuworks/example-shop",
+  "devDependencies": { "@kyuworks/schemas": "workspace:*" }
 }
 JSON
-assert_exit "@qtaxis/schemas in package.json devDependencies fails" 1 env ROOT_DIR="${WORK}/example-pkg-devdep" bash "${CHECK}"
+assert_exit "@kyuworks/schemas in package.json devDependencies fails" 1 env ROOT_DIR="${WORK}/example-pkg-devdep" bash "${CHECK}"
 
 mkdir -p "${WORK}/example-pkg-ok/examples/shop/src"
-printf "import { publish } from '@qtaxis/sdk'\nexport const p = publish\n" > "${WORK}/example-pkg-ok/examples/shop/src/index.ts"
+printf "import { publish } from '@kyuworks/sdk'\nexport const p = publish\n" > "${WORK}/example-pkg-ok/examples/shop/src/index.ts"
 cat > "${WORK}/example-pkg-ok/examples/shop/package.json" <<'JSON'
 {
-  "name": "@qtaxis/example-shop",
-  "dependencies": { "@qtaxis/sdk": "workspace:*" }
+  "name": "@kyuworks/example-shop",
+  "dependencies": { "@kyuworks/sdk": "workspace:*" }
 }
 JSON
-assert_exit "package.json depending on @qtaxis/sdk only passes" 0 env ROOT_DIR="${WORK}/example-pkg-ok" bash "${CHECK}"
+assert_exit "package.json depending on @kyuworks/sdk only passes" 0 env ROOT_DIR="${WORK}/example-pkg-ok" bash "${CHECK}"
 
 # --- examples/*/src/**/*.test.ts is scanned too, unlike check-no-escape-hatches (#review asymmetry) ---
 mkdir -p "${WORK}/example-test-file/examples/shop/src"

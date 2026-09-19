@@ -3,7 +3,7 @@ import { InvalidDatabaseUrlError, assertShopDatabaseName } from './migrate.js'
 
 describe('assertShopDatabaseName', () => {
   it('accepts a database name matching the shop pattern', () => {
-    expect(assertShopDatabaseName('postgresql://user:pass@host/qtaxis_shop_pr3')).toBe('qtaxis_shop_pr3')
+    expect(assertShopDatabaseName('postgresql://user:pass@host/kyu_shop_pr3')).toBe('kyu_shop_pr3')
   })
 
   it('throws before connecting for a name outside the shop pattern', () => {

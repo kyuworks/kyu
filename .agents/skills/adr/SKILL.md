@@ -83,7 +83,7 @@ A directory of records that quietly disagree with each other is worse than
 no records, because review cannot tell which one is live.
 
 Then search beyond the ADR directory for other live architecture documents
-that claim ownership of the same rule. `docs/design/qtaxis-requirements-and-design.md`
+that claim ownership of the same rule. `docs/design/kyu-requirements-and-design.md`
 already decides several things (engine, envelope, outbox shape, naming).
 Record every overlap in the proof matrix and choose one disposition: reuse
 the existing owner, supersede an ADR, or update a mutable document in the
@@ -132,7 +132,7 @@ and fill it in. The sections earn their place:
 
 | Section | What it does |
 | --- | --- |
-| **Status / Date / Parent** | `proposed`, `accepted`, `deprecated` (no longer applies, nothing replaced it), or `superseded by [title](YYYYMMDD-slug.md)`. The **Date:** line is `YYYY-MM-DD` and must match the filename date. Link the GitHub issue in this repo: `https://github.com/Camba-nz/qtaxis/issues/N`. |
+| **Status / Date / Parent** | `proposed`, `accepted`, `deprecated` (no longer applies, nothing replaced it), or `superseded by [title](YYYYMMDD-slug.md)`. The **Date:** line is `YYYY-MM-DD` and must match the filename date. Link the GitHub issue in this repo: `https://github.com/Camba-nz/kyu/issues/N`. |
 | **This is not** | The neighbouring decisions this record does not make. It stops scope creep in review. |
 | **Context** | The forces, as facts. Constraints, costs, what the code does today. No solution yet. |
 | **Options considered** | Each alternative in two or three sentences with its trade-off. |

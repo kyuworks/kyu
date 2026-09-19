@@ -1,5 +1,5 @@
-import type { HatchetClient, Qtaxis } from '@qtaxis/sdk'
-import { createQtaxis } from '@qtaxis/sdk'
+import type { HatchetClient, Kyu } from '@kyuworks/sdk'
+import { createKyu } from '@kyuworks/sdk'
 import type { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
 import type { ShopConfig } from '../config.js'
@@ -41,13 +41,13 @@ function fakeConfig(): ShopConfig {
   }
 }
 
-function fakeQtaxis(): Qtaxis {
-  return createQtaxis({ hatchet: fakeHatchetClient(), source: 'bus-topology-test' })
+function fakeKyu(): Kyu {
+  return createKyu({ hatchet: fakeHatchetClient(), source: 'bus-topology-test' })
 }
 
 describe('describeBusTopology', () => {
   it('names the producer after the source every publish uses', () => {
-    const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
+    const subscriptions = buildSubscriptions(fakeKyu(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
 
@@ -55,7 +55,7 @@ describe('describeBusTopology', () => {
   })
 
   it('carries name, messageName and kind through unchanged for a plain subscription', () => {
-    const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
+    const subscriptions = buildSubscriptions(fakeKyu(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
 
@@ -64,7 +64,7 @@ describe('describeBusTopology', () => {
   })
 
   it('gives a plain subscription no doneOutcomes, waitingHandler or wakesOn', () => {
-    const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
+    const subscriptions = buildSubscriptions(fakeKyu(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
 
@@ -75,7 +75,7 @@ describe('describeBusTopology', () => {
   })
 
   it('overrides watch-shipping with its done outcomes, waiting handler and wake message', () => {
-    const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
+    const subscriptions = buildSubscriptions(fakeKyu(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
 
@@ -94,7 +94,7 @@ describe('describeBusTopology', () => {
   })
 
   it('describes every subscription the worker registers, in order', () => {
-    const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
+    const subscriptions = buildSubscriptions(fakeKyu(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
 
@@ -109,7 +109,7 @@ describe('describeBusTopology', () => {
   // Only watch-shipping's own module names drive its optional fields; every
   // other subscription carries none of them.
   it("ties watch-shipping's optional fields to the handler names its own module writes, and no other subscription", () => {
-    const subscriptions = buildSubscriptions(fakeQtaxis(), fakePool(), fakeConfig())
+    const subscriptions = buildSubscriptions(fakeKyu(), fakePool(), fakeConfig())
 
     const topology = describeBusTopology(subscriptions)
 

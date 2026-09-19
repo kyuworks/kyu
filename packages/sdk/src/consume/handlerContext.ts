@@ -1,4 +1,4 @@
-import type { Envelope, EnvelopeMetadataFields, MessageDataShape } from '@qtaxis/schemas'
+import type { Envelope, EnvelopeMetadataFields, MessageDataShape } from '@kyuworks/schemas'
 import type { Context, JsonObject } from '../hatchet.js'
 
 export interface HandlerLogger {

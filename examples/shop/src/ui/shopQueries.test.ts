@@ -1,4 +1,4 @@
-import type { QueryParam, Unparsed } from '@qtaxis/sdk'
+import type { QueryParam, Unparsed } from '@kyuworks/sdk'
 import type { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
 import { orderStage, readOrders, readProducts } from './shopQueries.js'
@@ -18,10 +18,10 @@ function fakeQueryPool(responses: readonly Unparsed[][], queries: string[] = [])
   return stub as Pool
 }
 
-// `qtaxis_` is the engine's own table prefix; this read model has no
+// `kyu_` is the engine's own table prefix; this read model has no
 // business reading it (S5).
 function namesTheEngineTables(query: string): boolean {
-  return query.toLowerCase().includes('qtaxis_')
+  return query.toLowerCase().includes('kyu_')
 }
 
 describe('orderStage', () => {

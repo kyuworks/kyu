@@ -1,4 +1,4 @@
-import type { Qtaxis, Subscription } from '@qtaxis/sdk'
+import type { Kyu, Subscription } from '@kyuworks/sdk'
 import type { Pool } from 'pg'
 import type { ShopConfig } from './config.js'
 import { auditOrderSubscription } from './handlers/auditOrder.js'
@@ -7,11 +7,11 @@ import { sendInvoiceSubscription } from './handlers/sendInvoice.js'
 import { watchShippingSubscription } from './handlers/watchShipping.js'
 
 /** One registry the worker and the unit test share. */
-export function buildSubscriptions(qtaxis: Qtaxis, pool: Pool, config: ShopConfig): Subscription[] {
+export function buildSubscriptions(kyu: Kyu, pool: Pool, config: ShopConfig): Subscription[] {
   return [
-    recordOrderSubscription(qtaxis, pool),
-    auditOrderSubscription(qtaxis, pool),
-    sendInvoiceSubscription(qtaxis, pool),
-    watchShippingSubscription(qtaxis, pool, config),
+    recordOrderSubscription(kyu, pool),
+    auditOrderSubscription(kyu, pool),
+    sendInvoiceSubscription(kyu, pool),
+    watchShippingSubscription(kyu, pool, config),
   ]
 }

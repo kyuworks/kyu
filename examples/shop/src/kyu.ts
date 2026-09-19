@@ -1,5 +1,5 @@
-import type { Qtaxis } from '@qtaxis/sdk'
-import { createHatchetClient, createQtaxis } from '@qtaxis/sdk'
+import type { Kyu } from '@kyuworks/sdk'
+import { createHatchetClient, createKyu } from '@kyuworks/sdk'
 import type { ShopConfig } from './config.js'
 
 // Every producer publishes under this source; ui/busTopology.ts reads it too,
@@ -7,7 +7,7 @@ import type { ShopConfig } from './config.js'
 export const SHOP_SOURCE = 'shop'
 
 // One place builds the client, so migrate, relay, worker and the CLI all share the namespace rule.
-export function createShopQtaxis(config: ShopConfig): Qtaxis {
+export function createShopKyu(config: ShopConfig): Kyu {
   const hatchet = createHatchetClient({ namespace: config.namespace })
-  return createQtaxis({ hatchet, source: SHOP_SOURCE })
+  return createKyu({ hatchet, source: SHOP_SOURCE })
 }

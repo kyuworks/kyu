@@ -1,8 +1,8 @@
-# Qtaxis is a standalone system, not a library extracted from a product
+# Kyu is a standalone system, not a library extracted from a product
 
 **Status:** accepted
 **Date:** 2026-09-15
-**Parent:** [design document](../../design/qtaxis-requirements-and-design.md)
+**Parent:** [design document](../../design/kyu-requirements-and-design.md)
 **This is not** a decision about which engine runs it (see [20260916-hatchet-is-the-engine](20260916-hatchet-is-the-engine.md)).
 
 The company message bus is its own repository and its own deployable, consumed by every company project through an SDK. It is not one project's private job queue lifted into a package.
@@ -27,7 +27,7 @@ One project had a working Postgres job queue with retries, dead-lettering, prior
 
 ## Decision
 
-1. **Qtaxis lives in `github.com/Camba-nz/qtaxis`** and ships `@qtaxis/schemas` and `@qtaxis/sdk`.
+1. **Kyu lives in `github.com/Camba-nz/kyu`** and ships `@kyuworks/schemas` and `@kyuworks/sdk`.
 2. **The bus knows no domain.** No product's entities enter the SDK. Business tenant identity is metadata on the envelope.
 3. **Consumers migrate onto it one job type at a time**, keeping their own domain ledgers.
 

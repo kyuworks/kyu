@@ -1,5 +1,5 @@
-import type { Qtaxis, Queryable, Unparsed } from '@qtaxis/sdk'
-import { createEnvelope } from '@qtaxis/sdk'
+import type { Kyu, Queryable, Unparsed } from '@kyuworks/sdk'
+import { createEnvelope } from '@kyuworks/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
 import { placeOrder } from './placeOrder.js'
@@ -42,11 +42,11 @@ interface RecordedPublish {
 }
 
 // A real generic method, not a cast: `createEnvelope` (already exported by
-// the SDK) builds a realistic envelope, so `Qtaxis['publish']`'s own generic
+// the SDK) builds a realistic envelope, so `Kyu['publish']`'s own generic
 // signature is satisfied without an unsafe cast on the return value.
-function fakeQtaxis(events: string[], publishes: RecordedPublish[], txs: Queryable[], failOnCall?: number): Qtaxis {
+function fakeKyu(events: string[], publishes: RecordedPublish[], txs: Queryable[], failOnCall?: number): Kyu {
   let calls = 0
-  const publish: Qtaxis['publish'] = async (tx, definition, data, options) => {
+  const publish: Kyu['publish'] = async (tx, definition, data, options) => {
     calls += 1
     txs.push(tx)
     // Assigned to a typed const: with the SDK unbuilt, `definition.name` is
@@ -57,8 +57,8 @@ function fakeQtaxis(events: string[], publishes: RecordedPublish[], txs: Queryab
     if (failOnCall === calls) throw new Error('publish failed')
     return createEnvelope(definition, data, { tenantId: options.tenantId, source: 'test' })
   }
-  const stub: Pick<Qtaxis, 'publish'> = { publish }
-  return stub as Qtaxis
+  const stub: Pick<Kyu, 'publish'> = { publish }
+  return stub as Kyu
 }
 
 const input = { tenantId: '018f0000-0000-7000-8000-000000000001', customerId: '018f0000-0000-7000-8000-000000000002' }
@@ -78,9 +78,9 @@ describe('placeOrder', () => {
     const client = fakeClient(events)
     const pool = fakePool(client)
     const publishes: RecordedPublish[] = []
-    const qtaxis = fakeQtaxis(events, publishes, txs)
+    const kyu = fakeKyu(events, publishes, txs)
 
-    const placed = await placeOrder(pool, qtaxis, input)
+    const placed = await placeOrder(pool, kyu, input)
 
     expect(placed.orderId).toEqual(expect.any(String))
     expect(placed.invoiceId).toEqual(expect.any(String))
@@ -107,9 +107,9 @@ describe('placeOrder', () => {
     const pool = fakePool(client)
     const publishes: RecordedPublish[] = []
     // Fails on the first publish call.
-    const qtaxis = fakeQtaxis(events, publishes, txs, 1)
+    const kyu = fakeKyu(events, publishes, txs, 1)
 
-    await expect(placeOrder(pool, qtaxis, input)).rejects.toThrow('publish failed')
+    await expect(placeOrder(pool, kyu, input)).rejects.toThrow('publish failed')
 
     expect(events).toEqual([
       'BEGIN',
@@ -132,9 +132,9 @@ describe('placeOrder', () => {
     const client = fakeClient(events, responses)
     const pool = fakePool(client)
     const publishes: RecordedPublish[] = []
-    const qtaxis = fakeQtaxis(events, publishes, txs)
+    const kyu = fakeKyu(events, publishes, txs)
 
-    await expect(placeOrder(pool, qtaxis, { ...input, lines: [{ productId, quantity: 1 }] })).rejects.toThrow(/product/)
+    await expect(placeOrder(pool, kyu, { ...input, lines: [{ productId, quantity: 1 }] })).rejects.toThrow(/product/)
 
     expect(publishes).toEqual([])
     expect(events).toEqual([
@@ -158,9 +158,9 @@ describe('placeOrder', () => {
     const client = fakeClient(events, responses)
     const pool = fakePool(client)
     const publishes: RecordedPublish[] = []
-    const qtaxis = fakeQtaxis(events, publishes, txs)
+    const kyu = fakeKyu(events, publishes, txs)
 
-    const placed = await placeOrder(pool, qtaxis, { ...input, lines: [{ productId, quantity: 1 }] })
+    const placed = await placeOrder(pool, kyu, { ...input, lines: [{ productId, quantity: 1 }] })
 
     expect(placed.totalCents).toBe(1400)
     expect(publishes).toEqual([

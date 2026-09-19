@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'qtaxis.shop.customerId'
+const STORAGE_KEY = 'kyu.shop.customerId'
 
 /** The browser's own customer id, minted once and kept in localStorage; a fresh one when storage is unavailable. */
 export function readCustomerId(): string {

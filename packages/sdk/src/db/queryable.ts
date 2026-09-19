@@ -1,4 +1,4 @@
-import type { Unparsed } from '@qtaxis/schemas'
+import type { Unparsed } from '@kyuworks/schemas'
 
 export type QueryParam = string | number | boolean | null | Date
 

@@ -1,5 +1,5 @@
-import type { Qtaxis, Queryable, QueryParam, RunOutcome, Unparsed } from '@qtaxis/sdk'
-import { createEnvelope } from '@qtaxis/sdk'
+import type { Kyu, Queryable, QueryParam, RunOutcome, Unparsed } from '@kyuworks/sdk'
+import { createEnvelope } from '@kyuworks/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
 import { DEMO_TENANT_ID } from '../shop.js'
@@ -65,18 +65,15 @@ interface RecordedPublish {
 }
 
 // Empty by default: a test that cares about run outcomes passes its own map.
-function fakeQtaxis(
-  publishes: RecordedPublish[],
-  runOutcomes: Readonly<Record<string, readonly RunOutcome[]>> = {},
-): Qtaxis {
-  const publish: Qtaxis['publish'] = async (_tx: Queryable, definition, data, options) => {
+function fakeKyu(publishes: RecordedPublish[], runOutcomes: Readonly<Record<string, readonly RunOutcome[]>> = {}): Kyu {
+  const publish: Kyu['publish'] = async (_tx: Queryable, definition, data, options) => {
     const name: string = definition.name
     publishes.push({ name, tenantId: options.tenantId })
     return createEnvelope(definition, data, { tenantId: options.tenantId, source: 'test' })
   }
-  const runs: Qtaxis['runs'] = { forEnvelope: (envelopeId: string) => Promise.resolve(runOutcomes[envelopeId] ?? []) }
-  const stub: Pick<Qtaxis, 'publish' | 'runs'> = { publish, runs }
-  return stub as Qtaxis
+  const runs: Kyu['runs'] = { forEnvelope: (envelopeId: string) => Promise.resolve(runOutcomes[envelopeId] ?? []) }
+  const stub: Pick<Kyu, 'publish' | 'runs'> = { publish, runs }
+  return stub as Kyu
 }
 
 const fakeTopology: BusTopology = {
@@ -102,8 +99,8 @@ type ReadWeb = UiRequestDeps['readWeb']
 // route this suite does not care about.
 const notWebAsset: ReadWeb = () => Promise.resolve(undefined)
 
-function deps(pool: Pool, qtaxis: Qtaxis, topology: BusTopology = fakeTopology, readWeb: ReadWeb = notWebAsset) {
-  return { pool, qtaxis, dashboardUrl: 'http://localhost:8888', topology, readWeb }
+function deps(pool: Pool, kyu: Kyu, topology: BusTopology = fakeTopology, readWeb: ReadWeb = notWebAsset) {
+  return { pool, kyu, dashboardUrl: 'http://localhost:8888', topology, readWeb }
 }
 
 // readBusCounts/readProducts/readOrders call deps.pool.query() directly (no
@@ -129,9 +126,9 @@ describe('handleUiRequest', () => {
     const connectCalls: number[] = []
     const client = fakeClient([])
     const pool = fakePool(connectCalls, client)
-    const qtaxis = fakeQtaxis([])
+    const kyu = fakeKyu([])
 
-    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/orders', '{}'))
+    const response = await handleUiRequest(deps(pool, kyu), jsonPost('/orders', '{}'))
 
     expect(response.status).toBe(400)
     const parsed: { error: string } = JSON.parse(response.body)
@@ -143,9 +140,9 @@ describe('handleUiRequest', () => {
     const connectCalls: number[] = []
     const client = fakeClient([])
     const pool = fakePool(connectCalls, client)
-    const qtaxis = fakeQtaxis([])
+    const kyu = fakeKyu([])
 
-    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/orders', '{not json'))
+    const response = await handleUiRequest(deps(pool, kyu), jsonPost('/orders', '{not json'))
 
     expect(response.status).toBe(400)
     const parsed: { error: string } = JSON.parse(response.body)
@@ -157,10 +154,10 @@ describe('handleUiRequest', () => {
     const connectCalls: number[] = []
     const client = fakeClient([])
     const pool = fakePool(connectCalls, client)
-    const qtaxis = fakeQtaxis([])
+    const kyu = fakeKyu([])
     const oversizedBody = `{"customerId":"${'a'.repeat(70 * 1024)}"}`
 
-    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/orders', oversizedBody))
+    const response = await handleUiRequest(deps(pool, kyu), jsonPost('/orders', oversizedBody))
 
     expect(response.status).toBe(413)
     expect(connectCalls).toEqual([])
@@ -170,9 +167,9 @@ describe('handleUiRequest', () => {
     const connectCalls: number[] = []
     const client = fakeClient([])
     const pool = fakePool(connectCalls, client)
-    const qtaxis = fakeQtaxis([])
+    const kyu = fakeKyu([])
 
-    const response = await handleUiRequest(deps(pool, qtaxis), {
+    const response = await handleUiRequest(deps(pool, kyu), {
       method: 'POST',
       url: '/orders',
       contentType: 'text/plain',
@@ -193,11 +190,11 @@ describe('handleUiRequest', () => {
     const client = fakeClient(queries, responses)
     const pool = fakePool(connectCalls, client)
     const publishes: RecordedPublish[] = []
-    const qtaxis = fakeQtaxis(publishes)
+    const kyu = fakeKyu(publishes)
     const customerId = '018f0000-0000-7000-8000-000000000002'
 
     const response = await handleUiRequest(
-      deps(pool, qtaxis),
+      deps(pool, kyu),
       // A tenantId in the body, if a caller sent one, must be ignored: the
       // server always supplies DEMO_TENANT_ID.
       jsonPost(
@@ -229,9 +226,9 @@ describe('handleUiRequest', () => {
   it('rejects an order naming no lines', async () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
-    const qtaxis = fakeQtaxis([])
+    const kyu = fakeKyu([])
 
-    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/orders', JSON.stringify({ lines: [] })))
+    const response = await handleUiRequest(deps(pool, kyu), jsonPost('/orders', JSON.stringify({ lines: [] })))
 
     expect(response.status).toBe(400)
   })
@@ -240,11 +237,11 @@ describe('handleUiRequest', () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
     const publishes: RecordedPublish[] = []
-    const qtaxis = fakeQtaxis(publishes)
+    const kyu = fakeKyu(publishes)
     const orderId = '018f0000-0000-7000-8000-000000000003'
 
     const response = await handleUiRequest(
-      deps(pool, qtaxis),
+      deps(pool, kyu),
       jsonPost('/shipments', JSON.stringify({ orderId, carrier: 'dhl' })),
     )
 
@@ -259,9 +256,9 @@ describe('handleUiRequest', () => {
     const connectCalls: number[] = []
     const client = fakeClient([])
     const pool = fakePool(connectCalls, client)
-    const qtaxis = fakeQtaxis([])
+    const kyu = fakeKyu([])
 
-    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/shipments', JSON.stringify({})))
+    const response = await handleUiRequest(deps(pool, kyu), jsonPost('/shipments', JSON.stringify({})))
 
     expect(response.status).toBe(400)
     const parsed: { error: string } = JSON.parse(response.body)
@@ -274,10 +271,10 @@ describe('handleUiRequest', () => {
     const client = fakeClient([], responses)
     const pool = fakePool([], client)
     const publishes: RecordedPublish[] = []
-    const qtaxis = fakeQtaxis(publishes)
+    const kyu = fakeKyu(publishes)
     const orderId = '018f0000-0000-7000-8000-000000000004'
 
-    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/invoices', JSON.stringify({ orderId })))
+    const response = await handleUiRequest(deps(pool, kyu), jsonPost('/invoices', JSON.stringify({ orderId })))
 
     expect(response.status).toBe(201)
     const parsed: { orderId: string; invoiceId: string; envelopeId: string } = JSON.parse(response.body)
@@ -293,10 +290,10 @@ describe('handleUiRequest', () => {
     const client = fakeClient([]) // no configured responses: the order-existence check sees rowCount 0
     const pool = fakePool([], client)
     const publishes: RecordedPublish[] = []
-    const qtaxis = fakeQtaxis(publishes)
+    const kyu = fakeKyu(publishes)
     const orderId = '018f0000-0000-7000-8000-000000000005'
 
-    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/invoices', JSON.stringify({ orderId })))
+    const response = await handleUiRequest(deps(pool, kyu), jsonPost('/invoices', JSON.stringify({ orderId })))
 
     expect(response.status).toBe(404)
     const parsed: { error: string } = JSON.parse(response.body)
@@ -308,19 +305,19 @@ describe('handleUiRequest', () => {
     const connectCalls: number[] = []
     const client = fakeClient([])
     const pool = fakePool(connectCalls, client)
-    const qtaxis = fakeQtaxis([])
+    const kyu = fakeKyu([])
 
-    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/invoices', JSON.stringify({})))
+    const response = await handleUiRequest(deps(pool, kyu), jsonPost('/invoices', JSON.stringify({})))
 
     expect(response.status).toBe(400)
     expect(connectCalls).toEqual([])
   })
 
   it('returns the product catalogue for /products.json', async () => {
-    const qtaxis = fakeQtaxis([])
+    const kyu = fakeKyu([])
     const pool = fakeQueryPool([[{ id: productId, sku: 'QTX-MUG', name: 'Enamel mug', price_cents: 1400 }]])
 
-    const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/products.json'))
+    const response = await handleUiRequest(deps(pool, kyu), getRequest('/products.json'))
 
     expect(response.status).toBe(200)
     expect(JSON.parse(response.body)).toEqual({
@@ -329,10 +326,10 @@ describe('handleUiRequest', () => {
   })
 
   it('returns the demo tenant orders for /orders.json', async () => {
-    const qtaxis = fakeQtaxis([])
+    const kyu = fakeKyu([])
     const pool = fakeQueryPool([[], []])
 
-    const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/orders.json'))
+    const response = await handleUiRequest(deps(pool, kyu), getRequest('/orders.json'))
 
     expect(response.status).toBe(200)
     expect(JSON.parse(response.body)).toEqual({ orders: [], limit: ORDER_HISTORY_LIMIT })
@@ -341,9 +338,9 @@ describe('handleUiRequest', () => {
   it('serves the orders page for GET /orders, the read model for GET /orders.json, and still publishes for POST /orders', async () => {
     const shell: UiResponse = { status: 200, contentType: 'text/html', body: '<!doctype html>orders page' }
     const readWeb: ReadWeb = (method, url) => Promise.resolve(method === 'GET' && url === '/orders' ? shell : undefined)
-    const qtaxis1 = fakeQtaxis([])
+    const kyu1 = fakeKyu([])
 
-    const pageResponse = await handleUiRequest(deps(fakePool([], fakeClient([])), qtaxis1, fakeTopology, readWeb), {
+    const pageResponse = await handleUiRequest(deps(fakePool([], fakeClient([])), kyu1, fakeTopology, readWeb), {
       method: 'GET',
       url: '/orders',
       contentType: '',
@@ -351,10 +348,7 @@ describe('handleUiRequest', () => {
     })
     expect(pageResponse).toEqual(shell)
 
-    const jsonResponse = await handleUiRequest(
-      deps(fakeQueryPool([[], []]), fakeQtaxis([])),
-      getRequest('/orders.json'),
-    )
+    const jsonResponse = await handleUiRequest(deps(fakeQueryPool([[], []]), fakeKyu([])), getRequest('/orders.json'))
     expect(jsonResponse.status).toBe(200)
     expect(JSON.parse(jsonResponse.body)).toEqual({ orders: [], limit: ORDER_HISTORY_LIMIT })
 
@@ -364,7 +358,7 @@ describe('handleUiRequest', () => {
       ['UPDATE shop_order', { rows: [{ total_cents: 1400 }], rowCount: 1 }],
     ])
     const postResponse = await handleUiRequest(
-      deps(fakePool([], fakeClient([], postResponses)), fakeQtaxis(publishes)),
+      deps(fakePool([], fakeClient([], postResponses)), fakeKyu(publishes)),
       jsonPost('/orders', JSON.stringify({ lines: [{ productId, quantity: 1 }] })),
     )
     expect(postResponse.status).toBe(201)
@@ -377,11 +371,11 @@ describe('handleUiRequest', () => {
   it('delegates an unmatched GET to the static reader', async () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
-    const qtaxis = fakeQtaxis([])
+    const kyu = fakeKyu([])
     const shell: UiResponse = { status: 200, contentType: 'text/html', body: '<!doctype html>' }
     const readWeb: ReadWeb = (method, url) => Promise.resolve(method === 'GET' && url === '/' ? shell : undefined)
 
-    const response = await handleUiRequest(deps(pool, qtaxis, fakeTopology, readWeb), getRequest('/'))
+    const response = await handleUiRequest(deps(pool, kyu, fakeTopology, readWeb), getRequest('/'))
 
     expect(response).toEqual(shell)
   })
@@ -389,22 +383,22 @@ describe('handleUiRequest', () => {
   it('returns 404 for an unknown route the static reader does not own either', async () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
-    const qtaxis = fakeQtaxis([])
+    const kyu = fakeKyu([])
 
-    const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/nope'))
+    const response = await handleUiRequest(deps(pool, kyu), getRequest('/nope'))
 
     expect(response.status).toBe(404)
   })
 
   it('answers /bus.json from the JSON handler even when the static reader would also answer it (W1)', async () => {
-    const qtaxis = fakeQtaxis([])
+    const kyu = fakeKyu([])
     const pool = fakeQueryPool([[{ source: 'shop', published: 0, waiting: 0 }], [], []])
     const shell: UiResponse = { status: 200, contentType: 'text/html', body: '<!doctype html>shadowed' }
     // A static reader that would happily serve any path proves the JSON
     // route wins because it is checked first, not because no file exists.
     const readWeb: ReadWeb = () => Promise.resolve(shell)
 
-    const response = await handleUiRequest(deps(pool, qtaxis, fakeTopology, readWeb), getRequest('/bus.json'))
+    const response = await handleUiRequest(deps(pool, kyu, fakeTopology, readWeb), getRequest('/bus.json'))
 
     expect(response.contentType).toBe('application/json')
     expect(response.body).not.toContain('shadowed')
@@ -413,9 +407,9 @@ describe('handleUiRequest', () => {
   it('returns the dashboard url for /ui.json', async () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
-    const qtaxis = fakeQtaxis([])
+    const kyu = fakeKyu([])
 
-    const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/ui.json'))
+    const response = await handleUiRequest(deps(pool, kyu), getRequest('/ui.json'))
 
     expect(response.status).toBe(200)
     expect(response.contentType).toBe('application/json')
@@ -425,17 +419,17 @@ describe('handleUiRequest', () => {
   it('delegates GET /bus to the static reader, now that the bus page is React', async () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
-    const qtaxis = fakeQtaxis([])
+    const kyu = fakeKyu([])
     const shell: UiResponse = { status: 200, contentType: 'text/html', body: '<!doctype html>' }
     const readWeb: ReadWeb = (method, url) => Promise.resolve(method === 'GET' && url === '/bus' ? shell : undefined)
 
-    const response = await handleUiRequest(deps(pool, qtaxis, fakeTopology, readWeb), getRequest('/bus'))
+    const response = await handleUiRequest(deps(pool, kyu, fakeTopology, readWeb), getRequest('/bus'))
 
     expect(response).toEqual(shell)
   })
 
   it('returns the topology and counts for /bus.json', async () => {
-    const qtaxis = fakeQtaxis([], {
+    const kyu = fakeKyu([], {
       'env-1': [
         { subscription: 'record-order', status: 'completed', attempts: 1, runId: 'run-1', createdAt: new Date() },
       ],
@@ -446,7 +440,7 @@ describe('handleUiRequest', () => {
       [],
     ])
 
-    const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/bus.json'))
+    const response = await handleUiRequest(deps(pool, kyu), getRequest('/bus.json'))
 
     expect(response.status).toBe(200)
     expect(response.contentType).toBe('application/json')

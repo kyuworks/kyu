@@ -1,5 +1,5 @@
-import type { HandlerContext, MessageDataShape } from '@qtaxis/sdk'
-import { NonRetryableError } from '@qtaxis/sdk'
+import type { HandlerContext, MessageDataShape } from '@kyuworks/sdk'
+import { NonRetryableError } from '@kyuworks/sdk'
 
 // Every shop.* message is tenant-scoped (AGENTS.md non-goals); a null
 // tenantId means a message this app never publishes reached the handler.

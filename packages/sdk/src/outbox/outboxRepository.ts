@@ -1,4 +1,4 @@
-import type { Envelope, EnvelopeData, MessageDataShape } from '@qtaxis/schemas'
+import type { Envelope, EnvelopeData, MessageDataShape } from '@kyuworks/schemas'
 import { z } from 'zod'
 import type { Queryable } from '../db/queryable.js'
 import type { OutboxRow } from './rows.js'
@@ -31,7 +31,7 @@ export async function insertOutboxRow<TData extends MessageDataShape = EnvelopeD
   db: Queryable,
   envelope: Envelope<TData>,
 ): Promise<void> {
-  await db.query('INSERT INTO qtaxis_outbox (id, name, tenant_id, envelope) VALUES ($1, $2, $3, $4::jsonb)', [
+  await db.query('INSERT INTO kyu_outbox (id, name, tenant_id, envelope) VALUES ($1, $2, $3, $4::jsonb)', [
     envelope.id,
     envelope.name,
     envelope.tenantId,
@@ -59,10 +59,10 @@ export async function claimPendingRows(db: Queryable, options: ClaimPendingRowsO
   assertValidStaleAfterMs(options.staleAfterMs)
 
   const claimed = await db.query(
-    `UPDATE qtaxis_outbox
+    `UPDATE kyu_outbox
      SET claimed_at = now(), claimed_by = $1
      WHERE id IN (
-       SELECT id FROM qtaxis_outbox
+       SELECT id FROM kyu_outbox
        WHERE published_at IS NULL
          AND (claimed_at IS NULL OR claimed_at < now() - ($2::text || ' milliseconds')::interval)
        ORDER BY created_at, id
@@ -86,7 +86,7 @@ export async function claimPendingRows(db: Queryable, options: ClaimPendingRowsO
     const { id } = outboxRowIdSchema.parse(raw)
     skipped.push(id)
     await db.query(
-      `UPDATE qtaxis_outbox
+      `UPDATE kyu_outbox
        SET attempts = attempts + 1, last_error = $1
        WHERE id = $2`,
       [message, id],
@@ -109,7 +109,7 @@ export async function claimPendingRows(db: Queryable, options: ClaimPendingRowsO
 // ids; the claimed_by check keeps its follow-up write off the new owner's row.
 export async function markPublished(db: Queryable, workerId: string, ids: readonly string[]): Promise<void> {
   assertNonEmptyWorkerId(workerId)
-  await db.query('UPDATE qtaxis_outbox SET published_at = now() WHERE id = ANY($1::uuid[]) AND claimed_by = $2', [
+  await db.query('UPDATE kyu_outbox SET published_at = now() WHERE id = ANY($1::uuid[]) AND claimed_by = $2', [
     uuidArrayLiteral(ids),
     workerId,
   ])
@@ -123,7 +123,7 @@ export async function recordPublishFailure(
 ): Promise<void> {
   assertNonEmptyWorkerId(workerId)
   await db.query(
-    `UPDATE qtaxis_outbox
+    `UPDATE kyu_outbox
      SET attempts = attempts + 1, last_error = $1, claimed_at = NULL, claimed_by = NULL
      WHERE id = ANY($2::uuid[]) AND claimed_by = $3`,
     [error, uuidArrayLiteral(ids), workerId],
@@ -133,7 +133,7 @@ export async function recordPublishFailure(
 export async function releaseClaims(db: Queryable, workerId: string, ids: readonly string[]): Promise<void> {
   assertNonEmptyWorkerId(workerId)
   await db.query(
-    'UPDATE qtaxis_outbox SET claimed_at = NULL, claimed_by = NULL WHERE id = ANY($1::uuid[]) AND claimed_by = $2',
+    'UPDATE kyu_outbox SET claimed_at = NULL, claimed_by = NULL WHERE id = ANY($1::uuid[]) AND claimed_by = $2',
     [uuidArrayLiteral(ids), workerId],
   )
 }
@@ -143,7 +143,7 @@ export interface PrunePublishedOptions {
 }
 
 export async function prunePublished(db: Queryable, options: PrunePublishedOptions): Promise<number> {
-  const deleted = await db.query('DELETE FROM qtaxis_outbox WHERE published_at IS NOT NULL AND published_at < $1', [
+  const deleted = await db.query('DELETE FROM kyu_outbox WHERE published_at IS NOT NULL AND published_at < $1', [
     options.publishedBefore,
   ])
   return deleted.rowCount ?? 0

@@ -18,13 +18,13 @@ export default async function setup(): Promise<void> {
     )
   }
 
-  const testDatabaseUrl = process.env['QTAXIS_TEST_DATABASE_URL']
+  const testDatabaseUrl = process.env['KYU_TEST_DATABASE_URL']
   if (!testDatabaseUrl) {
     throw new Error(
       [
-        'QTAXIS_TEST_DATABASE_URL is not set, so the integration suite has no database.',
+        'KYU_TEST_DATABASE_URL is not set, so the integration suite has no database.',
         'Point it at the Postgres the local engine stack exposes:',
-        '  export QTAXIS_TEST_DATABASE_URL="postgresql://hatchet:hatchet@localhost:15432/qtaxis_test"',
+        '  export KYU_TEST_DATABASE_URL="postgresql://hatchet:hatchet@localhost:15432/kyu_test"',
       ].join('\n'),
     )
   }
@@ -33,10 +33,10 @@ export default async function setup(): Promise<void> {
   // on, so its name is decoded straight from the URL, not hardcoded — the
   // admin statements run against Postgres's own `postgres` database instead.
   const databaseName = decodeURIComponent(new URL(testDatabaseUrl).pathname.replace(/^\//, ''))
-  if (!/^qtaxis_test[a-z0-9_]*$/.test(databaseName)) {
+  if (!/^kyu_test[a-z0-9_]*$/.test(databaseName)) {
     throw new Error(
       `Refusing to touch database ${databaseName}: the integration harness only drops databases named ` +
-        'qtaxis_test or qtaxis_test_<lane>.',
+        'kyu_test or kyu_test_<lane>.',
     )
   }
 
@@ -53,14 +53,14 @@ export default async function setup(): Promise<void> {
     )
   }
   try {
-    // A lingering session, or a Postgres that isn't the Qtaxis engine
+    // A lingering session, or a Postgres that isn't the Kyu engine
     // stack, must never lose the `DROP DATABASE`. The stack's own `hatchet`
     // database is the marker that this is the right server.
     const marker = await admin.query("SELECT 1 FROM pg_database WHERE datname = 'hatchet'")
     if (marker.rows.length === 0) {
       throw new Error(
-        `Refusing to drop ${databaseName}: the server at ${adminUrl.host} is not the Qtaxis engine stack ` +
-          '(no `hatchet` database). Point QTAXIS_TEST_DATABASE_URL at the stack from infra/hatchet/compose.yaml.',
+        `Refusing to drop ${databaseName}: the server at ${adminUrl.host} is not the Kyu engine stack ` +
+          '(no `hatchet` database). Point KYU_TEST_DATABASE_URL at the stack from infra/hatchet/compose.yaml.',
       )
     }
     try {
@@ -70,7 +70,7 @@ export default async function setup(): Promise<void> {
       if (message.includes('being accessed by other users')) {
         throw new Error(
           `Database ${databaseName} is in use by another session (another worktree's run, or an open psql). ` +
-            `Give this lane its own database: QTAXIS_TEST_DATABASE_URL=postgresql://…/qtaxis_test_<lane>.`,
+            `Give this lane its own database: KYU_TEST_DATABASE_URL=postgresql://…/kyu_test_<lane>.`,
           { cause: error },
         )
       }

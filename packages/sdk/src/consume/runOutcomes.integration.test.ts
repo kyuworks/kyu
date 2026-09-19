@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import { createEnvelope, defineEvent, toEnvelopeMetadata, uuidv7 } from '@qtaxis/schemas'
-import type { Envelope, MessageData, MessageDefinition, MessageSchema } from '@qtaxis/schemas'
+import { createEnvelope, defineEvent, toEnvelopeMetadata, uuidv7 } from '@kyuworks/schemas'
+import type { Envelope, MessageData, MessageDefinition, MessageSchema } from '@kyuworks/schemas'
 import { z } from 'zod'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { eventScope } from '../eventScope.js'
@@ -13,7 +13,7 @@ import { readRunOutcomes } from './runOutcomes.js'
 import type { RunOutcome } from './runOutcomes.js'
 import { subscribe } from './subscribe.js'
 import { createWorker } from './worker.js'
-import type { QtaxisWorker } from './worker.js'
+import type { KyuWorker } from './worker.js'
 
 // Envelopes go straight to `hatchet.events.push` — no relay or outbox — the
 // same pattern as subscribe.integration.test.ts. Namespaced per run.
@@ -57,28 +57,28 @@ async function waitForOutcomes(
 
 describe('runOutcomes: plain subscriptions', () => {
   const completedDef = defineEvent({
-    name: 'qtaxis.runoutcomes.completed',
+    name: 'kyu.runoutcomes.completed',
     version: 1,
     data: z.object({ seq: z.number() }),
   })
   const failedDef = defineEvent({
-    name: 'qtaxis.runoutcomes.failed',
+    name: 'kyu.runoutcomes.failed',
     version: 1,
     data: z.object({ seq: z.number() }),
   })
   const retriedDef = defineEvent({
-    name: 'qtaxis.runoutcomes.retried',
+    name: 'kyu.runoutcomes.retried',
     version: 1,
     data: z.object({ seq: z.number() }),
   })
   const fannedOutDef = defineEvent({
-    name: 'qtaxis.runoutcomes.fanned_out',
+    name: 'kyu.runoutcomes.fanned_out',
     version: 1,
     data: z.object({ seq: z.number() }),
   })
 
   const attemptsByEnvelope = new Map<string, number>()
-  let worker: QtaxisWorker | undefined
+  let worker: KyuWorker | undefined
 
   beforeAll(async () => {
     const completedSubscription = subscribe(hatchet, completedDef, {
@@ -108,7 +108,7 @@ describe('runOutcomes: plain subscriptions', () => {
       name: 'fanned-out-second',
       handler: () => undefined,
     })
-    worker = await createWorker(hatchet, 'qtaxis-run-outcomes', {
+    worker = await createWorker(hatchet, 'kyu-run-outcomes', {
       subscriptions: [completedSubscription, failedSubscription, retriedSubscription, fannedOutFirst, fannedOutSecond],
     })
     void worker.start()
@@ -185,17 +185,17 @@ describe('runOutcomes: plain subscriptions', () => {
 
 describe('runOutcomes: durable parked run', () => {
   const trigger = defineEvent({
-    name: 'qtaxis.runoutcomes.durable_trigger',
+    name: 'kyu.runoutcomes.durable_trigger',
     version: 1,
     data: z.object({ orderId: z.string() }),
   })
   const shipped = defineEvent({
-    name: 'qtaxis.runoutcomes.durable_shipped',
+    name: 'kyu.runoutcomes.durable_shipped',
     version: 1,
     data: z.object({ orderId: z.string() }),
   })
 
-  let worker: QtaxisWorker | undefined
+  let worker: KyuWorker | undefined
 
   beforeAll(async () => {
     const subscription = durable(hatchet, trigger, {
@@ -207,7 +207,7 @@ describe('runOutcomes: durable parked run', () => {
         })
       },
     })
-    worker = await createWorker(hatchet, 'qtaxis-run-outcomes-durable', {
+    worker = await createWorker(hatchet, 'kyu-run-outcomes-durable', {
       subscriptions: [subscription],
       durableSlots: 5,
     })
@@ -239,17 +239,17 @@ describe('runOutcomes: durable parked run', () => {
 
 describe('runOutcomes: queued run', () => {
   const neverStarted = defineEvent({
-    name: 'qtaxis.runoutcomes.queued',
+    name: 'kyu.runoutcomes.queued',
     version: 1,
     data: z.object({ seq: z.number() }),
   })
-  let worker: QtaxisWorker | undefined
+  let worker: KyuWorker | undefined
 
   beforeAll(async () => {
     // Registered, never started: no slot ever picks the run up, so it stays
     // QUEUED for the test to observe.
     const subscription = subscribe(hatchet, neverStarted, { name: 'queued-recorder', handler: () => undefined })
-    worker = await createWorker(hatchet, 'qtaxis-run-outcomes-queued', { subscriptions: [subscription] })
+    worker = await createWorker(hatchet, 'kyu-run-outcomes-queued', { subscriptions: [subscription] })
   }, 60_000)
 
   afterAll(async () => {

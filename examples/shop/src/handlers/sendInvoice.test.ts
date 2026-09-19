@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import type { HandlerContext, Qtaxis, MessageData } from '@qtaxis/sdk'
-import { NonRetryableError, createEnvelope, onceById } from '@qtaxis/sdk'
+import type { HandlerContext, Kyu, MessageData } from '@kyuworks/sdk'
+import { NonRetryableError, createEnvelope, onceById } from '@kyuworks/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
 import { sendInvoice } from '../messages.js'
@@ -17,7 +17,7 @@ function fakeClient(events: string[], invoiceExists: boolean): PoolClient {
   const stub: Pick<PoolClient, 'query' | 'release'> = {
     query: ((text: string, params?: readonly unknown[]) => {
       events.push(text)
-      if (text.startsWith('INSERT INTO qtaxis_processed')) {
+      if (text.startsWith('INSERT INTO kyu_processed')) {
         return Promise.resolve({ rows: [{ envelope_id: params?.[0] }], rowCount: 1 })
       }
       if (text.startsWith('UPDATE shop_invoice')) {
@@ -38,9 +38,9 @@ function fakePool(client: PoolClient): Pool {
 }
 
 // onceById is a plain function of a Queryable; the real one runs unmocked here.
-function fakeQtaxis(): Qtaxis {
-  const stub: Pick<Qtaxis, 'onceById'> = { onceById }
-  return stub as Qtaxis
+function fakeKyu(): Kyu {
+  const stub: Pick<Kyu, 'onceById'> = { onceById }
+  return stub as Kyu
 }
 
 async function buildContext(orderId: string, invoiceId: string, tenantId: string): Promise<SendInvoiceContext> {
@@ -71,7 +71,7 @@ describe('handleSendInvoice', () => {
     const pool = fakePool(fakeClient(events, false))
     const ctx = await buildContext(orderId, invoiceId, randomUUID())
 
-    const rejection = handleSendInvoice(pool, fakeQtaxis(), ctx)
+    const rejection = handleSendInvoice(pool, fakeKyu(), ctx)
     await expect(rejection).rejects.toThrow(new RegExp(invoiceId))
     await expect(rejection).rejects.toBeInstanceOf(NonRetryableError)
     expect(events).not.toContain(LOG_INSERT)
@@ -84,7 +84,7 @@ describe('handleSendInvoice', () => {
     const pool = fakePool(fakeClient(events, true))
     const ctx = await buildContext(orderId, invoiceId, randomUUID())
 
-    await handleSendInvoice(pool, fakeQtaxis(), ctx)
+    await handleSendInvoice(pool, fakeKyu(), ctx)
 
     expect(events).toContain(LOG_INSERT)
   })

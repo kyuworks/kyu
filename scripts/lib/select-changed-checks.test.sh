@@ -20,21 +20,21 @@ init_fixture() {
     "${root}/packages/notests/src" "${root}/scripts/lib"
   cat > "${root}/packages/schemas/package.json" <<'JSON'
 {
-  "name": "@qtaxis/schemas",
+  "name": "@kyuworks/schemas",
   "scripts": { "lint": "true", "typecheck": "true", "typecheck:tests": "true", "test": "true" }
 }
 JSON
   cat > "${root}/packages/sdk/package.json" <<'JSON'
 {
-  "name": "@qtaxis/sdk",
-  "dependencies": { "@qtaxis/schemas": "workspace:*" },
+  "name": "@kyuworks/sdk",
+  "dependencies": { "@kyuworks/schemas": "workspace:*" },
   "scripts": { "lint": "true", "typecheck": "true", "typecheck:tests": "true", "test": "true" }
 }
 JSON
   cat > "${root}/examples/shop/package.json" <<'JSON'
 {
-  "name": "@qtaxis/example-shop",
-  "dependencies": { "@qtaxis/sdk": "workspace:*" },
+  "name": "@kyuworks/example-shop",
+  "dependencies": { "@kyuworks/sdk": "workspace:*" },
   "scripts": { "lint": "true", "typecheck": "true", "typecheck:tests": "true", "test": "true" }
 }
 JSON
@@ -43,7 +43,7 @@ JSON
   # green suite when nothing exercises a package missing the script).
   cat > "${root}/packages/notests/package.json" <<'JSON'
 {
-  "name": "@qtaxis/notests",
+  "name": "@kyuworks/notests",
   "scripts": { "lint": "true", "typecheck": "true", "test": "true" }
 }
 JSON
@@ -75,16 +75,16 @@ git -C "${REPO}" add examples/shop/src/c.ts
 git -C "${REPO}" commit -qm "touch example"
 
 assert_output_contains "example change selects lint" \
-  $'lint:examples/shop\tpnpm --filter @qtaxis/example-shop lint' \
+  $'lint:examples/shop\tpnpm --filter @kyuworks/example-shop lint' \
   run_select "${REPO}" "HEAD~1...HEAD"
 assert_output_contains "example change selects typecheck" \
-  $'typecheck:examples/shop\tpnpm --filter @qtaxis/example-shop typecheck' \
+  $'typecheck:examples/shop\tpnpm --filter @kyuworks/example-shop typecheck' \
   run_select "${REPO}" "HEAD~1...HEAD"
 assert_output_contains "example change selects typecheck:tests" \
-  $'typecheck-tests:examples/shop\tpnpm --filter @qtaxis/example-shop typecheck:tests' \
+  $'typecheck-tests:examples/shop\tpnpm --filter @kyuworks/example-shop typecheck:tests' \
   run_select "${REPO}" "HEAD~1...HEAD"
 assert_output_contains "example change selects test" \
-  $'test:examples/shop\tpnpm --filter @qtaxis/example-shop test' \
+  $'test:examples/shop\tpnpm --filter @kyuworks/example-shop test' \
   run_select "${REPO}" "HEAD~1...HEAD"
 assert_output_lacks "example change does not select an unrelated package" \
   "packages/schemas" \

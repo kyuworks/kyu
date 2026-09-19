@@ -1,5 +1,5 @@
-import type { Envelope, MessageName } from '@qtaxis/schemas'
-import { toEnvelopeMetadata } from '@qtaxis/schemas'
+import type { Envelope, MessageName } from '@kyuworks/schemas'
+import { toEnvelopeMetadata } from '@kyuworks/schemas'
 import { eventScope } from '../eventScope.js'
 import type { OutboxRow } from '../outbox/rows.js'
 

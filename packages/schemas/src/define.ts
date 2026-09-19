@@ -7,7 +7,7 @@ import type { MessageDataShape } from './json.js'
 export type { JsonObject, JsonPrimitive, JsonValue, MessageDataShape } from './json.js'
 
 // Input is fixed to `unknown` by the Standard Schema spec (`validate` always takes `unknown`);
-// only Output is a Qtaxis-chosen constraint here.
+// only Output is a Kyu-chosen constraint here.
 export type MessageSchema = StandardSchemaV1<unknown, MessageDataShape>
 
 export interface MessageDefinition<S extends MessageSchema = MessageSchema> {

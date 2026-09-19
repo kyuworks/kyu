@@ -1,8 +1,8 @@
 import nodeProcess from 'node:process'
-import type { QtaxisRelayOptions, Relay } from '@qtaxis/sdk'
+import type { KyuRelayOptions, Relay } from '@kyuworks/sdk'
 import { Client } from 'pg'
 import { readConfig } from './config.js'
-import { createShopQtaxis } from './qtaxis.js'
+import { createShopKyu } from './kyu.js'
 import { describeError, exitAfterLog, log } from './log.js'
 
 // SIGTERM/SIGINT both drain the relay before exiting; a supervisor sends
@@ -31,8 +31,8 @@ async function main(): Promise<void> {
     exitAfterLog(1, 'relay', 'db-error', { message: describeError(error) })
   })
 
-  const qtaxis = createShopQtaxis(config)
-  const relayOptions: QtaxisRelayOptions = {
+  const kyu = createShopKyu(config)
+  const relayOptions: KyuRelayOptions = {
     db,
     workerId: `shop-relay-${nodeProcess.pid}`,
     // A relay killed without SIGTERM (a crash, a supervisor SIGKILL) leaves
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
     },
   }
   if (config.relayBatchSize !== undefined) relayOptions.batchSize = config.relayBatchSize
-  const relay = qtaxis.startRelay(relayOptions)
+  const relay = kyu.startRelay(relayOptions)
 
   nodeProcess.on('SIGTERM', () => onShutdownSignal(relay, db))
   nodeProcess.on('SIGINT', () => onShutdownSignal(relay, db))

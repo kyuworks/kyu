@@ -1,12 +1,12 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { defineEvent } from '@qtaxis/schemas'
-import type { Envelope, EnvelopeMetadataFields } from '@qtaxis/schemas'
+import { defineEvent } from '@kyuworks/schemas'
+import type { Envelope, EnvelopeMetadataFields } from '@kyuworks/schemas'
 import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import type { HandlerContext } from './consume/handlerContext.js'
-import type { QtaxisWorker } from './consume/worker.js'
-import { createQtaxis } from './createQtaxis.js'
+import type { KyuWorker } from './consume/worker.js'
+import { createKyu } from './createKyu.js'
 import { createHatchetClient } from './hatchet.js'
 import type { OnceResult } from './outbox/onceById.js'
 
@@ -14,10 +14,10 @@ import type { OnceResult } from './outbox/onceById.js'
 // each other's events (relay.integration.test.ts's own convention).
 const namespace = `ck${randomBytes(3).toString('hex')}_`
 const hatchet = createHatchetClient({ namespace })
-const qtaxis = createQtaxis({ hatchet, source: 'createQtaxis-e2e-test' })
+const kyu = createKyu({ hatchet, source: 'createKyu-e2e-test' })
 
 const delivered = defineEvent({
-  name: 'qtaxis.create_qtaxis_test.delivered',
+  name: 'kyu.create_kyu_test.delivered',
   version: 1,
   data: z.object({ n: z.number() }),
 })
@@ -51,9 +51,9 @@ let client: Client
 let relayDb: Client
 
 beforeAll(async () => {
-  client = new Client({ connectionString: process.env['QTAXIS_TEST_DATABASE_URL'] })
+  client = new Client({ connectionString: process.env['KYU_TEST_DATABASE_URL'] })
   await client.connect()
-  relayDb = new Client({ connectionString: process.env['QTAXIS_TEST_DATABASE_URL'] })
+  relayDb = new Client({ connectionString: process.env['KYU_TEST_DATABASE_URL'] })
   await relayDb.connect()
 })
 
@@ -63,7 +63,7 @@ afterAll(async () => {
 })
 
 afterEach(async () => {
-  await client.query('TRUNCATE qtaxis_outbox, qtaxis_processed')
+  await client.query('TRUNCATE kyu_outbox, kyu_processed')
 })
 
 interface Received {
@@ -71,23 +71,23 @@ interface Received {
   metadata: EnvelopeMetadataFields
 }
 
-describe('createQtaxis end to end', () => {
+describe('createKyu end to end', () => {
   it('a second onceById on the same envelope id does not run the body again', async () => {
     const received = deferred<Received>()
 
     // A fresh pg Client per invocation: a shared client's BEGIN would
     // silently join whichever transaction is already open on it.
-    const subscription = qtaxis.subscribe(delivered, {
+    const subscription = kyu.subscribe(delivered, {
       name: 'e2e-handler',
       handler: async (ctx: HandlerContext<{ n: number }>) => {
-        const handlerDb = new Client({ connectionString: process.env['QTAXIS_TEST_DATABASE_URL'] })
+        const handlerDb = new Client({ connectionString: process.env['KYU_TEST_DATABASE_URL'] })
         await handlerDb.connect()
         // Resolved only after COMMIT: keeps the test's read ordered after
         // the handler's write (the row lock already blocks a dirty read).
         let receivedHere: Received | undefined
         try {
           await handlerDb.query('BEGIN')
-          await qtaxis.onceById(handlerDb, ctx.envelope.id, 'e2e-handler', () => {
+          await kyu.onceById(handlerDb, ctx.envelope.id, 'e2e-handler', () => {
             receivedHere = { envelope: ctx.envelope, metadata: ctx.metadata }
             return Promise.resolve()
           })
@@ -102,11 +102,11 @@ describe('createQtaxis end to end', () => {
       },
     })
 
-    const relay = qtaxis.startRelay({ db: relayDb, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
-    let worker: QtaxisWorker | undefined
+    const relay = kyu.startRelay({ db: relayDb, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
+    let worker: KyuWorker | undefined
 
     try {
-      worker = await qtaxis.worker('qtaxis-sdk-createqtaxis-integration', { subscriptions: [subscription] })
+      worker = await kyu.worker('kyu-sdk-createkyu-integration', { subscriptions: [subscription] })
       void worker.start()
       await worker.waitUntilReady()
 
@@ -121,7 +121,7 @@ describe('createQtaxis end to end', () => {
       while (result === null && Date.now() < deadline) {
         const tenantId = randomUUID()
         await client.query('BEGIN')
-        const envelope = await qtaxis.publish(client, delivered, { n: 7 }, { tenantId })
+        const envelope = await kyu.publish(client, delivered, { n: 7 }, { tenantId })
         await client.query('COMMIT')
         published.push({ envelope, tenantId })
 
@@ -140,12 +140,12 @@ describe('createQtaxis end to end', () => {
 
       // The mandatory row (AGENTS.md § Test-driven changes), run on its own
       // connection in a transaction — the shape onceById's docstring requires.
-      const redeliveryDb = new Client({ connectionString: process.env['QTAXIS_TEST_DATABASE_URL'] })
+      const redeliveryDb = new Client({ connectionString: process.env['KYU_TEST_DATABASE_URL'] })
       await redeliveryDb.connect()
       let redelivery: OnceResult<void> | undefined
       try {
         await redeliveryDb.query('BEGIN')
-        redelivery = await qtaxis.onceById<void>(redeliveryDb, match.envelope.id, 'e2e-handler', () => {
+        redelivery = await kyu.onceById<void>(redeliveryDb, match.envelope.id, 'e2e-handler', () => {
           throw new Error('onceById must not re-run the handler body on redelivery')
         })
         await redeliveryDb.query('COMMIT')
@@ -158,7 +158,7 @@ describe('createQtaxis end to end', () => {
       expect(redelivery).toEqual({ ran: false })
 
       const processed = await client.query(
-        'SELECT count(*)::text AS count FROM qtaxis_processed WHERE envelope_id = $1 AND handler = $2',
+        'SELECT count(*)::text AS count FROM kyu_processed WHERE envelope_id = $1 AND handler = $2',
         [match.envelope.id, 'e2e-handler'],
       )
       expect(Number(processed.rows[0]?.['count'])).toBe(1)

@@ -13,7 +13,7 @@ import type { Worker } from '../hatchet.js'
 type SmokeInput = { envelopeId: string }
 
 const namespace = `kit${randomBytes(3).toString('hex')}_`
-const eventKey = 'qtaxis.smoke.pushed'
+const eventKey = 'kyu.smoke.pushed'
 
 const hatchet = createHatchetClient({ namespace })
 
@@ -33,7 +33,7 @@ function deferred<T>(): Deferred<T> {
 const firstDelivery = deferred<SmokeInput>()
 
 const smoke = hatchet.task({
-  name: 'qtaxis-smoke',
+  name: 'kyu-smoke',
   onEvents: [eventKey],
   fn: (input: SmokeInput) => {
     firstDelivery.resolve(input)
@@ -56,7 +56,7 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null
 
 describe('hatchet engine smoke', () => {
   beforeAll(async () => {
-    worker = await hatchet.worker('qtaxis-sdk-integration', { workflows: [smoke], slots: 2 })
+    worker = await hatchet.worker('kyu-sdk-integration', { workflows: [smoke], slots: 2 })
     worker.start().catch((error) => {
       workerStartError = error instanceof Error ? error : new Error(String(error))
     })

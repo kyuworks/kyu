@@ -1,7 +1,7 @@
 {
-  "name": "@qtaxis/sdk",
+  "name": "@kyuworks/sdk",
   "version": "0.0.0",
-  "description": "Qtaxis client SDK: publish through a transactional outbox, subscribe with Hatchet, run durable handlers.",
+  "description": "Kyu client SDK: publish through a transactional outbox, subscribe with Hatchet, run durable handlers.",
   "type": "module",
   "license": "UNLICENSED",
   "main": "./dist/index.js",
@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@hatchet-dev/typescript-sdk": "^1.32.0",
-    "@qtaxis/schemas": "workspace:*",
+    "@kyuworks/schemas": "workspace:*",
     "zod": "^4.0.0"
   },
   "devDependencies": {

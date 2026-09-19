@@ -44,7 +44,7 @@ describe('BusLegend', () => {
 
     expect(markup).toContain(
       escapeReactText(
-        'The outbox is a table in the shop\'s own database, qtaxis_outbox. "Waiting for relay" counts rows the relay has not sent yet. "Shipped" counts the rest. Stop the relay and place an order: waiting for relay goes up and nothing below this box moves.',
+        'The outbox is a table in the shop\'s own database, kyu_outbox. "Waiting for relay" counts rows the relay has not sent yet. "Shipped" counts the rest. Stop the relay and place an order: waiting for relay goes up and nothing below this box moves.',
       ),
     )
   })

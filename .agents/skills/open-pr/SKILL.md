@@ -156,7 +156,7 @@ gh pr create --base main --title "{title}" --body "$(cat <<'EOF'
 - {One change. One idea.}
 
 ## How to check
-- {Command the reviewer can run, e.g. `pnpm --filter @qtaxis/sdk test`.}
+- {Command the reviewer can run, e.g. `pnpm --filter @kyuworks/sdk test`.}
 - {Behavior change only: the test that failed without the production change. Omit for docs, lint, generated-only.}
 
 ## Agent ship loop

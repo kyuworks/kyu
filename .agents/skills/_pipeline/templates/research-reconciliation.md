@@ -45,7 +45,7 @@ The part Matt actually uses. One block per open disagreement:
 >
 > | If you answer | Then we build | Which means |
 > |---|---|---|
-> | The SDK drops it | `onceById` runs before every handler, using a `qtaxis_processed` table in the consumer's database | Every consumer needs that table; handlers stay simple |
+> | The SDK drops it | `onceById` runs before every handler, using a `kyu_processed` table in the consumer's database | Every consumer needs that table; handlers stay simple |
 > | The handler decides | `onceById` is opt-in per subscription | No table for naturally idempotent handlers; a forgotten opt-in double-applies an effect |
 >
 > **Recommended:** the handler decides — {one sentence why}.

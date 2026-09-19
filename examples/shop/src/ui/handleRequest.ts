@@ -1,5 +1,5 @@
-import type { Qtaxis } from '@qtaxis/sdk'
-import { uuidv7 } from '@qtaxis/sdk'
+import type { Kyu } from '@kyuworks/sdk'
+import { uuidv7 } from '@kyuworks/sdk'
 import type { Pool } from 'pg'
 import type { z } from 'zod'
 import { describeError, log } from '../log.js'
@@ -15,7 +15,7 @@ import { ORDER_HISTORY_LIMIT, readOrders, readProducts } from './shopQueries.js'
 
 export interface UiRequestDeps {
   pool: Pool
-  qtaxis: Qtaxis
+  kyu: Kyu
   dashboardUrl: string
   topology: BusTopology
   readWeb(method: string, url: string): Promise<UiResponse | undefined>
@@ -91,7 +91,7 @@ async function handlePlaceOrder(deps: UiRequestDeps, body: string): Promise<UiRe
   const parsed = parseBody<PlaceOrderRequest>(placeOrderRequestSchema, body)
   if (!parsed.ok) return errorResponse(400, parsed.error)
   try {
-    const placed = await placeOrder(deps.pool, deps.qtaxis, {
+    const placed = await placeOrder(deps.pool, deps.kyu, {
       tenantId: DEMO_TENANT_ID,
       customerId: parsed.value.customerId ?? uuidv7(),
       lines: parsed.value.lines,
@@ -113,7 +113,7 @@ async function handleShipOrder(deps: UiRequestDeps, body: string): Promise<UiRes
   const parsed = parseBody<ShipOrderRequest>(shipOrderRequestSchema, body)
   if (!parsed.ok) return errorResponse(400, parsed.error)
   try {
-    const envelopeId = await shipOrder(deps.pool, deps.qtaxis, {
+    const envelopeId = await shipOrder(deps.pool, deps.kyu, {
       tenantId: DEMO_TENANT_ID,
       orderId: parsed.value.orderId,
       carrier: parsed.value.carrier ?? 'unspecified',
@@ -129,7 +129,7 @@ async function handleSendInvoice(deps: UiRequestDeps, body: string): Promise<UiR
   const parsed = parseBody<SendInvoiceRequest>(sendInvoiceRequestSchema, body)
   if (!parsed.ok) return errorResponse(400, parsed.error)
   try {
-    const sent = await sendInvoiceCommand(deps.pool, deps.qtaxis, {
+    const sent = await sendInvoiceCommand(deps.pool, deps.kyu, {
       tenantId: DEMO_TENANT_ID,
       orderId: parsed.value.orderId,
       invoiceId: parsed.value.invoiceId ?? uuidv7(),
@@ -144,7 +144,7 @@ async function handleSendInvoice(deps: UiRequestDeps, body: string): Promise<UiR
 
 async function handleBusJson(deps: UiRequestDeps): Promise<UiResponse> {
   try {
-    const counts = await readBusCounts(deps.pool, deps.qtaxis.runs, deps.topology)
+    const counts = await readBusCounts(deps.pool, deps.kyu.runs, deps.topology)
     return jsonResponse(200, { topology: deps.topology, counts })
   } catch (error) {
     log('ui', 'failed', { message: describeError(error) })

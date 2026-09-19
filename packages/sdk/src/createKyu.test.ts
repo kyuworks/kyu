@@ -1,9 +1,9 @@
-import { defineEvent, uuidv7 } from '@qtaxis/schemas'
+import { defineEvent, uuidv7 } from '@kyuworks/schemas'
 import { describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { z } from 'zod'
-import { createQtaxis } from './createQtaxis.js'
-import type { QtaxisRelayOptions } from './createQtaxis.js'
+import { createKyu } from './createKyu.js'
+import type { KyuRelayOptions } from './createKyu.js'
 import type { Queryable, QueryParam, QueryRows } from './db/queryable.js'
 import type {
   CreateDurableTaskWorkflowOpts,
@@ -132,26 +132,26 @@ function fakeRelayDb(row: OutboxRow): Queryable {
   }
 }
 
-describe('createQtaxis', () => {
+describe('createKyu', () => {
   it('returns every member', () => {
     const { client } = fakeHatchetClient()
-    const qtaxis = createQtaxis({ hatchet: client, source: 'shop-service' })
+    const kyu = createKyu({ hatchet: client, source: 'shop-service' })
 
-    expect(Object.keys(qtaxis).sort()).toEqual(
+    expect(Object.keys(kyu).sort()).toEqual(
       ['durable', 'onceById', 'publish', 'runs', 'startRelay', 'subscribe', 'worker'].sort(),
     )
   })
 
   it('publish uses the given source', async () => {
     const { client } = fakeHatchetClient()
-    const qtaxis = createQtaxis({ hatchet: client, source: 'shop-service' })
+    const kyu = createKyu({ hatchet: client, source: 'shop-service' })
     const db: Queryable = {
       query(_text: string, _params: readonly QueryParam[]): Promise<QueryRows> {
         return Promise.resolve({ rows: [], rowCount: 1 })
       },
     }
 
-    const envelope = await qtaxis.publish(
+    const envelope = await kyu.publish(
       db,
       orderPlaced,
       { orderId: '018f0000-0000-7000-8000-000000000002' },
@@ -165,9 +165,9 @@ describe('createQtaxis', () => {
 
   it('subscribe forwards to the underlying function with the bound client', () => {
     const { client, capturedTaskOptions } = fakeHatchetClient()
-    const qtaxis = createQtaxis({ hatchet: client, source: 'shop-service' })
+    const kyu = createKyu({ hatchet: client, source: 'shop-service' })
 
-    const subscription = qtaxis.subscribe(orderPlaced, { name: 'invoice-recorder', handler: () => undefined })
+    const subscription = kyu.subscribe(orderPlaced, { name: 'invoice-recorder', handler: () => undefined })
 
     expect(subscription).toEqual({
       name: 'invoice-recorder',
@@ -181,9 +181,9 @@ describe('createQtaxis', () => {
 
   it('durable forwards to the underlying function with the bound client', () => {
     const { client, capturedDurableOptions } = fakeHatchetClient()
-    const qtaxis = createQtaxis({ hatchet: client, source: 'shop-service' })
+    const kyu = createKyu({ hatchet: client, source: 'shop-service' })
 
-    qtaxis.durable(orderPlaced, { name: 'follow-up', handler: () => undefined })
+    kyu.durable(orderPlaced, { name: 'follow-up', handler: () => undefined })
 
     expect(capturedDurableOptions()?.name).toBe('follow-up')
     expect(capturedDurableOptions()?.onEvents).toEqual(['shop.order.placed'])
@@ -191,10 +191,10 @@ describe('createQtaxis', () => {
 
   it('runs.forEnvelope forwards to the underlying function with the bound client', async () => {
     const { client, capturedRunsListOptions } = fakeHatchetClient()
-    const qtaxis = createQtaxis({ hatchet: client, source: 'shop-service' })
+    const kyu = createKyu({ hatchet: client, source: 'shop-service' })
     const envelopeId = uuidv7()
 
-    const outcomes = await qtaxis.runs.forEnvelope(envelopeId)
+    const outcomes = await kyu.runs.forEnvelope(envelopeId)
 
     expect(outcomes).toEqual([])
     expect(capturedRunsListOptions()?.additionalMetadata).toEqual({ envelopeId })
@@ -202,24 +202,24 @@ describe('createQtaxis', () => {
 
   it('worker forwards to the underlying function with the bound client', async () => {
     const { client, capturedWorkerOptions, workerCallCount } = fakeHatchetClient()
-    const qtaxis = createQtaxis({ hatchet: client, source: 'shop-service' })
-    const subscription = qtaxis.subscribe(orderPlaced, { name: 'invoice-recorder', handler: () => undefined })
+    const kyu = createKyu({ hatchet: client, source: 'shop-service' })
+    const subscription = kyu.subscribe(orderPlaced, { name: 'invoice-recorder', handler: () => undefined })
 
-    await qtaxis.worker('shop-worker', { subscriptions: [subscription] })
+    await kyu.worker('shop-worker', { subscriptions: [subscription] })
 
     expect(workerCallCount()).toBe(1)
     expect(capturedWorkerOptions()?.workflows).toEqual([subscription.workflow])
   })
 })
 
-describe('createQtaxis: startRelay', () => {
-  it('binds startRelay to the same hatchet client given to createQtaxis', async () => {
+describe('createKyu: startRelay', () => {
+  it('binds startRelay to the same hatchet client given to createKyu', async () => {
     const bulkPush = vi.fn<BulkPushProcedure>(async (_name, items) => ({ events: items.map(() => ({})) }))
     const hatchet = { events: fakeEvents(bulkPush) } as HatchetClient
-    const qtaxis = createQtaxis({ hatchet, source: 'shop-service' })
+    const kyu = createKyu({ hatchet, source: 'shop-service' })
     const db = fakeRelayDb(claimedRow())
 
-    const relay = qtaxis.startRelay({ db, workerId: 'worker-1', pollIntervalMs: 60_000 })
+    const relay = kyu.startRelay({ db, workerId: 'worker-1', pollIntervalMs: 60_000 })
     try {
       await relay.tick()
       expect(bulkPush).toHaveBeenCalledTimes(1)
@@ -233,7 +233,7 @@ describe('createQtaxis: startRelay', () => {
     const bound = { events: fakeEvents(boundBulkPush) } as HatchetClient
     const otherBulkPush = vi.fn<BulkPushProcedure>(async (_name, items) => ({ events: items.map(() => ({})) }))
     const other = { events: fakeEvents(otherBulkPush) } as HatchetClient
-    const qtaxis = createQtaxis({ hatchet: bound, source: 'shop-service' })
+    const kyu = createKyu({ hatchet: bound, source: 'shop-service' })
     const db = fakeRelayDb(claimedRow())
 
     // Stands in for a caller holding a value already typed `RelayOptions`
@@ -245,9 +245,9 @@ describe('createQtaxis: startRelay', () => {
       workerId: 'worker-1',
       pollIntervalMs: 60_000,
       hatchet: other,
-    } as QtaxisRelayOptions
+    } as KyuRelayOptions
 
-    const relay = qtaxis.startRelay(relayOptions)
+    const relay = kyu.startRelay(relayOptions)
     try {
       await relay.tick()
       expect(boundBulkPush).toHaveBeenCalledTimes(1)

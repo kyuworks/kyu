@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      # Build first: type-aware oxlint needs @qtaxis/sdk's dist so examples/ resolve real types, not `any`.
+      # Build first: type-aware oxlint needs @kyuworks/sdk's dist so examples/ resolve real types, not `any`.
       - uses: ./.github/actions/setup
         with:
           build: 'true'
@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      QTAXIS_TEST_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/qtaxis_test
+      KYU_TEST_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/kyu_test
     services:
       postgres:
         image: postgres:15.6
@@ -122,7 +122,7 @@ jobs:
           echo "::add-mask::${TOKEN}"
           echo "HATCHET_CLIENT_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
           echo "HATCHET_CLIENT_TLS_STRATEGY=none" >> "$GITHUB_ENV"
-      - run: pnpm --filter @qtaxis/sdk test:integration
+      - run: pnpm --filter @kyuworks/sdk test:integration
 
   # Own job, own engine: the sdk and shop lanes are independent and ran
   # serially at about two minutes each.
@@ -131,8 +131,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      # The example's own runner creates qtaxis_shop itself; this only names where to connect.
-      QTAXIS_SHOP_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/qtaxis_shop
+      # The example's own runner creates kyu_shop itself; this only names where to connect.
+      KYU_SHOP_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/kyu_shop
     services:
       postgres:
         image: postgres:15.6
@@ -183,7 +183,7 @@ jobs:
           echo "::add-mask::${TOKEN}"
           echo "HATCHET_CLIENT_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
           echo "HATCHET_CLIENT_TLS_STRATEGY=none" >> "$GITHUB_ENV"
-      - run: pnpm --filter @qtaxis/shop test:integration
+      - run: pnpm --filter @kyuworks/shop test:integration
 
   self-tests:
     name: Gate Self Tests

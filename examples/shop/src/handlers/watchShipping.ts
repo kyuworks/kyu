@@ -1,4 +1,4 @@
-import type { DurableHandlerContext, Qtaxis, MessageData, Subscription } from '@qtaxis/sdk'
+import type { DurableHandlerContext, Kyu, MessageData, Subscription } from '@kyuworks/sdk'
 import type { Pool, PoolClient } from 'pg'
 import type { ShopConfig } from '../config.js'
 import { withTransaction } from '../db/pool.js'
@@ -30,12 +30,12 @@ async function logRow(
 // The body re-runs from the top on every reassignment (durable.ts), so both
 // writes go through onceById under their own handler names: the waiting row
 // before the wait, the completed/timeout row after it.
-async function watchShipping(pool: Pool, qtaxis: Qtaxis, config: ShopConfig, ctx: OrderPlacedContext): Promise<void> {
+async function watchShipping(pool: Pool, kyu: Kyu, config: ShopConfig, ctx: OrderPlacedContext): Promise<void> {
   const tenantId = requireTenant(WATCH_SHIPPING_NAME, ctx)
   const { orderId } = ctx.envelope.data
 
   await withTransaction(pool, (tx) =>
-    qtaxis.onceById(tx, ctx.envelope.id, WATCH_SHIPPING_WAITING, () =>
+    kyu.onceById(tx, ctx.envelope.id, WATCH_SHIPPING_WAITING, () =>
       logRow(tx, WATCH_SHIPPING_WAITING, ctx.envelope.id, orderId, tenantId),
     ),
   )
@@ -48,7 +48,7 @@ async function watchShipping(pool: Pool, qtaxis: Qtaxis, config: ShopConfig, ctx
   })
 
   await withTransaction(pool, (tx) =>
-    qtaxis.onceById(tx, ctx.envelope.id, `${WATCH_SHIPPING_NAME}:done`, async () => {
+    kyu.onceById(tx, ctx.envelope.id, `${WATCH_SHIPPING_NAME}:done`, async () => {
       if (result.kind === 'message') {
         await tx.query('UPDATE shop_order SET shipped_at = now() WHERE id = $1', [orderId])
         await logRow(tx, WATCH_SHIPPING_COMPLETED, ctx.envelope.id, orderId, tenantId, result.envelope.data.carrier)
@@ -59,13 +59,13 @@ async function watchShipping(pool: Pool, qtaxis: Qtaxis, config: ShopConfig, ctx
   )
 }
 
-export function watchShippingSubscription(qtaxis: Qtaxis, pool: Pool, config: ShopConfig): Subscription {
-  return qtaxis.durable(orderPlaced, {
+export function watchShippingSubscription(kyu: Kyu, pool: Pool, config: ShopConfig): Subscription {
+  return kyu.durable(orderPlaced, {
     name: WATCH_SHIPPING_NAME,
     executionTimeout: '1h',
     // A worker stopped while the body executes (not while parked in a wait)
     // fails that attempt; retrying is safe because every write goes through onceById.
     retries: 3,
-    handler: (ctx) => watchShipping(pool, qtaxis, config, ctx),
+    handler: (ctx) => watchShipping(pool, kyu, config, ctx),
   })
 }
