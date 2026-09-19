@@ -42,7 +42,7 @@ export function BusDiagram({ busDocument }: BusDiagramProps) {
             className="min-w-44 rounded-md border border-border bg-surface-secondary p-3 text-center"
             key={producer.source}
           >
-            <h3 className="mb-1 text-[0.95rem]">Producer: {producer.source}</h3>
+            <h3 className="mb-1 text-[0.95rem] font-bold">Producer: {producer.source}</h3>
             <p className="my-0.5 flex justify-between gap-4 text-sm">
               <span>published</span>
               <span>{producer.published}</span>
@@ -55,7 +55,7 @@ export function BusDiagram({ busDocument }: BusDiagramProps) {
 
       <div className="flex w-full flex-wrap justify-center gap-4">
         <div className="min-w-44 rounded-md border border-border bg-surface-secondary p-3 text-center">
-          <h3 className="mb-1 text-[0.95rem]">Outbox &mdash; qtaxis_outbox</h3>
+          <h3 className="mb-1 text-[0.95rem] font-bold">Outbox &mdash; qtaxis_outbox</h3>
           <p className="my-0.5 flex justify-between gap-4 text-sm">
             <span>waiting for relay</span>
             <span>{counts.outbox.waitingForRelay}</span>
@@ -71,7 +71,7 @@ export function BusDiagram({ busDocument }: BusDiagramProps) {
 
       <div className="flex w-full flex-wrap justify-center gap-4">
         <div className="min-w-44 rounded-md border border-border bg-surface-secondary p-3 text-center">
-          <h3 className="mb-1 text-[0.95rem]">Engine &mdash; Hatchet</h3>
+          <h3 className="mb-1 text-[0.95rem] font-bold">Engine &mdash; Hatchet</h3>
           <p className="mt-1 mb-0 text-xs text-muted">
             run numbers cover the newest {counts.window.limit} messages ({counts.window.envelopes} so far)
           </p>
@@ -86,7 +86,7 @@ export function BusDiagram({ busDocument }: BusDiagramProps) {
               <p className="m-0 text-center text-sm">{subscription.messageName}</p>
               <div className="h-5 w-px bg-border" aria-hidden="true" />
               <div className="min-w-44 rounded-md border border-border bg-surface-secondary p-3 text-center">
-                <h3 className="mb-1 text-[0.95rem]">{subscription.name}</h3>
+                <h3 className="mb-1 text-[0.95rem] font-bold">{subscription.name}</h3>
                 <p className="my-0.5 flex justify-between gap-4 text-sm">
                   <span>queued</span>
                   <span>{subscriptionCounts?.queued ?? 0}</span>
