@@ -1,4 +1,5 @@
 import path from 'node:path'
+import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { DEV_PROXY_EXACT_PATHS, isOrdersPageRequest } from './web/lib/devProxy.js'
@@ -13,7 +14,7 @@ const exactProxyEntries = Object.fromEntries(DEV_PROXY_EXACT_PATHS.map((route) =
 
 export default defineConfig({
   root: 'web',
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   build: { outDir: path.resolve(import.meta.dirname, 'dist/web'), emptyOutDir: true },
   server: {
     proxy: {

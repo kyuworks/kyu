@@ -79,9 +79,17 @@ unlike `src/`, which is NodeNext and always does. Do not mix the two styles insi
 `typecheck:tests` type-checks `web/` too, through `tsconfig.web.json`. `web/index.html` is not
 picked up by `pnpm format` or by the changed-file selector; it is not worth a glob for one file.
 
+Styling is Tailwind CSS v4 through `@tailwindcss/vite`, with HeroUI v3 components and Heroicons.
+The entry is `web/theme.css`, which imports only the HeroUI component stylesheets the pages
+actually use. Light and dark follow the OS: an inline script in `web/index.html` sets the class
+before first paint, and `web/lib/theme.ts`'s `watchSystemTheme` keeps it in sync afterwards from
+a guarded effect in `App.tsx`. Nothing is persisted and there is no HeroUI provider. `web/styles.css`
+is what is left of the old hand-written stylesheet; it shrinks to nothing over the rest of #81.
+
 `/` is the Shop page: a grid of product cards from `GET /products.json`, each with a quantity
-stepper and an "Add to order" button, next to a cart summary with the running total. `/checkout`
-shows the cart's lines and total and one button, **Pay and place order** — there is no payment
+stepper (increment and decrement buttons either side of the number) and an "Add to order" button,
+next to a cart summary with the running total. `/checkout` shows the cart's lines and total and
+one button, **Pay and place order** — there is no payment
 provider, so pressing it writes the order with `paid_at = now()` in the same transaction and
 posts to `POST /orders`. On success the page shows the order id, the total, and the two envelope
 ids, with a link to `/orders`. The cart is kept in `localStorage` under `qtaxis.shop.cart` so it survives the full page

@@ -1,3 +1,5 @@
+import { Button, Card, CardContent, CardHeader, Separator } from '@heroui/react'
+import { TrashIcon } from '@heroicons/react/24/outline'
 import type { ReactNode } from 'react'
 import type { CartPricedLine } from '../lib/cart'
 import { formatCents } from '../lib/cart'
@@ -14,36 +16,51 @@ export interface CartSummaryProps {
 /** The cart's lines and their totals, the order total, and one caller-supplied action. */
 export function CartSummary({ lines, totalCents, onRemove, children }: CartSummaryProps) {
   return (
-    <aside className="card cart-summary">
-      <h2>Your order</h2>
-      {lines.length === 0 ? (
-        <p className="muted">Your cart is empty.</p>
-      ) : (
-        <ul className="cart-lines">
-          {lines.map((line) => (
-            <li key={line.product.id} className="cart-line">
-              <span>
-                {line.product.name} &times; {line.quantity}
-              </span>
-              <span>{formatCents(line.lineCents)}</span>
-              {onRemove !== undefined && (
-                <button
-                  type="button"
-                  onClick={() => onRemove(line.product.id)}
-                  aria-label={`Remove ${line.product.name}`}
+    <aside className="sticky top-4">
+      <Card>
+        <CardHeader>
+          {/* CardTitle only renders <h3>; this panel needs an <h2>, one level under the page's <h1>. */}
+          <h2 data-slot="card-title" className="text-sm leading-6 font-medium text-foreground">
+            Your order
+          </h2>
+        </CardHeader>
+        <CardContent>
+          {lines.length === 0 ? (
+            <p className="text-muted">Your cart is empty.</p>
+          ) : (
+            <ul className="m-0 list-none p-0" role="list">
+              {lines.map((line) => (
+                <li
+                  key={line.product.id}
+                  className="flex items-center justify-between gap-4 border-b border-border py-2"
                 >
-                  Remove
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="cart-total">
-        <span>Total</span>
-        <span>{formatCents(totalCents)}</span>
-      </p>
-      {children}
+                  <span>
+                    {line.product.name} &times; {line.quantity}
+                  </span>
+                  <span>{formatCents(line.lineCents)}</span>
+                  {onRemove !== undefined && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Remove ${line.product.name}`}
+                      onPress={() => onRemove(line.product.id)}
+                    >
+                      Remove
+                      <TrashIcon className="size-4" aria-hidden="true" />
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          <Separator className="my-3" />
+          <p className="flex justify-between font-semibold">
+            <span>Total</span>
+            <span>{formatCents(totalCents)}</span>
+          </p>
+          {children}
+        </CardContent>
+      </Card>
     </aside>
   )
 }

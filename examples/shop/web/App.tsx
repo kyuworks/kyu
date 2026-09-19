@@ -2,6 +2,7 @@ import { useEffect, useReducer, useState } from 'react'
 import { describeFetchFailure } from './lib/fetchJson'
 import { parseUiConfig } from './lib/uiConfig'
 import { cartReducer, readStoredCart, writeStoredCart } from './lib/cart'
+import { watchSystemTheme } from './lib/theme'
 import { parseProductsDocument } from './lib/shopDocuments'
 import type { ShopProduct } from './lib/shopDocuments'
 import { BusPage } from './pages/BusPage'
@@ -86,6 +87,10 @@ export function App() {
   useEffect(() => {
     writeStoredCart(cartLines)
   }, [cartLines])
+
+  // The inline script in index.html sets the class before first paint; this keeps it in
+  // sync with the OS after mount, live, with no reload and nothing persisted.
+  useEffect(() => watchSystemTheme(document.documentElement), [])
 
   const pathname = window.location.pathname
   const cartCount = cartLines.reduce((total, line) => total + line.quantity, 0)

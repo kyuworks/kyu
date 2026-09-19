@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cartReducer, cartSummary, formatCents, readStoredCart, writeStoredCart } from './cart'
+import { cartReducer, cartSummary, clampQuantity, formatCents, readStoredCart, writeStoredCart } from './cart'
 import type { ShopProduct } from './shopDocuments'
 
 // A minimal in-memory stand-in for the Storage interface, matching customer.test.ts's fake.
@@ -121,6 +121,24 @@ describe('cartSummary', () => {
       lines: [{ product: products[0], quantity: 1, lineCents: 1400 }],
       totalCents: 1400,
     })
+  })
+})
+
+describe('clampQuantity', () => {
+  it('raises a quantity below the minimum up to it', () => {
+    expect(clampQuantity(0)).toBe(1)
+  })
+
+  it('caps a quantity above the maximum at it', () => {
+    expect(clampQuantity(150)).toBe(99)
+  })
+
+  it('leaves an in-range quantity unchanged', () => {
+    expect(clampQuantity(7)).toBe(7)
+  })
+
+  it('treats NaN as the minimum, for a field cleared to retype', () => {
+    expect(clampQuantity(Number.NaN)).toBe(1)
   })
 })
 
