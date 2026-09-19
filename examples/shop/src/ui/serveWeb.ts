@@ -14,7 +14,7 @@ const CONTENT_TYPES = new Map<string, string>([
 ])
 
 /** The urls that return the app shell. One entry per page; never a wildcard. */
-const APP_ROUTES = new Set(['/'])
+const APP_ROUTES = new Set(['/', '/bus'])
 
 export interface WebAsset {
   filePath: string

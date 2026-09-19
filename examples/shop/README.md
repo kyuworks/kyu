@@ -61,13 +61,15 @@ picked up by `pnpm format` or by the changed-file selector; it is not worth a gl
 Publishing from the browser is on hold until the shop pages land in a later pull request — use
 the producer CLI above meanwhile.
 
-`/bus` draws the producer, the outbox, and one box per subscription, refreshed every 5 seconds.
-Outbox stages — published, waiting for relay, shipped — come from `qtaxis_outbox`. Each
-subscription's queued, running, done, failed and cancelled counts come from the engine, through
-the SDK's `runs.forEnvelope`, one call per message over the newest 200 subscribed messages.
-`watch-shipping`'s parked count and its shipped/timed-out split under "done" come from
-`shop_handler_log`. The ui process now needs a reachable engine to serve `/bus.json`; the page
-shows an error line instead of stale counts when it is down.
+`/bus` is a React page now: it draws the producer, the outbox, and one column per subscription
+in registry order, refreshed every 5 seconds. Outbox stages — published, waiting for relay,
+shipped — come from `qtaxis_outbox`. Each subscription's queued, running, done, failed and
+cancelled counts come from the engine, through the SDK's `runs.forEnvelope`, one call per
+message over the newest 200 subscribed messages. `watch-shipping`'s parked count and its
+shipped/timed-out split under "done" come from `shop_handler_log`. A legend under the diagram
+explains every term. The ui process now needs a reachable engine to serve `/bus.json`; the page
+shows a status line instead of stale counts when it is down, and the last good counts stay on
+screen rather than being wiped by a failed refresh.
 
 ## Environment variables
 

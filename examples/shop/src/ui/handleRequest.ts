@@ -7,7 +7,6 @@ import { placeOrder } from '../producer/placeOrder.js'
 import { shipOrder } from '../producer/shipOrder.js'
 import type { BusTopology } from './busTopology.js'
 import { readBusCounts } from './busCounts.js'
-import { renderBusPage } from './busPage.js'
 import type { PlaceOrderRequest, ShipOrderRequest } from './requests.js'
 import { placeOrderRequestSchema, shipOrderRequestSchema } from './requests.js'
 
@@ -138,9 +137,6 @@ export async function handleUiRequest(deps: UiRequestDeps, request: UiRequest): 
   }
   if (request.method === 'POST' && request.url === '/shipments') {
     return checkPostBody(request) ?? handleShipOrder(deps, request.body)
-  }
-  if (request.method === 'GET' && request.url === '/bus') {
-    return { status: 200, contentType: 'text/html', body: renderBusPage(deps.dashboardUrl) }
   }
   if (request.method === 'GET' && request.url === '/bus.json') {
     return handleBusJson(deps)

@@ -275,21 +275,16 @@ describe('handleUiRequest', () => {
     expect(JSON.parse(response.body)).toEqual({ dashboardUrl: 'http://localhost:8888' })
   })
 
-  it('serves the bus page with the producer box, the bus box, and a container for the subscription columns', async () => {
+  it('delegates GET /bus to the static reader, now that the bus page is React', async () => {
     const client = fakeClient([])
     const pool = fakePool([], client)
     const qtaxis = fakeQtaxis([])
+    const shell: UiResponse = { status: 200, contentType: 'text/html', body: '<!doctype html>' }
+    const readWeb: ReadWeb = (method, url) => Promise.resolve(method === 'GET' && url === '/bus' ? shell : undefined)
 
-    const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/bus'))
+    const response = await handleUiRequest(deps(pool, qtaxis, fakeTopology, readWeb), getRequest('/bus'))
 
-    expect(response.status).toBe(200)
-    expect(response.contentType).toBe('text/html')
-    expect(response.body).toContain('id="producer-box"')
-    expect(response.body).toContain('id="bus-box"')
-    expect(response.body).toContain('id="subscription-columns"')
-    expect(response.body).toContain('id="status"')
-    expect(response.body).toContain('/bus.json')
-    expect(response.body).toContain('href="/"')
+    expect(response).toEqual(shell)
   })
 
   it('returns the topology and counts for /bus.json', async () => {
