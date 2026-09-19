@@ -232,7 +232,7 @@ describe('durable: a stop while the body is executing', () => {
       scope: eventScope(envelope),
     })
 
-    await waitUntil(() => enteredBy.get(envelope.id) === 'a', 60_000)
+    expect(await waitUntil(() => enteredBy.get(envelope.id) === 'a', 60_000)).toBe(true)
     const stopStartedAt = Date.now()
     await workerA.stop()
     // The engine SDK's graceful exit awaits every running body; without the
@@ -247,7 +247,7 @@ describe('durable: a stop while the body is executing', () => {
     void workerB.start()
     await workerB.waitUntilReady()
 
-    await waitUntil(() => completedBy.has(envelope.id), 150_000)
+    expect(await waitUntil(() => completedBy.has(envelope.id), 150_000)).toBe(true)
     expect(completedBy.get(envelope.id)).toBe('b')
     expect(enteredBy.get(envelope.id)).toBe('b')
   }, 240_000)

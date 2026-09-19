@@ -33,7 +33,7 @@ pnpm check
 
 A durable run parked in `sleepFor`/`waitFor` reads as `running` in that outcome — the engine exposes no separate parked state.
 
-`worker.stop()` first refuses any new durable wait on that worker, then pauses the worker, evicts every parked durable run and waits for the bodies still running. A handler that reaches its first `sleepFor`/`waitFor` during the stop fails that attempt straight away and the engine retries it on the next worker; `durable()` sets `retries` to 3 for this reason, and an explicit value still wins.
+`worker.stop()` first refuses any new durable wait on that worker, then pauses the worker, evicts every parked durable run and waits for the bodies still running. A handler that reaches its first `sleepFor`/`waitFor` during the stop fails that attempt straight away and the engine retries it on whichever worker is available; `durable()` sets `retries` to 3 for this reason, and an explicit value still wins.
 
 Eviction of an already-parked run is the slow part: the engine SDK waits up to 30 seconds per run for the engine to acknowledge it, so size a supervisor's SIGTERM grace period above that — or pass `stopTimeoutMs` to `createWorker` to cap the whole stop.
 

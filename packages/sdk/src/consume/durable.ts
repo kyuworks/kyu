@@ -165,9 +165,13 @@ async function runDurableHandler<S extends MessageSchema>(
   hatchetContext: DurableContext<JsonObject>,
   isStopping: () => boolean,
 ): Promise<void> {
+  // A run dispatched after the stop began is not in the set of running bodies
+  // the engine's graceful exit awaits, so it cannot hold stop() open, and
+  // refusing it would just burn retries on the same not-yet-paused worker.
+  const startedBeforeStop = !isStopping()
   const envelope = await decodeIncomingEnvelope(definition, input)
   const metadata = decodeAndCheckMetadata(hatchetContext, envelope)
-  await handler(buildDurableHandlerContext(envelope, metadata, hatchetContext, isStopping))
+  await handler(buildDurableHandlerContext(envelope, metadata, hatchetContext, () => startedBeforeStop && isStopping()))
 }
 
 /**
@@ -178,11 +182,12 @@ async function runDurableHandler<S extends MessageSchema>(
  * A worker stopping mid-run is handled in two halves. A run already parked in
  * `sleepFor`/`waitFor` is evicted by the engine and continues on the next
  * worker. A body that reaches its first wait *after* its worker began stopping
- * cannot register it — the engine SDK's durable listener has already stopped —
- * so that wait raises `WorkerStoppingError` at once and `retries`, which
- * defaults to 3 here, carries the run to the next worker. Replay is safe by
- * design: side effects before a wait go through `onceById()`. Pass `retries: 0`
- * to opt out and dead-letter instead.
+ * cannot register it: its worker is shutting down and the durable listener is
+ * about to stop, so the wait would be lost. That wait raises
+ * `WorkerStoppingError` at once and `retries`, which defaults to 3 here,
+ * carries the run to the next worker. Replay is safe by design: side effects
+ * before a wait go through `onceById()`. Pass `retries: 0` to opt out and
+ * dead-letter instead.
  */
 export function durable<S extends MessageSchema>(
   hatchet: HatchetClient,
