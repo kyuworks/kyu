@@ -10,10 +10,13 @@ Three processes share one Postgres database and one Hatchet engine:
 - **worker** — runs the event and command handlers.
 
 `worker` runs `record-order` and `audit-order` (two subscribers on `shop.order.placed`),
-`send-invoice` (a FIFO-per-order command handler, `shop.invoice.send`), and `watch-shipping`, a
+`send-invoice` (a FIFO-per-order command handler, `shop.invoice.send`), `watch-shipping`, a
 durable handler that sleeps five seconds and then waits for the correlated `shop.order.shipped`
-event. Killing and restarting the worker while a run is parked in that wait proves the run
-resumes in the new process, not the one that started it.
+event, and `record-shipment`, a plain subscriber on that same `shop.order.shipped` event that
+records `shop_order.shipped_at`. Killing and restarting the worker while a `watch-shipping` run is
+parked in that wait proves the run resumes in the new process, not the one that started it.
+`watch-shipping` no longer writes `shipped_at` itself; it only reports whether the order shipped
+in time, so a shipment that arrives after its wait has timed out still reaches the shipped stage.
 
 A worker stopped while `watch-shipping`'s body is still executing fails that attempt, and the
 engine retries it on the next worker to start. A worker stopped once the run is parked in its
@@ -118,11 +121,14 @@ oldest first — a worklist, not a shop view. Each row shows the order's short i
 line of text, its total, and a carrier input defaulted to `Speedy` next to a **Ship** button
 posting to `POST /shipments`. There is no new read model: the page reads the same document
 `/orders` does and filters it. A shipped row leaves the worklist on the next 5-second refresh, and
-`/orders` shows that order's stage as *shipped* once `watch-shipping` records it.
+`/orders` shows that order's stage as *shipped* once `record-shipment` records it. A shipment that
+arrives after `watch-shipping`'s wait has already timed out still marks the order shipped — the
+run that timed out is not a dead end for the business process.
 
 A failed run — like the resend-invoice fault above — is a dead letter: it is never retried
 silently, it is alerted on, and it can be replayed from the Hatchet dashboard linked at the top of
-`/bus`, `/orders` and `/warehouse`.
+`/bus`, `/orders` and `/warehouse`. A shipment naming an order this tenant does not have is a dead
+letter too, under `record-shipment`.
 
 `/bus` is a React page now: it draws the producer, the outbox, and one column per subscription
 in registry order, refreshed every 5 seconds. Outbox stages — published, waiting for relay,

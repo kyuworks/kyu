@@ -123,6 +123,28 @@ describe('shopFlow: checkout, invoice and shipping against the local engine', ()
       () => `shop_order ${placed.orderId} never recorded shipped_at`,
     )
 
+    // record-shipment (a plain subscriber) and watch-shipping (a parked durable
+    // run woken by the same event) are two independent writers now; shipped_at
+    // can land before watch-shipping's own completed row, so this polls too
+    // instead of assuming the same commit wrote both, as one onceById block did before.
+    let completedRowCount = 0
+    await waitUntil(
+      async () => {
+        const completedLog = await admin.query(
+          "SELECT 1 FROM shop_handler_log WHERE handler = 'watch-shipping:completed' AND order_id = $1",
+          [placed.orderId],
+        )
+        completedRowCount = completedLog.rows.length
+        return completedRowCount >= 1
+      },
+      60_000,
+      () =>
+        `shop_handler_log has ${String(completedRowCount)} watch-shipping:completed rows for order ${placed.orderId}, want at least 1`,
+    )
+
+    // Re-read once the poll has settled, so a duplicate completed row (a bug,
+    // since onceById's unique index should make this impossible) is caught
+    // instead of being masked by a poll that stops at the first sighting.
     const completedLog = await admin.query(
       "SELECT 1 FROM shop_handler_log WHERE handler = 'watch-shipping:completed' AND order_id = $1",
       [placed.orderId],
