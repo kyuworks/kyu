@@ -87,8 +87,7 @@ posts to `POST /orders`. On success the page shows the order id, the total, and 
 ids, with a link to `/orders`. The cart is kept in `localStorage` under `qtaxis.shop.cart` so it survives the full page
 load a real `<a href>` nav makes; the browser's own customer id lives under
 `qtaxis.shop.customerId`. Both are read and written through a try/catch — a private window throws
-on access, and a storage failure must never break the page. `/shipments` and `/invoices` are live
-but have no page yet; use `curl` or the producer CLI above.
+on access, and a storage failure must never break the page.
 
 A request that fails after the server has already committed the order still shows a checkout
 error — the browser has no way to tell "the write failed" from "the response never arrived" — and
@@ -101,7 +100,21 @@ quantities, unit prices and line amounts, its total, a "yours" badge when the or
 matches this browser's, and a three-step timeline — placed, invoice sent, shipped — with "timed
 out" replacing the last step's label when `watch-shipping`'s correlated wait ran out instead of
 hearing back. The page refreshes every 5 seconds, the same in-flight guard and status-line rule as
-`/bus`.
+`/bus`. Each order also carries **Resend invoice (simulated fault)**: it posts to `POST /invoices`
+with no invoice id, so the server sends the command for one with no matching `shop_invoice` row.
+`handleSendInvoice` cannot find it, throws, and the run becomes a dead letter — the same failure
+the `/bus` page's `send-invoice` column is there to show.
+
+`/warehouse` lists the same `GET /orders.json` orders that have not reached the shipped stage,
+oldest first — a worklist, not a shop view. Each row shows the order's short id, its lines in one
+line of text, its total, and a carrier input defaulted to `Speedy` next to a **Ship** button
+posting to `POST /shipments`. There is no new read model: the page reads the same document
+`/orders` does and filters it. A shipped row leaves the worklist on the next 5-second refresh, and
+`/orders` shows that order's stage as *shipped* once `watch-shipping` records it.
+
+A failed run — like the resend-invoice fault above — is a dead letter: it is never retried
+silently, it is alerted on, and it can be replayed from the Hatchet dashboard linked at the top of
+`/bus`, `/orders` and `/warehouse`.
 
 `/bus` is a React page now: it draws the producer, the outbox, and one column per subscription
 in registry order, refreshed every 5 seconds. Outbox stages — published, waiting for relay,

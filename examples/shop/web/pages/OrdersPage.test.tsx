@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { ShopOrder } from '../lib/shopDocuments'
-import { OrderCard, OrderList, OrdersPage } from './OrdersPage'
+import { OrderCard, OrderList, OrdersPage, ResendInvoiceAction } from './OrdersPage'
 
 // Every number below is distinct — unit price, quantity, line amount and the
 // order total never collide — so reverting the line amount, the total, or
@@ -51,6 +51,26 @@ describe('OrderCard', () => {
     const markup = renderToStaticMarkup(<OrderCard order={order} customerId="someone-else" />)
 
     expect(markup).toContain('<ul class="order-lines" role="list">')
+  })
+
+  it('carries the resend-invoice action, labelled as a simulated fault', () => {
+    const markup = renderToStaticMarkup(<OrderCard order={order} customerId="someone-else" />)
+
+    expect(markup).toContain('Resend invoice (simulated fault)')
+  })
+})
+
+describe('ResendInvoiceAction', () => {
+  it('explains in one line that it sends the invoice command for an id with no row', () => {
+    const markup = renderToStaticMarkup(<ResendInvoiceAction orderId="order-1" />)
+
+    expect(markup).toContain('Sends the invoice command for an id with no row')
+  })
+
+  it('marks its status paragraph aria-live="polite"', () => {
+    const markup = renderToStaticMarkup(<ResendInvoiceAction orderId="order-1" />)
+
+    expect(markup).toContain('<p class="status" aria-live="polite">')
   })
 })
 

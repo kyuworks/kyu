@@ -2,14 +2,60 @@ import { useState } from 'react'
 import { OrderTimeline } from '../components/OrderTimeline'
 import { formatCents } from '../lib/cart'
 import { readCustomerId } from '../lib/customer'
+import { buildResendInvoiceBody, nextResendInvoiceState, RESEND_INVOICE_PATH } from '../lib/resendInvoice'
 import type { ShopOrder } from '../lib/shopDocuments'
+import { shortOrderId } from '../lib/shopDocuments'
 import { useOrders } from '../lib/useOrders'
 
 // Fixed locale, not the browser's: a test's expected string must not depend on the machine it runs on.
 const ORDER_DATE_FORMAT = new Intl.DateTimeFormat('en-NZ', { dateStyle: 'medium', timeStyle: 'short' })
 
-function shortOrderId(id: string): string {
-  return id.slice(0, 8)
+export interface ResendInvoiceActionProps {
+  orderId: string
+}
+
+// The simulated fault: no invoice id means the server sends the command for
+// one with no shop_invoice row, so handleSendInvoice throws and the run
+// becomes the dead letter the Bus page's send-invoice column shows.
+/** A small action that gives the Bus page a dead letter to show. */
+export function ResendInvoiceAction({ orderId }: ResendInvoiceActionProps) {
+  const [submitting, setSubmitting] = useState(false)
+  const [statusMessage, setStatusMessage] = useState('')
+
+  function resend(): void {
+    setStatusMessage('')
+    setSubmitting(true)
+    fetch(RESEND_INVOICE_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: buildResendInvoiceBody(orderId),
+    })
+      .then((response) => response.text().then((bodyText) => ({ ok: response.ok, status: response.status, bodyText })))
+      .then((outcome) => {
+        const state = nextResendInvoiceState(outcome)
+        if (!state.ok) setStatusMessage(state.error)
+      })
+      .catch((error) => {
+        setStatusMessage(`resend invoice failed: ${error instanceof Error ? error.message : String(error)}`)
+      })
+      .finally(() => {
+        setSubmitting(false)
+      })
+  }
+
+  return (
+    <div className="order-resend-invoice">
+      <button type="button" onClick={resend} disabled={submitting}>
+        Resend invoice (simulated fault)
+      </button>
+      <p className="muted">
+        Sends the invoice command for an id with no row, so the bus page has a dead letter to show.
+      </p>
+      <p className="status" aria-live="polite">
+        {statusMessage}
+      </p>
+    </div>
+  )
 }
 
 export interface OrderCardProps {
@@ -45,6 +91,7 @@ export function OrderCard({ order, customerId }: OrderCardProps) {
         <span>{formatCents(order.totalCents)}</span>
       </p>
       <OrderTimeline stage={order.stage} />
+      <ResendInvoiceAction orderId={order.id} />
     </li>
   )
 }

@@ -376,3 +376,55 @@ button:disabled {
 .order-step-current {
   font-weight: 600;
 }
+
+.order-resend-invoice {
+  margin-top: calc(var(--space) * 1.5);
+  padding-top: calc(var(--space) * 1.5);
+  border-top: 1px solid var(--line);
+}
+
+.order-resend-invoice .muted {
+  font-size: 0.8rem;
+  margin: calc(var(--space) / 2) 0 0;
+}
+
+.warehouse-list {
+  list-style: none;
+  margin: calc(var(--space) * 2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 2);
+}
+
+.warehouse-row-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: calc(var(--space) * 2);
+}
+
+.ship-form {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space) * 1.5);
+  margin-top: calc(var(--space) * 1.5);
+}
+
+.ship-form label {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space) / 2);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.ship-form input {
+  width: 8rem;
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: calc(var(--space) / 3) calc(var(--space) / 2);
+  background: var(--surface);
+  color: var(--text);
+}
