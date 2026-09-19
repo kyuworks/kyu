@@ -235,7 +235,10 @@ describe('loop: relay and worker against the local engine', () => {
   it('five invoice commands for one order are handled in publish order (mandatory)', async () => {
     const tenantId = randomUUID()
     const orderId = uuidv7()
-    const invoiceIds = Array.from({ length: 5 }, () => uuidv7())
+    // One invoice row: shop_invoice_order_idx (0003_shop.sql) allows only one
+    // per order. All five commands name it; the handler's UPDATE has no
+    // sent_at guard, so each of the five runs still succeeds and logs.
+    const invoiceId = uuidv7()
 
     await withTransaction(pool, async (tx) => {
       await tx.query('INSERT INTO shop_order (id, tenant_id, customer_id) VALUES ($1, $2, $3)', [
@@ -243,20 +246,22 @@ describe('loop: relay and worker against the local engine', () => {
         tenantId,
         randomUUID(),
       ])
-      for (const invoiceId of invoiceIds) {
-        await tx.query('INSERT INTO shop_invoice (id, order_id, tenant_id) VALUES ($1, $2, $3)', [
-          invoiceId,
-          orderId,
-          tenantId,
-        ])
-      }
+      await tx.query('INSERT INTO shop_invoice (id, order_id, tenant_id) VALUES ($1, $2, $3)', [
+        invoiceId,
+        orderId,
+        tenantId,
+      ])
     })
 
     // Five separate transactions, awaited in sequence: claimPendingRows
     // orders only by created_at with no tiebreaker, so five rows sharing one
     // transaction's created_at would leave their relative order undefined.
-    for (const invoiceId of invoiceIds) {
-      await withTransaction(pool, (tx) => qtaxis.publish(tx, sendInvoice, { orderId, invoiceId }, { tenantId }))
+    const envelopeIds: string[] = []
+    for (let i = 0; i < 5; i += 1) {
+      const envelope = await withTransaction(pool, (tx) =>
+        qtaxis.publish(tx, sendInvoice, { orderId, invoiceId }, { tenantId }),
+      )
+      envelopeIds.push(envelope.id)
     }
 
     let sendInvoiceCount = -1
@@ -267,19 +272,20 @@ describe('loop: relay and worker against the local engine', () => {
           [orderId],
         )
         sendInvoiceCount = Number(result.rows[0]?.count)
-        return sendInvoiceCount >= invoiceIds.length
+        return sendInvoiceCount >= envelopeIds.length
       },
       60_000,
-      () => `send-invoice log rows for order ${orderId}: ${sendInvoiceCount} (want ${invoiceIds.length})`,
+      () => `send-invoice log rows for order ${orderId}: ${sendInvoiceCount} (want ${envelopeIds.length})`,
     )
 
-    // note carries the invoice id (handlers/sendInvoice.ts); its order across
-    // the log's own seq column is the proof the FIFO key held under concurrency.
+    // envelope_id identifies each of the five runs (their shared invoiceId
+    // makes note identical); its order across the log's own seq column is
+    // the proof the FIFO key held under concurrency.
     const ordered = await admin.query(
-      "SELECT note FROM shop_handler_log WHERE handler = 'send-invoice' AND order_id = $1 ORDER BY seq",
+      "SELECT envelope_id::text FROM shop_handler_log WHERE handler = 'send-invoice' AND order_id = $1 ORDER BY seq",
       [orderId],
     )
-    expect(ordered.rows.map((row) => row.note)).toEqual(invoiceIds)
+    expect(ordered.rows.map((row) => row.envelope_id)).toEqual(envelopeIds)
   }, 90_000)
 
   it('a command for a missing invoice fails once and is not retried (dead letter)', async () => {
