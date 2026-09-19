@@ -20,17 +20,14 @@ export interface CheckoutFetchOutcome {
   bodyText: string
 }
 
-export interface CheckoutState {
-  placedOrder?: PlacedOrder
-  error?: string
-}
+export type CheckoutState = { ok: true; placedOrder: PlacedOrder } | { ok: false; error: string }
 
 // Pure and unit-tested, so reverting the route, the body, or the non-2xx branch fails a test, not just a click.
 export function nextCheckoutState(outcome: CheckoutFetchOutcome): CheckoutState {
   if (!outcome.ok) {
-    return { error: `checkout failed: ${describeFetchFailure(outcome.status, outcome.bodyText)}` }
+    return { ok: false, error: `checkout failed: ${describeFetchFailure(outcome.status, outcome.bodyText)}` }
   }
   const parsed = parsePlacedOrder(outcome.bodyText)
-  if (!parsed.ok) return { error: `checkout failed: ${parsed.error}` }
-  return { placedOrder: parsed.order }
+  if (!parsed.ok) return { ok: false, error: `checkout failed: ${parsed.error}` }
+  return { ok: true, placedOrder: parsed.order }
 }

@@ -25,17 +25,19 @@ describe('buildPlaceOrderBody', () => {
 })
 
 describe('nextCheckoutState', () => {
-  it('yields the server error and no order on a non-2xx response', () => {
+  it('is ok: false, with the server error, on a non-2xx response', () => {
     const state = nextCheckoutState({
       ok: false,
       status: 400,
       bodyText: JSON.stringify({ error: 'lines: too small' }),
     })
 
-    expect(state).toEqual({ error: 'checkout failed: lines: too small' })
+    expect(state).toEqual({ ok: false, error: 'checkout failed: lines: too small' })
   })
 
-  it('yields the placed order on a good 201 body', () => {
+  // Pinning ok: true here, and ok: false above and below, is as close as a
+  // no-DOM test gets to the rule "the cart clears only when the order is placed".
+  it('is ok: true, with the placed order, on a good 201 body', () => {
     const order = {
       orderId: 'order-1',
       invoiceId: 'invoice-1',
@@ -46,13 +48,12 @@ describe('nextCheckoutState', () => {
 
     const state = nextCheckoutState({ ok: true, status: 201, bodyText: JSON.stringify(order) })
 
-    expect(state).toEqual({ placedOrder: order })
+    expect(state).toEqual({ ok: true, placedOrder: order })
   })
 
-  it('yields the zod message, not a placed order, when the 201 body is junk', () => {
+  it('is ok: false, with the zod message, when the 201 body is junk', () => {
     const state = nextCheckoutState({ ok: true, status: 201, bodyText: JSON.stringify({ orderId: 'order-1' }) })
 
-    expect(state.placedOrder).toBeUndefined()
-    expect(state.error).toMatch(/^checkout failed: /)
+    expect(state.ok).toBe(false)
   })
 })

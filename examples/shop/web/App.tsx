@@ -122,7 +122,11 @@ export function App() {
               </a>
             ))}
             {cartCount > 0 && (
-              <span className="cart-badge" aria-label={`${cartCount} item${cartCount === 1 ? '' : 's'} in your order`}>
+              <span
+                className="cart-badge"
+                role="status"
+                aria-label={`${cartCount} item${cartCount === 1 ? '' : 's'} in your order`}
+              >
                 {cartCount}
               </span>
             )}

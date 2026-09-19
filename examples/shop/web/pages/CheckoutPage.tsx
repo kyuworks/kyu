@@ -82,11 +82,11 @@ export function CheckoutPage({
       .then((response) => response.text().then((bodyText) => ({ ok: response.ok, status: response.status, bodyText })))
       .then((outcome) => {
         const state = nextCheckoutState(outcome)
-        if (state.placedOrder !== undefined) {
+        if (state.ok) {
           setPlacedOrder(state.placedOrder)
           onOrderPlaced()
         } else {
-          setStatusMessage(state.error ?? 'checkout failed: invalid response body')
+          setStatusMessage(state.error)
         }
       })
       .catch((error) => {
