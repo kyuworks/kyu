@@ -10,10 +10,10 @@ export interface KyuWorker {
    * the worker so it takes no new work, evicts every run already parked in
    * `sleepFor`/`waitFor`, and waits for the bodies still running. A body that
    * reaches its first wait during the stop fails with `WorkerStoppingError`
-   * and is retried on whichever worker is available. The engine SDK still waits up to 30
-   * seconds per parked run for the engine to acknowledge its eviction, so a
-   * stop with many parked runs can outlive a supervisor's grace period; set
-   * `stopTimeoutMs` to cap it.
+   * and is retried on whichever worker is available. The engine SDK still
+   * waits up to 30 seconds per parked run for the engine to acknowledge its
+   * eviction, so a stop with many parked runs can outlive a supervisor's
+   * grace period; set `stopTimeoutMs` to cap it.
    */
   stop(): Promise<void>
   waitUntilReady(timeoutMs?: number): Promise<void>

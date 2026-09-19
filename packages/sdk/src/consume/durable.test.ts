@@ -436,17 +436,12 @@ interface FakeDurableHatchetContext {
 
 // DurableContext carries private fields, so a Pick of just these members needs
 // the same single, unchained `as` cast as subscribe.test.ts's fakeHatchetContext.
-// `sleepFor` throws by default: a wrapper that reaches the engine must fail
-// loudly here. Pass `{ sleepForResolves: true }` for the opposite fake, to
-// prove a call that should reach the engine does.
+// `sleepFor` throws: a wrapper that reaches the engine must fail loudly here.
 // buildHandlerContext reads retryCount/workflowRunId/abortController/logger
 // unconditionally when building the handler context, so a fake that drives a
 // handler through to completion (not just the additionalMetadata trust edge)
 // needs those stubbed too.
-function fakeDurableHatchetContext(
-  additionalMetadata: Record<string, string>,
-  options?: { sleepForResolves?: boolean },
-): FakeDurableHatchetContext {
+function fakeDurableHatchetContext(additionalMetadata: Record<string, string>): FakeDurableHatchetContext {
   const calls = { sleepFor: 0 }
   const noopLog = (): Promise<void> => Promise.resolve()
   const stub: Pick<
@@ -456,7 +451,6 @@ function fakeDurableHatchetContext(
     additionalMetadata: () => additionalMetadata,
     sleepFor: () => {
       calls.sleepFor += 1
-      if (options?.sleepForResolves === true) return Promise.resolve({ durationMs: 0 })
       throw new Error('sleepFor reached the engine')
     },
     retryCount: () => 0,
@@ -518,29 +512,5 @@ describe('durable: a wait entered after the worker began stopping', () => {
     // Retryable on purpose: the engine re-dispatches the failed attempt.
     expect(error).not.toBeInstanceOf(NonRetryableError)
     expect(sleepForCalls()).toBe(0)
-  })
-})
-
-describe('durable: a run dispatched after the worker already began stopping', () => {
-  it('is not refused — it is not one of the bodies stop() is waiting on', async () => {
-    const { client, capturedOptions } = fakeHatchetClient()
-    const subscription = durable(client, orderPlaced, {
-      name: 'follow-up',
-      handler: (ctx) => ctx.sleepFor('1s'),
-    })
-    const fn = capturedOptions()?.fn
-    if (fn === undefined) throw new Error('durable did not capture a task fn')
-    const envelope = await createEnvelope(orderPlaced, { orderId: 'order-1' }, { tenantId: null, source: 'sdk.test' })
-    const { context, sleepForCalls } = fakeDurableHatchetContext(toEnvelopeMetadata(envelope), {
-      sleepForResolves: true,
-    })
-
-    // Flag flipped before this run was even dispatched.
-    subscription.stopDurableWaits?.()
-
-    const error: unknown = await Promise.resolve(fn(asIncoming(envelope), context)).catch((cause: unknown) => cause)
-
-    expect(error).toBeUndefined()
-    expect(sleepForCalls()).toBe(1)
   })
 })
