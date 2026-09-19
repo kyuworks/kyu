@@ -64,8 +64,7 @@ export function CheckoutPage({
 
   function payAndPlaceOrder(): void {
     setStatusMessage('')
-    // Built before submitting flips true: a throw here (never expected, but
-    // readCustomerId is a boundary) must not leave the button stuck disabled.
+    // Built before submitting flips true, so a throw here cannot strand the button disabled.
     let body: string
     try {
       body = buildPlaceOrderBody(readCustomerId(), cartLines)

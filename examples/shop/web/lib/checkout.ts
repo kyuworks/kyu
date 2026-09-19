@@ -25,9 +25,7 @@ export interface CheckoutState {
   error?: string
 }
 
-// Pure and unit-tested: reverting the route, the body, the customer id, the
-// quantities, the non-2xx branch or the parsed order would otherwise leave
-// this untested inside a fetch chain no test drives.
+// Pure and unit-tested, so reverting the route, the body, or the non-2xx branch fails a test, not just a click.
 export function nextCheckoutState(outcome: CheckoutFetchOutcome): CheckoutState {
   if (!outcome.ok) {
     return { error: `checkout failed: ${describeFetchFailure(outcome.status, outcome.bodyText)}` }

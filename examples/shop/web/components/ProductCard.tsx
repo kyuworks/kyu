@@ -16,8 +16,7 @@ function clampQuantity(value: number): number {
 
 /** One product: its name, its formatted price, a quantity stepper and an add button. */
 export function ProductCard({ product, onAdd }: ProductCardProps) {
-  // Held as text, not a number: clamping on every keystroke would stop a
-  // person clearing the field to type a new value. Clamped on blur and on add.
+  // Text, not a number: clamping every keystroke would stop clearing the field to retype it.
   const [quantityText, setQuantityText] = useState(String(MIN_QUANTITY))
 
   function commitQuantity(): number {
@@ -29,7 +28,7 @@ export function ProductCard({ product, onAdd }: ProductCardProps) {
   return (
     <div className="card product-card">
       <h3>{product.name}</h3>
-      <p className="product-price">{formatCents(product.priceCents)}</p>
+      <p className="muted">{formatCents(product.priceCents)}</p>
       <input
         type="number"
         aria-label={`Quantity of ${product.name}`}
