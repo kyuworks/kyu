@@ -123,6 +123,10 @@ button:disabled {
   display: none;
 }
 
+.status-ok {
+  color: var(--ok);
+}
+
 .muted {
   color: var(--muted);
 }

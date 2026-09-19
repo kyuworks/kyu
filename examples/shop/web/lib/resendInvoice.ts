@@ -1,6 +1,3 @@
-import { describeSubmitFailure } from './fetchJson'
-import type { JsonFetchOutcome } from './fetchJson'
-
 /** Where OrdersPage posts the simulated-fault resend. Named so a test can pin it. */
 export const RESEND_INVOICE_PATH = '/invoices'
 
@@ -9,12 +6,4 @@ export const RESEND_INVOICE_PATH = '/invoices'
 /** The request body `POST /invoices` expects for the simulated fault: the order id only. */
 export function buildResendInvoiceBody(orderId: string): string {
   return JSON.stringify({ orderId })
-}
-
-export type ResendInvoiceState = { ok: true } | { ok: false; error: string }
-
-// Pure and unit-tested: reverting the route or the non-2xx branch fails a test, not just a click.
-export function nextResendInvoiceState(outcome: JsonFetchOutcome): ResendInvoiceState {
-  if (!outcome.ok) return { ok: false, error: describeSubmitFailure('resend invoice', outcome) }
-  return { ok: true }
 }

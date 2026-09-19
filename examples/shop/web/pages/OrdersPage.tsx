@@ -1,15 +1,43 @@
-import { useState } from 'react'
+import { useReducer, useState } from 'react'
 import { OrderTimeline } from '../components/OrderTimeline'
 import { formatCents } from '../lib/cart'
 import { readCustomerId } from '../lib/customer'
-import { postJsonOutcome } from '../lib/fetchJson'
-import { buildResendInvoiceBody, nextResendInvoiceState, RESEND_INVOICE_PATH } from '../lib/resendInvoice'
+import { describeSubmitFailure, postJsonOutcome } from '../lib/fetchJson'
+import { RESEND_INVOICE_PATH, buildResendInvoiceBody } from '../lib/resendInvoice'
 import type { ShopOrder } from '../lib/shopDocuments'
 import { shortOrderId } from '../lib/shopDocuments'
+import type { SubmitPhase } from '../lib/submitPhase'
+import { canSubmit, nextSubmitPhase } from '../lib/submitPhase'
 import { useOrders } from '../lib/useOrders'
 
 // Fixed locale, not the browser's: a test's expected string must not depend on the machine it runs on.
 const ORDER_DATE_FORMAT = new Intl.DateTimeFormat('en-NZ', { dateStyle: 'medium', timeStyle: 'short' })
+
+export interface ResendInvoiceActionViewProps {
+  phase: SubmitPhase
+  onSubmit: () => void
+}
+
+// Pure and presentational: a real submit can't run under renderToStaticMarkup
+// (it drops effects), so tests render this directly with a fixed phase.
+export function ResendInvoiceActionView({ phase, onSubmit }: ResendInvoiceActionViewProps) {
+  const submitting = phase.kind === 'submitting'
+  const sent = phase.kind === 'done'
+
+  return (
+    <div className="order-resend-invoice">
+      <button type="button" onClick={onSubmit} disabled={submitting || sent}>
+        Resend invoice (simulated fault)
+      </button>
+      <p className="muted">
+        Sends the invoice command for an id with no row, so the bus page has a dead letter to show.
+      </p>
+      <p className={sent ? 'status status-ok' : 'status'} aria-live="polite">
+        {sent ? 'Sent, check the bus page for the failed run.' : phase.kind === 'failed' ? phase.error : ''}
+      </p>
+    </div>
+  )
+}
 
 export interface ResendInvoiceActionProps {
   orderId: string
@@ -20,34 +48,28 @@ export interface ResendInvoiceActionProps {
 // becomes the dead letter the Bus page's send-invoice column shows.
 /** A small action that gives the Bus page a dead letter to show. */
 export function ResendInvoiceAction({ orderId }: ResendInvoiceActionProps) {
-  const [submitting, setSubmitting] = useState(false)
-  const [statusMessage, setStatusMessage] = useState('')
+  const [phase, dispatch] = useReducer(nextSubmitPhase, { kind: 'idle' })
 
   function resend(): void {
-    setStatusMessage('')
-    setSubmitting(true)
-    // postJsonOutcome never rejects (see fetchJson.ts), so there is no
-    // rejection branch to attach — void marks that as read, not an oversight.
-    void postJsonOutcome(RESEND_INVOICE_PATH, buildResendInvoiceBody(orderId)).then((outcome) => {
-      const state = nextResendInvoiceState(outcome)
-      if (!state.ok) setStatusMessage(state.error)
-      setSubmitting(false)
-    })
+    if (!canSubmit(phase)) return
+    dispatch({ kind: 'submit' })
+    void postJsonOutcome(RESEND_INVOICE_PATH, buildResendInvoiceBody(orderId))
+      .then((outcome) => {
+        if (outcome.ok) {
+          dispatch({ kind: 'succeeded' })
+        } else {
+          dispatch({ kind: 'failed', error: describeSubmitFailure('resend invoice', outcome) })
+        }
+      })
+      .catch((error) => {
+        dispatch({
+          kind: 'failed',
+          error: `resend invoice failed: ${error instanceof Error ? error.message : String(error)}`,
+        })
+      })
   }
 
-  return (
-    <div className="order-resend-invoice">
-      <button type="button" onClick={resend} disabled={submitting}>
-        Resend invoice (simulated fault)
-      </button>
-      <p className="muted">
-        Sends the invoice command for an id with no row, so the bus page has a dead letter to show.
-      </p>
-      <p className="status" aria-live="polite">
-        {statusMessage}
-      </p>
-    </div>
-  )
+  return <ResendInvoiceActionView phase={phase} onSubmit={resend} />
 }
 
 export interface OrderCardProps {

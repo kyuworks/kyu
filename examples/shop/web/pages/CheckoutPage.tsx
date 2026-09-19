@@ -74,18 +74,19 @@ export function CheckoutPage({
     }
 
     setSubmitting(true)
-    // postJsonOutcome never rejects (see fetchJson.ts), so there is no
-    // rejection branch to attach — void marks that as read, not an oversight.
-    void postJsonOutcome(PLACE_ORDER_PATH, body).then((outcome) => {
-      const state = nextCheckoutState(outcome)
-      if (state.ok) {
-        setPlacedOrder(state.placedOrder)
-        onOrderPlaced()
-      } else {
-        setStatusMessage(state.error)
-      }
-      setSubmitting(false)
-    })
+    void postJsonOutcome(PLACE_ORDER_PATH, body)
+      .then((outcome) => {
+        const state = nextCheckoutState(outcome)
+        if (state.ok) {
+          setPlacedOrder(state.placedOrder)
+          onOrderPlaced()
+        } else {
+          setStatusMessage(state.error)
+        }
+      })
+      .finally(() => {
+        setSubmitting(false)
+      })
   }
 
   if (placedOrder !== undefined) {

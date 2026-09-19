@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { ShopOrder } from '../lib/shopDocuments'
-import { OrderCard, OrderList, OrdersPage, ResendInvoiceAction } from './OrdersPage'
+import { OrderCard, OrderList, OrdersPage, ResendInvoiceAction, ResendInvoiceActionView } from './OrdersPage'
 
 // Every number below is distinct — unit price, quantity, line amount and the
 // order total never collide — so reverting the line amount, the total, or
@@ -71,6 +71,37 @@ describe('ResendInvoiceAction', () => {
     const markup = renderToStaticMarkup(<ResendInvoiceAction orderId="order-1" />)
 
     expect(markup).toContain('<p class="status" aria-live="polite">')
+  })
+})
+
+// Pure and presentational: a real submit can't run under renderToStaticMarkup
+// (it drops effects), so ResendInvoiceActionView takes the phase as a prop
+// and is rendered directly with each one.
+describe('ResendInvoiceActionView', () => {
+  const noop = () => undefined
+
+  it('disables the button while submitting', () => {
+    const markup = renderToStaticMarkup(<ResendInvoiceActionView phase={{ kind: 'submitting' }} onSubmit={noop} />)
+
+    expect(markup).toMatch(/<button[^>]*disabled[^>]*>Resend invoice/)
+  })
+
+  it('disables the button once sent, shows the sent line in the ok style', () => {
+    const markup = renderToStaticMarkup(<ResendInvoiceActionView phase={{ kind: 'done' }} onSubmit={noop} />)
+
+    expect(markup).toMatch(/<button[^>]*disabled[^>]*>Resend invoice/)
+    expect(markup).toContain('Sent, check the bus page for the failed run.')
+    expect(markup).toContain('status-ok')
+  })
+
+  it('enables the button and shows the error once failed, not in the ok style', () => {
+    const markup = renderToStaticMarkup(
+      <ResendInvoiceActionView phase={{ kind: 'failed', error: 'resend invoice failed: HTTP 404' }} onSubmit={noop} />,
+    )
+
+    expect(markup).not.toMatch(/<button[^>]*disabled[^>]*>Resend invoice/)
+    expect(markup).toContain('resend invoice failed: HTTP 404')
+    expect(markup).not.toContain('status-ok')
   })
 })
 
