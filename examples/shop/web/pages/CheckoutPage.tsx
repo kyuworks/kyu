@@ -1,4 +1,15 @@
-import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Link } from '@heroui/react'
+import {
+  Alert,
+  AlertContent,
+  AlertIndicator,
+  AlertTitle,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Link,
+} from '@heroui/react'
 import { CreditCardIcon } from '@heroicons/react/24/outline'
 import { useState } from 'react'
 import { CartSummary } from '../components/CartSummary'
@@ -104,8 +115,15 @@ export function CheckoutPage({
     <div className="grid gap-6 items-start md:grid-cols-[1fr_18rem]">
       <div>
         <h1>Checkout</h1>
-        {displayStatus !== '' && <Alert status="danger">{displayStatus}</Alert>}
-        <p className="muted">Payment is simulated: pressing pay marks the order paid immediately.</p>
+        {displayStatus !== '' && (
+          <Alert status="danger" role="alert">
+            <AlertIndicator />
+            <AlertContent>
+              <AlertTitle>{displayStatus}</AlertTitle>
+            </AlertContent>
+          </Alert>
+        )}
+        <p className="text-muted">Payment is simulated: pressing pay marks the order paid immediately.</p>
       </div>
       <CartSummary
         lines={summary.lines}

@@ -12,6 +12,7 @@
 @import '@heroui/styles/components/description.css' layer(components);
 @import '@heroui/styles/components/error-message.css' layer(components);
 @import '@heroui/styles/components/label.css' layer(components);
+@import '@heroui/styles/components/chip.css' layer(components);
 @import '@heroui/styles/components/alert.css' layer(components);
 @import '@heroui/styles/components/button.css' layer(components);
 @import '@heroui/styles/components/card.css' layer(components);
