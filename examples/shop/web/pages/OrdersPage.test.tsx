@@ -12,6 +12,7 @@ const order: ShopOrder = {
   totalCents: 6000,
   paidAt: '2026-09-19T00:00:00.000Z',
   stage: 'invoice-sent',
+  carrier: null,
   lines: [
     { productId: 'p1', name: 'Enamel mug', quantity: 3, unitPriceCents: 1400 },
     { productId: 'p2', name: 'Baseball cap', quantity: 2, unitPriceCents: 900 },

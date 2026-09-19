@@ -10,6 +10,7 @@ function order(id: string, stage: ShopOrder['stage'], totalCents: number): ShopO
     totalCents,
     paidAt: '2026-09-19T00:00:00.000Z',
     stage,
+    carrier: null,
     lines: [{ productId: 'p1', name: 'Enamel mug', quantity: 1, unitPriceCents: totalCents }],
   }
 }

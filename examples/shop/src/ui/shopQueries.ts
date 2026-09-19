@@ -23,6 +23,8 @@ export interface ShopOrder {
   totalCents: number
   paidAt: string | null
   stage: OrderStage
+  // The record-shipment log row's note for this order; null until shipped.
+  carrier: string | null
   lines: ShopOrderLine[]
 }
 
@@ -60,8 +62,13 @@ const orderHeaderRowSchema = z.object({
   shipped_at: timestampSchema,
   invoice_sent_at: timestampSchema,
   timed_out: z.boolean(),
+  carrier: z.string().nullable(),
 })
 type OrderHeaderRow = z.infer<typeof orderHeaderRowSchema>
+
+// record-shipment is the only writer of shop_order.shipped_at (recordShipment.ts);
+// its log row's note is the carrier to read here, never watch-shipping's.
+const RECORD_SHIPMENT_HANDLER = 'record-shipment'
 
 const orderLineRowSchema = z.object({
   order_id: z.string(),
@@ -82,13 +89,15 @@ async function readOrderHeaders(db: CountsSource, tenantId: string): Promise<Ord
   const result = await db.query(
     `SELECT o.id::text, o.customer_id::text, o.total_cents, o.paid_at, o.shipped_at,
             i.sent_at AS invoice_sent_at,
-            EXISTS (SELECT 1 FROM shop_handler_log h WHERE h.order_id = o.id AND h.handler = $2) AS timed_out
+            EXISTS (SELECT 1 FROM shop_handler_log h WHERE h.order_id = o.id AND h.handler = $2) AS timed_out,
+            (SELECT c.note FROM shop_handler_log c WHERE c.order_id = o.id AND c.handler = $4
+             ORDER BY c.seq ASC LIMIT 1) AS carrier
      FROM shop_order o
      LEFT JOIN shop_invoice i ON i.order_id = o.id
      WHERE o.tenant_id = $1
      ORDER BY o.id DESC
      LIMIT $3`,
-    [tenantId, WATCH_SHIPPING_TIMEOUT, ORDER_HISTORY_LIMIT],
+    [tenantId, WATCH_SHIPPING_TIMEOUT, ORDER_HISTORY_LIMIT, RECORD_SHIPMENT_HANDLER],
   )
   return result.rows.map((row) => orderHeaderRowSchema.parse(row))
 }
@@ -147,6 +156,7 @@ export async function readOrders(db: CountsSource, tenantId: string): Promise<Sh
       timedOut: header.timed_out,
       invoiceSentAt: header.invoice_sent_at,
     }),
+    carrier: header.carrier,
     lines: linesByOrder.get(header.id) ?? [],
   }))
 }
