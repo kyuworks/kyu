@@ -48,14 +48,14 @@ assert_output_contains "failure names the missing package" "packages/sdk" \
 # --- examples/* is scanned the same way as packages/* ---
 EXBAD="${WORK}/exbad"
 write_workspace "${EXBAD}"
-mkdir -p "${EXBAD}/packages/schemas" "${EXBAD}/examples/playground"
+mkdir -p "${EXBAD}/packages/schemas" "${EXBAD}/examples/shop"
 printf '{}\n' > "${EXBAD}/packages/schemas/tsconfig.json"
-printf '{}\n' > "${EXBAD}/examples/playground/tsconfig.json"
+printf '{}\n' > "${EXBAD}/examples/shop/tsconfig.json"
 cat > "${EXBAD}/tsconfig.json" <<'JSON'
 { "files": [], "references": [{ "path": "packages/schemas" }] }
 JSON
 assert_exit "missing example reference fails" 1 env ROOT_DIR="${EXBAD}" bash "${CHECK}"
-assert_output_contains "failure names the missing example" "examples/playground" \
+assert_output_contains "failure names the missing example" "examples/shop" \
   env ROOT_DIR="${EXBAD}" bash "${CHECK}"
 
 # --- No examples/ directory at all -> pass (matches this branch today) ---

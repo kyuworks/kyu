@@ -16,7 +16,7 @@ echo "=== select-changed-checks tests ==="
 
 init_fixture() {
   local root="$1"
-  mkdir -p "${root}/packages/schemas/src" "${root}/packages/sdk/src" "${root}/examples/playground/src" \
+  mkdir -p "${root}/packages/schemas/src" "${root}/packages/sdk/src" "${root}/examples/shop/src" \
     "${root}/packages/notests/src" "${root}/scripts/lib"
   cat > "${root}/packages/schemas/package.json" <<'JSON'
 {
@@ -31,9 +31,9 @@ JSON
   "scripts": { "lint": "true", "typecheck": "true", "typecheck:tests": "true", "test": "true" }
 }
 JSON
-  cat > "${root}/examples/playground/package.json" <<'JSON'
+  cat > "${root}/examples/shop/package.json" <<'JSON'
 {
-  "name": "@qtaxis/example-playground",
+  "name": "@qtaxis/example-shop",
   "dependencies": { "@qtaxis/sdk": "workspace:*" },
   "scripts": { "lint": "true", "typecheck": "true", "typecheck:tests": "true", "test": "true" }
 }
@@ -49,7 +49,7 @@ JSON
 JSON
   printf 'export const a = 1\n' > "${root}/packages/schemas/src/a.ts"
   printf 'export const b = 1\n' > "${root}/packages/sdk/src/b.ts"
-  printf 'export const c = 1\n' > "${root}/examples/playground/src/c.ts"
+  printf 'export const c = 1\n' > "${root}/examples/shop/src/c.ts"
   printf 'export const n = 1\n' > "${root}/packages/notests/src/n.ts"
   printf '// selector fixture\n' > "${root}/scripts/lib/select-changed-checks.mjs"
   printf '#!/usr/bin/env bash\necho fixture-selftest\n' > "${root}/scripts/lib/select-changed-checks.test.sh"
@@ -70,21 +70,21 @@ init_fixture "${REPO}"
 REPO_BASE="$(git -C "${REPO}" rev-parse HEAD)"
 
 # --- A change under examples/<name>/src selects that example's four steps ---
-printf 'export const c = 2\n' >> "${REPO}/examples/playground/src/c.ts"
-git -C "${REPO}" add examples/playground/src/c.ts
+printf 'export const c = 2\n' >> "${REPO}/examples/shop/src/c.ts"
+git -C "${REPO}" add examples/shop/src/c.ts
 git -C "${REPO}" commit -qm "touch example"
 
 assert_output_contains "example change selects lint" \
-  $'lint:examples/playground\tpnpm --filter @qtaxis/example-playground lint' \
+  $'lint:examples/shop\tpnpm --filter @qtaxis/example-shop lint' \
   run_select "${REPO}" "HEAD~1...HEAD"
 assert_output_contains "example change selects typecheck" \
-  $'typecheck:examples/playground\tpnpm --filter @qtaxis/example-playground typecheck' \
+  $'typecheck:examples/shop\tpnpm --filter @qtaxis/example-shop typecheck' \
   run_select "${REPO}" "HEAD~1...HEAD"
 assert_output_contains "example change selects typecheck:tests" \
-  $'typecheck-tests:examples/playground\tpnpm --filter @qtaxis/example-playground typecheck:tests' \
+  $'typecheck-tests:examples/shop\tpnpm --filter @qtaxis/example-shop typecheck:tests' \
   run_select "${REPO}" "HEAD~1...HEAD"
 assert_output_contains "example change selects test" \
-  $'test:examples/playground\tpnpm --filter @qtaxis/example-playground test' \
+  $'test:examples/shop\tpnpm --filter @qtaxis/example-shop test' \
   run_select "${REPO}" "HEAD~1...HEAD"
 assert_output_lacks "example change does not select an unrelated package" \
   "packages/schemas" \
@@ -106,7 +106,7 @@ assert_output_contains "package change selects test" \
 
 # --- A change to a package pulls in the example that depends on it ---
 assert_output_contains "sdk change pulls in the dependent example" \
-  "lint:examples/playground" run_select "${REPO}" "HEAD~1...HEAD"
+  "lint:examples/shop" run_select "${REPO}" "HEAD~1...HEAD"
 
 # --- A package with no typecheck:tests script does not get that step ---
 printf 'export const n = 2\n' >> "${REPO}/packages/notests/src/n.ts"

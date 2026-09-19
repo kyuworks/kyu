@@ -378,7 +378,7 @@ Build the SDK: `@qtaxis/schemas` message definitions, `publish()` and the outbox
 
 ### Phase 2: test application (one week)
 
-`examples/playground`: a producer and a consumer that exercise an event with two subscribers, a command with per-key ordering and coalescing, a durable handler with a sleep and a correlated wait, an inbound webhook, and the failure path with replay. This application is the acceptance test of the SDK and the demo for every future consumer.
+`examples/shop`: a producer and a consumer that exercise an event with two subscribers, a command with per-key ordering and coalescing, a durable handler with a sleep and a correlated wait, an inbound webhook, and the failure path with replay. This application is the acceptance test of the SDK and the demo for every future consumer.
 
 ### Phase 3: first consumer (one to two weeks)
 

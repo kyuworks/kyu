@@ -127,7 +127,7 @@ The commit is the verification checkpoint. `.husky/pre-commit` runs `scripts/che
 |---|---|---|
 | Mid-work, as often as you like | `pnpm check:changed` | You, for feedback on what you just wrote |
 | Every commit | `check:changed --staged` | The hook |
-| Every PR | Lint, Type Check, Unit Tests, Integration Tests, Integration Tests (playground), Gate Self Tests | Hosted Actions ([`REQUIRED.md`](.github/workflows/REQUIRED.md)) |
+| Every PR | Lint, Type Check, Unit Tests, Integration Tests, Integration Tests (shop), Gate Self Tests | Hosted Actions ([`REQUIRED.md`](.github/workflows/REQUIRED.md)) |
 | Push to `main` | The same six plus Build | Hosted Actions |
 
 **Do not run `check:changed` as a final "am I done" step** — the commit runs it on staged files. **Do not run a full suite locally**; CI owns exhaustive coverage. Iterating on one test file is feedback, not verification: `pnpm --filter @qtaxis/sdk exec vitest run <file>`.

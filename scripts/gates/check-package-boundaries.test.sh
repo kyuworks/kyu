@@ -20,78 +20,78 @@ mkdir -p "${WORK}/deep/packages/b/src"
 printf "import { x } from '@qtaxis/a/src/x.js'\nexport const z = x\n" > "${WORK}/deep/packages/b/src/z.ts"
 assert_exit "deep import past the exports map fails" 1 env ROOT_DIR="${WORK}/deep" bash "${CHECK}"
 
-mkdir -p "${WORK}/example-ok/examples/playground/src"
-printf "import { publish } from '@qtaxis/sdk'\nexport const p = publish\n" > "${WORK}/example-ok/examples/playground/src/index.ts"
+mkdir -p "${WORK}/example-ok/examples/shop/src"
+printf "import { publish } from '@qtaxis/sdk'\nexport const p = publish\n" > "${WORK}/example-ok/examples/shop/src/index.ts"
 assert_exit "example importing @qtaxis/sdk passes" 0 env ROOT_DIR="${WORK}/example-ok" bash "${CHECK}"
 
-mkdir -p "${WORK}/example-hatchet/examples/playground/src"
-printf "import { Hatchet } from '@hatchet-dev/typescript-sdk'\nexport const h = Hatchet\n" > "${WORK}/example-hatchet/examples/playground/src/index.ts"
+mkdir -p "${WORK}/example-hatchet/examples/shop/src"
+printf "import { Hatchet } from '@hatchet-dev/typescript-sdk'\nexport const h = Hatchet\n" > "${WORK}/example-hatchet/examples/shop/src/index.ts"
 assert_exit "example importing @hatchet-dev/ fails" 1 env ROOT_DIR="${WORK}/example-hatchet" bash "${CHECK}"
 assert_output_contains "failure says examples consume @qtaxis/sdk only" "@qtaxis/sdk only" env ROOT_DIR="${WORK}/example-hatchet" bash "${CHECK}"
 
-mkdir -p "${WORK}/example-schemas/examples/playground/src"
-printf "import { parseEnvelope } from '@qtaxis/schemas'\nexport const p = parseEnvelope\n" > "${WORK}/example-schemas/examples/playground/src/index.ts"
+mkdir -p "${WORK}/example-schemas/examples/shop/src"
+printf "import { parseEnvelope } from '@qtaxis/schemas'\nexport const p = parseEnvelope\n" > "${WORK}/example-schemas/examples/shop/src/index.ts"
 assert_exit "example importing @qtaxis/schemas fails" 1 env ROOT_DIR="${WORK}/example-schemas" bash "${CHECK}"
 assert_output_contains "failure says examples consume @qtaxis/sdk only (schemas case)" "@qtaxis/sdk only" env ROOT_DIR="${WORK}/example-schemas" bash "${CHECK}"
 
 # --- Every import form of a banned package is caught, not just `from` (#review) ---
-mkdir -p "${WORK}/example-bare-import/examples/playground/src"
-printf "import '@hatchet-dev/typescript-sdk'\nexport const p = 1\n" > "${WORK}/example-bare-import/examples/playground/src/index.ts"
+mkdir -p "${WORK}/example-bare-import/examples/shop/src"
+printf "import '@hatchet-dev/typescript-sdk'\nexport const p = 1\n" > "${WORK}/example-bare-import/examples/shop/src/index.ts"
 assert_exit "bare side-effect import of @hatchet-dev/ fails" 1 env ROOT_DIR="${WORK}/example-bare-import" bash "${CHECK}"
 
-mkdir -p "${WORK}/example-dynamic-import/examples/playground/src"
-printf "export const h = await import('@hatchet-dev/typescript-sdk')\n" > "${WORK}/example-dynamic-import/examples/playground/src/index.ts"
+mkdir -p "${WORK}/example-dynamic-import/examples/shop/src"
+printf "export const h = await import('@hatchet-dev/typescript-sdk')\n" > "${WORK}/example-dynamic-import/examples/shop/src/index.ts"
 assert_exit "dynamic import() of @hatchet-dev/ fails" 1 env ROOT_DIR="${WORK}/example-dynamic-import" bash "${CHECK}"
 
-mkdir -p "${WORK}/example-require/examples/playground/src"
-printf "const h = require('@hatchet-dev/typescript-sdk')\nexport { h }\n" > "${WORK}/example-require/examples/playground/src/index.ts"
+mkdir -p "${WORK}/example-require/examples/shop/src"
+printf "const h = require('@hatchet-dev/typescript-sdk')\nexport { h }\n" > "${WORK}/example-require/examples/shop/src/index.ts"
 assert_exit "require() of @hatchet-dev/ fails" 1 env ROOT_DIR="${WORK}/example-require" bash "${CHECK}"
 
-mkdir -p "${WORK}/example-schemas-dynamic/examples/playground/src"
-printf "export const s = await import('@qtaxis/schemas')\n" > "${WORK}/example-schemas-dynamic/examples/playground/src/index.ts"
+mkdir -p "${WORK}/example-schemas-dynamic/examples/shop/src"
+printf "export const s = await import('@qtaxis/schemas')\n" > "${WORK}/example-schemas-dynamic/examples/shop/src/index.ts"
 assert_exit "dynamic import() of @qtaxis/schemas fails" 1 env ROOT_DIR="${WORK}/example-schemas-dynamic" bash "${CHECK}"
 
 # --- The dependency itself in package.json fails too, not just the import (#review) ---
-mkdir -p "${WORK}/example-pkg-dep/examples/playground/src"
-printf "export const p = 1\n" > "${WORK}/example-pkg-dep/examples/playground/src/index.ts"
-cat > "${WORK}/example-pkg-dep/examples/playground/package.json" <<'JSON'
+mkdir -p "${WORK}/example-pkg-dep/examples/shop/src"
+printf "export const p = 1\n" > "${WORK}/example-pkg-dep/examples/shop/src/index.ts"
+cat > "${WORK}/example-pkg-dep/examples/shop/package.json" <<'JSON'
 {
-  "name": "@qtaxis/example-playground",
+  "name": "@qtaxis/example-shop",
   "dependencies": { "@hatchet-dev/typescript-sdk": "^1.0.0" }
 }
 JSON
 assert_exit "@hatchet-dev/ in package.json dependencies fails" 1 env ROOT_DIR="${WORK}/example-pkg-dep" bash "${CHECK}"
 
-mkdir -p "${WORK}/example-pkg-devdep/examples/playground/src"
-printf "export const p = 1\n" > "${WORK}/example-pkg-devdep/examples/playground/src/index.ts"
-cat > "${WORK}/example-pkg-devdep/examples/playground/package.json" <<'JSON'
+mkdir -p "${WORK}/example-pkg-devdep/examples/shop/src"
+printf "export const p = 1\n" > "${WORK}/example-pkg-devdep/examples/shop/src/index.ts"
+cat > "${WORK}/example-pkg-devdep/examples/shop/package.json" <<'JSON'
 {
-  "name": "@qtaxis/example-playground",
+  "name": "@qtaxis/example-shop",
   "devDependencies": { "@qtaxis/schemas": "workspace:*" }
 }
 JSON
 assert_exit "@qtaxis/schemas in package.json devDependencies fails" 1 env ROOT_DIR="${WORK}/example-pkg-devdep" bash "${CHECK}"
 
-mkdir -p "${WORK}/example-pkg-ok/examples/playground/src"
-printf "import { publish } from '@qtaxis/sdk'\nexport const p = publish\n" > "${WORK}/example-pkg-ok/examples/playground/src/index.ts"
-cat > "${WORK}/example-pkg-ok/examples/playground/package.json" <<'JSON'
+mkdir -p "${WORK}/example-pkg-ok/examples/shop/src"
+printf "import { publish } from '@qtaxis/sdk'\nexport const p = publish\n" > "${WORK}/example-pkg-ok/examples/shop/src/index.ts"
+cat > "${WORK}/example-pkg-ok/examples/shop/package.json" <<'JSON'
 {
-  "name": "@qtaxis/example-playground",
+  "name": "@qtaxis/example-shop",
   "dependencies": { "@qtaxis/sdk": "workspace:*" }
 }
 JSON
 assert_exit "package.json depending on @qtaxis/sdk only passes" 0 env ROOT_DIR="${WORK}/example-pkg-ok" bash "${CHECK}"
 
 # --- examples/*/src/**/*.test.ts is scanned too, unlike check-no-escape-hatches (#review asymmetry) ---
-mkdir -p "${WORK}/example-test-file/examples/playground/src"
-printf "import { Hatchet } from '@hatchet-dev/typescript-sdk'\nexport const h = Hatchet\n" > "${WORK}/example-test-file/examples/playground/src/index.test.ts"
+mkdir -p "${WORK}/example-test-file/examples/shop/src"
+printf "import { Hatchet } from '@hatchet-dev/typescript-sdk'\nexport const h = Hatchet\n" > "${WORK}/example-test-file/examples/shop/src/index.test.ts"
 assert_exit "a banned import in an example's own .test.ts still fails" 1 \
   env ROOT_DIR="${WORK}/example-test-file" bash "${CHECK}"
 
 # --- A package-root file (vitest config/setup, not under src) is scanned too (#review) ---
-mkdir -p "${WORK}/example-root-file/examples/playground/src"
-printf "export const p = 1\n" > "${WORK}/example-root-file/examples/playground/src/index.ts"
-printf "import { Hatchet } from '@hatchet-dev/typescript-sdk'\nexport const h = Hatchet\n" > "${WORK}/example-root-file/examples/playground/vitest.integration.setup.ts"
+mkdir -p "${WORK}/example-root-file/examples/shop/src"
+printf "export const p = 1\n" > "${WORK}/example-root-file/examples/shop/src/index.ts"
+printf "import { Hatchet } from '@hatchet-dev/typescript-sdk'\nexport const h = Hatchet\n" > "${WORK}/example-root-file/examples/shop/vitest.integration.setup.ts"
 assert_exit "a banned import in an example's package-root file fails" 1 \
   env ROOT_DIR="${WORK}/example-root-file" bash "${CHECK}"
 
