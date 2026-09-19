@@ -72,11 +72,10 @@ describe('CheckoutConfirmation', () => {
     expect(markup).toContain('envelope-2')
   })
 
-  it('links to the bus page, not to /orders, until that page lands', () => {
+  it('links to /orders and to the dashboard when a url is known', () => {
     const markup = renderToStaticMarkup(<CheckoutConfirmation order={order} dashboardUrl="http://localhost:8888" />)
 
-    expect(markup).toContain('href="/bus"')
+    expect(markup).toContain('href="/orders"')
     expect(markup).toContain('href="http://localhost:8888"')
-    expect(markup).not.toContain('href="/orders"')
   })
 })

@@ -337,6 +337,42 @@ describe('handleUiRequest', () => {
     expect(JSON.parse(response.body)).toEqual({ orders: [] })
   })
 
+  it('serves the orders page for GET /orders, the read model for GET /orders.json, and still publishes for POST /orders (W8)', async () => {
+    const shell: UiResponse = { status: 200, contentType: 'text/html', body: '<!doctype html>orders page' }
+    const readWeb: ReadWeb = (method, url) => Promise.resolve(method === 'GET' && url === '/orders' ? shell : undefined)
+    const qtaxis1 = fakeQtaxis([])
+
+    const pageResponse = await handleUiRequest(deps(fakePool([], fakeClient([])), qtaxis1, fakeTopology, readWeb), {
+      method: 'GET',
+      url: '/orders',
+      contentType: '',
+      body: '',
+    })
+    expect(pageResponse).toEqual(shell)
+
+    const jsonResponse = await handleUiRequest(
+      deps(fakeQueryPool([[], []]), fakeQtaxis([])),
+      getRequest('/orders.json'),
+    )
+    expect(jsonResponse.status).toBe(200)
+    expect(JSON.parse(jsonResponse.body)).toEqual({ orders: [] })
+
+    const publishes: RecordedPublish[] = []
+    const postResponses = new Map<string, FakeQueryResponse>([
+      [LINE_INSERT_PREFIX, { rowCount: 1 }],
+      ['UPDATE shop_order', { rows: [{ total_cents: 1400 }], rowCount: 1 }],
+    ])
+    const postResponse = await handleUiRequest(
+      deps(fakePool([], fakeClient([], postResponses)), fakeQtaxis(publishes)),
+      jsonPost('/orders', JSON.stringify({ lines: [{ productId, quantity: 1 }] })),
+    )
+    expect(postResponse.status).toBe(201)
+    expect(publishes).toEqual([
+      { name: 'shop.order.placed', tenantId: DEMO_TENANT_ID },
+      { name: 'shop.invoice.send', tenantId: DEMO_TENANT_ID },
+    ])
+  })
+
   it('delegates an unmatched GET to the static reader', async () => {
     const client = fakeClient([])
     const pool = fakePool([], client)

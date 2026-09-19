@@ -15,7 +15,8 @@ export default defineConfig({
       '/ui.json': uiOrigin,
       '/bus.json': uiOrigin,
       '/products.json': uiOrigin,
-      '/orders': uiOrigin,
+      // GET /orders is the page; only the POST (placing an order) belongs to the ui process.
+      '/orders': { target: uiOrigin, bypass: (req) => (req.method === 'GET' ? '/index.html' : undefined) },
       '/shipments': uiOrigin,
     },
   },

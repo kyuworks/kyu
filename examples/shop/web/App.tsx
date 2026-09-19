@@ -6,6 +6,7 @@ import { parseProductsDocument } from './lib/shopDocuments'
 import type { ShopProduct } from './lib/shopDocuments'
 import { BusPage } from './pages/BusPage'
 import { CheckoutPage } from './pages/CheckoutPage'
+import { OrdersPage } from './pages/OrdersPage'
 import { ShopPage } from './pages/ShopPage'
 
 interface NavLink {
@@ -18,6 +19,7 @@ interface NavLink {
 const NAV_LINKS: readonly NavLink[] = [
   { href: '/', label: 'Shop' },
   { href: '/checkout', label: 'Checkout' },
+  { href: '/orders', label: 'Orders' },
   { href: '/bus', label: 'Bus' },
 ]
 
@@ -88,6 +90,7 @@ export function App() {
 
   function renderPage() {
     if (pathname === '/bus') return <BusPage dashboardUrl={dashboardUrl} />
+    if (pathname === '/orders') return <OrdersPage dashboardUrl={dashboardUrl} />
     if (pathname === '/checkout') {
       return (
         <CheckoutPage

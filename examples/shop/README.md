@@ -84,17 +84,23 @@ stepper and an "Add to order" button, next to a cart summary with the running to
 shows the cart's lines and total and one button, **Pay and place order** — there is no payment
 provider, so pressing it writes the order with `paid_at = now()` in the same transaction and
 posts to `POST /orders`. On success the page shows the order id, the total, and the two envelope
-ids, with a link to `/bus`; the Orders page these will link to instead lands in a later pull
-request. The cart is kept in `localStorage` under `qtaxis.shop.cart` so it survives the full page
+ids, with a link to `/orders`. The cart is kept in `localStorage` under `qtaxis.shop.cart` so it survives the full page
 load a real `<a href>` nav makes; the browser's own customer id lives under
 `qtaxis.shop.customerId`. Both are read and written through a try/catch — a private window throws
-on access, and a storage failure must never break the page. `/orders.json`, `/shipments` and
-`/invoices` are live but have no page yet; use `curl` or the producer CLI above.
+on access, and a storage failure must never break the page. `/shipments` and `/invoices` are live
+but have no page yet; use `curl` or the producer CLI above.
 
 A request that fails after the server has already committed the order still shows a checkout
 error — the browser has no way to tell "the write failed" from "the response never arrived" — and
 pressing pay again places a second order. The bus is at-least-once and this demo does not
 deduplicate; a real storefront would show the order it already has instead of retrying blind.
+
+`/orders` lists every order for the demo tenant, newest first, from `GET /orders.json`: each
+card shows the order's short id, its lines with quantities and unit prices, its total, a "yours"
+badge when the order's customer id matches this browser's, and a three-step timeline — placed,
+invoice sent, shipped — with "timed out" replacing the last step's label when `watch-shipping`'s
+correlated wait ran out instead of hearing back. The page refreshes every 5 seconds, the same
+in-flight guard and status-line rule as `/bus`.
 
 `/bus` is a React page now: it draws the producer, the outbox, and one column per subscription
 in registry order, refreshed every 5 seconds. Outbox stages — published, waiting for relay,
