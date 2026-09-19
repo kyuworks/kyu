@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { MIGRATIONS_DIRECTORY, uuidv7 } from '@qtaxis/sdk'
+import { MIGRATIONS_DIRECTORY, uuidv7 } from '@kyuworks/sdk'
 import { Client } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { readConfig } from '../config.js'
@@ -15,8 +15,8 @@ const TABLES = [
   'shop_order',
   'shop_invoice',
   'shop_handler_log',
-  'qtaxis_outbox',
-  'qtaxis_processed',
+  'kyu_outbox',
+  'kyu_processed',
 ]
 
 describe('applyPending', () => {
@@ -61,7 +61,7 @@ describe('applyPending transaction check', () => {
 
   beforeAll(async () => {
     await client.connect()
-    dir = await mkdtemp(path.join(tmpdir(), 'qtaxis-shop-migrate-'))
+    dir = await mkdtemp(path.join(tmpdir(), 'kyu-shop-migrate-'))
   })
 
   afterAll(async () => {

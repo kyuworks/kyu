@@ -174,7 +174,7 @@ describe('readStoredCart / writeStoredCart', () => {
 
   it('returns an empty cart when the stored value is not valid JSON', () => {
     const storage = fakeLocalStorage()
-    storage.setItem('qtaxis.shop.cart', 'not json')
+    storage.setItem('kyu.shop.cart', 'not json')
     vi.stubGlobal('localStorage', storage)
 
     expect(readStoredCart()).toEqual([])
@@ -183,7 +183,7 @@ describe('readStoredCart / writeStoredCart', () => {
   it('drops a line whose stored quantity is not a valid line quantity', () => {
     const storage = fakeLocalStorage()
     storage.setItem(
-      'qtaxis.shop.cart',
+      'kyu.shop.cart',
       JSON.stringify([
         { productId: 'p1', quantity: 2 },
         { productId: 'p2', quantity: 0 },

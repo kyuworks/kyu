@@ -1,4 +1,4 @@
-import type { QueryParam, QueryRows, RunOutcome } from '@qtaxis/sdk'
+import type { QueryParam, QueryRows, RunOutcome } from '@kyuworks/sdk'
 import { z } from 'zod'
 import type { BusTopology, TopologySubscription } from './busTopology.js'
 
@@ -45,7 +45,7 @@ export interface BusCounts {
   window: CountsWindow
 }
 
-// @qtaxis/sdk's Queryable rejects a Pool by design (db/queryable.ts's
+// @kyuworks/sdk's Queryable rejects a Pool by design (db/queryable.ts's
 // `totalCount?: never`); a Pool, PoolClient and Queryable all satisfy this.
 export interface CountsSource {
   query(text: string, params: readonly QueryParam[]): Promise<QueryRows>
@@ -86,13 +86,13 @@ interface HandlerLogRow {
 }
 
 // Producer and outbox totals, lifetime, every row: envelope->>'source' is the
-// only place a producer's name lives, since qtaxis_outbox has no source column.
+// only place a producer's name lives, since kyu_outbox has no source column.
 async function readProducerTotals(db: CountsSource): Promise<ProducerTotalsRow[]> {
   const result = await db.query(
     `SELECT envelope->>'source' AS source,
             count(*)::int AS published,
             count(*) FILTER (WHERE published_at IS NULL)::int AS waiting
-     FROM qtaxis_outbox
+     FROM kyu_outbox
      GROUP BY 1
      ORDER BY 1`,
     [],
@@ -105,7 +105,7 @@ async function readWindowEnvelopes(db: CountsSource, topology: BusTopology): Pro
   const messageNames = Array.from(new Set(topology.subscriptions.map((subscription) => subscription.messageName)))
   const result = await db.query(
     `SELECT id::text AS id, name
-     FROM qtaxis_outbox
+     FROM kyu_outbox
      WHERE name IN (SELECT * FROM unnest($1::text[]))
      ORDER BY created_at DESC, id DESC
      LIMIT $2`,
@@ -276,7 +276,7 @@ function foldBusCounts(
 }
 
 /**
- * Assembles the bus diagram's counts: outbox stages from qtaxis_outbox, run
+ * Assembles the bus diagram's counts: outbox stages from kyu_outbox, run
  * states from the engine through one `runs.forEnvelope` call per window
  * envelope, and watch-shipping's parked/done split from shop_handler_log.
  */

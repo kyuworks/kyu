@@ -1,10 +1,10 @@
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Queryable } from '@qtaxis/sdk'
+import type { Queryable } from '@kyuworks/sdk'
 import { Client } from 'pg'
 import { z } from 'zod'
 
-const SHOP_DATABASE_NAME_PATTERN = /^qtaxis_shop[a-z0-9_]*$/
+const SHOP_DATABASE_NAME_PATTERN = /^kyu_shop[a-z0-9_]*$/
 
 // Computed the same way the SDK locates its own shipped migrations/: two
 // levels up from this file, whether running from src/ (vitest) or dist/ (built).

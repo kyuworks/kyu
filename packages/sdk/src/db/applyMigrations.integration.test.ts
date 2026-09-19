@@ -8,13 +8,13 @@ import { MigrationTransactionError, applyMigrations } from './applyMigrations.js
 // Proves the harness catches a migration file that ends or replaces the
 // transaction it was opened in, by checking Postgres's own transaction id
 // rather than guessing from SQL text. Each test gets a private schema so
-// the shared qtaxis_test database stays clean between tests.
+// the shared kyu_test database stays clean between tests.
 
 let client: Client
 let schema: string
 
 beforeEach(async () => {
-  client = new Client({ connectionString: process.env['QTAXIS_TEST_DATABASE_URL'] })
+  client = new Client({ connectionString: process.env['KYU_TEST_DATABASE_URL'] })
   await client.connect()
   schema = `apply_migrations_test_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`
   await client.query(`CREATE SCHEMA "${schema}"`)
@@ -26,7 +26,7 @@ afterEach(async () => {
 })
 
 function writeMigrationDir(files: Record<string, string>): string {
-  const dir = mkdtempSync(path.join(tmpdir(), 'qtaxis-migrations-'))
+  const dir = mkdtempSync(path.join(tmpdir(), 'kyu-migrations-'))
   for (const [name, sql] of Object.entries(files)) {
     writeFileSync(path.join(dir, name), sql, 'utf8')
   }

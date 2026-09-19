@@ -40,13 +40,13 @@ export type Envelope<TData extends MessageDataShape = EnvelopeData> = Omit<z.inf
   data: TData
 }
 
-// The string map Hatchet carries beside the payload; CEL reads these keys. `qtaxis_`-prefixed
+// The string map Hatchet carries beside the payload; CEL reads these keys. `kyu_`-prefixed
 // keys avoid colliding with a producer's own metadata.
 export const envelopeMetadataSchema = z.object({
   envelopeId: z.uuidv7(),
-  qtaxis_name: messageNameSchema,
-  qtaxis_version: z.string().regex(/^[1-9]\d{0,8}$/, 'qtaxis_version must be a positive integer string'),
-  qtaxis_kind: messageKindSchema,
+  kyu_name: messageNameSchema,
+  kyu_version: z.string().regex(/^[1-9]\d{0,8}$/, 'kyu_version must be a positive integer string'),
+  kyu_kind: messageKindSchema,
   tenantId: z.uuid().optional(),
   orgUnitId: z.uuid().optional(),
   actorUserId: z.uuid().optional(),
@@ -61,9 +61,9 @@ export type EnvelopeMetadata = z.infer<typeof envelopeMetadataSchema>
 export function toEnvelopeMetadata<TData extends MessageDataShape>(envelope: Envelope<TData>) {
   const metadata: Record<string, string> = {}
   metadata['envelopeId'] = envelope.id
-  metadata['qtaxis_name'] = envelope.name
-  metadata['qtaxis_version'] = String(envelope.version)
-  metadata['qtaxis_kind'] = envelope.kind
+  metadata['kyu_name'] = envelope.name
+  metadata['kyu_version'] = String(envelope.version)
+  metadata['kyu_kind'] = envelope.kind
   metadata['correlationId'] = envelope.correlationId
   metadata['source'] = envelope.source
   if (envelope.tenantId !== null) metadata['tenantId'] = envelope.tenantId
@@ -85,9 +85,9 @@ export function fromEnvelopeMetadata(record: Record<string, string>): EnvelopeMe
   const parsed = result.data
   const fields: EnvelopeMetadataFields = {
     envelopeId: parsed.envelopeId,
-    name: parsed.qtaxis_name,
-    version: Number.parseInt(parsed.qtaxis_version, 10),
-    kind: parsed.qtaxis_kind,
+    name: parsed.kyu_name,
+    version: Number.parseInt(parsed.kyu_version, 10),
+    kind: parsed.kyu_kind,
     tenantId: parsed.tenantId ?? null,
     correlationId: parsed.correlationId,
     source: parsed.source,

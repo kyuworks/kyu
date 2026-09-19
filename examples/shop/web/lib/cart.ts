@@ -78,7 +78,7 @@ export function formatCents(cents: number): string {
   return CURRENCY_FORMAT.format(cents / 100)
 }
 
-const CART_STORAGE_KEY = 'qtaxis.shop.cart'
+const CART_STORAGE_KEY = 'kyu.shop.cart'
 const storedCartLineSchema = z.object({ productId: z.string(), quantity: z.int().min(1).max(MAX_LINE_QUANTITY) })
 
 // The cart must survive the click from Shop to Checkout — real links reload

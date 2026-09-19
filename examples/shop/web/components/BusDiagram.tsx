@@ -55,7 +55,7 @@ export function BusDiagram({ busDocument }: BusDiagramProps) {
 
       <div className="flex w-full flex-wrap justify-center gap-4">
         <div className="min-w-44 rounded-md border border-border bg-surface-secondary p-3 text-center">
-          <h3 className="mb-1 text-[0.95rem] font-bold">Outbox &mdash; qtaxis_outbox</h3>
+          <h3 className="mb-1 text-[0.95rem] font-bold">Outbox &mdash; kyu_outbox</h3>
           <p className="my-0.5 flex justify-between gap-4 text-sm">
             <span>waiting for relay</span>
             <span>{counts.outbox.waitingForRelay}</span>

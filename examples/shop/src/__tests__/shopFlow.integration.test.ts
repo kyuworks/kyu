@@ -1,13 +1,13 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import path from 'node:path'
-import type { Qtaxis } from '@qtaxis/sdk'
+import type { Kyu } from '@kyuworks/sdk'
 import { Client } from 'pg'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { ShopConfig } from '../config.js'
 import { readConfig } from '../config.js'
 import { createPool } from '../db/pool.js'
-import { createShopQtaxis } from '../qtaxis.js'
+import { createShopKyu } from '../kyu.js'
 import { placeOrder } from '../producer/placeOrder.js'
 import { shipOrder } from '../producer/shipOrder.js'
 import { spawnProcess, stopAllSpawnedProcesses } from './processes.js'
@@ -28,13 +28,13 @@ const TOTE_ID = '0199a1c0-0001-7000-8000-000000000002'
 
 let config: ShopConfig
 let pool: Pool
-let qtaxis: Qtaxis
+let kyu: Kyu
 let admin: Client
 let relay: SpawnedProcess
 let worker: SpawnedProcess
 
 function childEnv(): NodeJS.ProcessEnv {
-  return { ...process.env, QTAXIS_SHOP_DATABASE_URL: config.databaseUrl, QTAXIS_SHOP_NAMESPACE: namespace }
+  return { ...process.env, KYU_SHOP_DATABASE_URL: config.databaseUrl, KYU_SHOP_NAMESPACE: namespace }
 }
 
 async function waitUntil(
@@ -55,7 +55,7 @@ beforeAll(async () => {
   const base = readConfig()
   config = { ...base, namespace }
   pool = createPool(config.databaseUrl)
-  qtaxis = createShopQtaxis(config)
+  kyu = createShopKyu(config)
   admin = new Client({ connectionString: config.databaseUrl })
   await admin.connect()
 
@@ -75,7 +75,7 @@ describe('shopFlow: checkout, invoice and shipping against the local engine', ()
     const tenantId = randomUUID()
     const customerId = randomUUID()
 
-    const placed = await placeOrder(pool, qtaxis, {
+    const placed = await placeOrder(pool, kyu, {
       tenantId,
       customerId,
       lines: [
@@ -112,7 +112,7 @@ describe('shopFlow: checkout, invoice and shipping against the local engine', ()
       () => `shop_invoice ${placed.invoiceId} sent_at is ${String(sentAt)}`,
     )
 
-    await shipOrder(pool, qtaxis, { tenantId, orderId: placed.orderId, carrier: 'ups' })
+    await shipOrder(pool, kyu, { tenantId, orderId: placed.orderId, carrier: 'ups' })
 
     await waitUntil(
       async () => {
@@ -135,7 +135,7 @@ describe('shopFlow: checkout, invoice and shipping against the local engine', ()
     const unknownProductId = randomUUID()
 
     await expect(
-      placeOrder(pool, qtaxis, {
+      placeOrder(pool, kyu, {
         tenantId,
         customerId: randomUUID(),
         lines: [{ productId: unknownProductId, quantity: 1 }],
@@ -148,7 +148,7 @@ describe('shopFlow: checkout, invoice and shipping against the local engine', ()
     expect(orderRows.rows).toHaveLength(0)
     const invoiceRows = await admin.query('SELECT 1 FROM shop_invoice WHERE tenant_id = $1', [tenantId])
     expect(invoiceRows.rows).toHaveLength(0)
-    const outboxRows = await admin.query('SELECT 1 FROM qtaxis_outbox WHERE tenant_id = $1', [tenantId])
+    const outboxRows = await admin.query('SELECT 1 FROM kyu_outbox WHERE tenant_id = $1', [tenantId])
     expect(outboxRows.rows).toHaveLength(0)
   }, 30_000)
 })
