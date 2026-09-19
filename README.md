@@ -35,6 +35,6 @@ A durable run parked in `sleepFor`/`waitFor` reads as `running` in that outcome 
 
 ## Examples
 
-[`examples/playground`](examples/playground) is a small app that uses `@qtaxis/sdk` the way a real project would.
+[`examples/shop`](examples/shop) is a small app that uses `@qtaxis/sdk` the way a real project would.
 
 Status: design accepted, SDK in progress. See the issues.

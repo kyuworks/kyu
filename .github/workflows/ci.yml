@@ -124,15 +124,15 @@ jobs:
           echo "HATCHET_CLIENT_TLS_STRATEGY=none" >> "$GITHUB_ENV"
       - run: pnpm --filter @qtaxis/sdk test:integration
 
-  # Own job, own engine: the sdk and playground lanes are independent and ran
+  # Own job, own engine: the sdk and shop lanes are independent and ran
   # serially at about two minutes each.
-  test-integration-playground:
-    name: Integration Tests (playground)
+  test-integration-shop:
+    name: Integration Tests (shop)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      # The example's own runner creates qtaxis_playground itself; this only names where to connect.
-      QTAXIS_EXAMPLE_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/qtaxis_playground
+      # The example's own runner creates qtaxis_shop itself; this only names where to connect.
+      QTAXIS_SHOP_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/qtaxis_shop
     services:
       postgres:
         image: postgres:15.6
@@ -183,7 +183,7 @@ jobs:
           echo "::add-mask::${TOKEN}"
           echo "HATCHET_CLIENT_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
           echo "HATCHET_CLIENT_TLS_STRATEGY=none" >> "$GITHUB_ENV"
-      - run: pnpm --filter @qtaxis/playground test:integration
+      - run: pnpm --filter @qtaxis/shop test:integration
 
   self-tests:
     name: Gate Self Tests
