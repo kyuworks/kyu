@@ -38,6 +38,9 @@ export function recordShipmentSubscription(kyu: Kyu, pool: Pool): Subscription {
   return kyu.subscribe(orderShipped, {
     name: 'record-shipment',
     concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'fifo' },
+    // A transient pg failure becomes a dead letter that a replay re-runs
+    // cleanly: onceById's kyu_processed marker rolls back with the throw.
+    retries: 0,
     handler: (ctx) => handleRecordShipment(pool, kyu, ctx),
   })
 }

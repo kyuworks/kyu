@@ -86,6 +86,9 @@ describe('handleRecordShipment', () => {
 
     expect(events).toContain(LOG_INSERT)
     const updateIndex = events.findIndex((event) => event.startsWith('UPDATE shop_order'))
+    // Pins the coalesce: a plain `$2::timestamptz` would also pass the params
+    // assertion below but would let a second shipment move an already-set time.
+    expect(events[updateIndex]).toContain('coalesce(shipped_at,')
     expect(params[updateIndex]).toEqual([orderId, ctx.envelope.occurredAt, tenantId])
     const logIndex = events.findIndex((event) => event === LOG_INSERT)
     expect(params[logIndex]).toEqual(['record-shipment', ctx.envelope.id, orderId, tenantId, process.pid, 'ups'])

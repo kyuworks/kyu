@@ -11,6 +11,10 @@ import { createPool } from '../db/pool.js'
 import { createShopKyu } from '../kyu.js'
 import { placeOrder } from '../producer/placeOrder.js'
 import { shipOrder } from '../producer/shipOrder.js'
+import { buildSubscriptions } from '../subscriptions.js'
+import type { BusCounts, SubscriptionRunCounts } from '../ui/busCounts.js'
+import { readBusCounts } from '../ui/busCounts.js'
+import { describeBusTopology } from '../ui/busTopology.js'
 import { spawnProcess, stopAllSpawnedProcesses } from './processes.js'
 import type { SpawnedProcess } from './processes.js'
 
@@ -74,6 +78,32 @@ async function expectEventually(
   throw new Error(
     `${label} never happened for envelope ${envelopeId}; engine run status: ${JSON.stringify(runs.rows[0] ?? null)}`,
   )
+}
+
+// Mirrors busCounts.integration.test.ts's subscriptionCounts: a missing
+// subscription reads as all-zero instead of undefined.
+const EMPTY_SUBSCRIPTION_COUNTS: Omit<SubscriptionRunCounts, 'name'> = {
+  queued: 0,
+  running: 0,
+  completed: 0,
+  failed: 0,
+  cancelled: 0,
+}
+
+function subscriptionCounts(counts: BusCounts, name: string): SubscriptionRunCounts {
+  return (
+    counts.subscriptions.find((subscription) => subscription.name === name) ?? { name, ...EMPTY_SUBSCRIPTION_COUNTS }
+  )
+}
+
+// kyu.runs is scoped to the namespace it was built with; the shared top-level
+// kyu above carries baseConfig's namespace, not a given test's random one, so
+// reading its bus counts needs a kyu (and topology) scoped to that test's shop.
+function readCountsFor(shop: Shop): () => Promise<BusCounts> {
+  const scopedConfig: ShopConfig = { ...baseConfig, namespace: shop.namespace }
+  const scopedKyu = createShopKyu(scopedConfig)
+  const topology = describeBusTopology(buildSubscriptions(scopedKyu, pool, scopedConfig))
+  return () => readBusCounts(pool, scopedKyu.runs, topology)
 }
 
 interface Shop {
@@ -191,12 +221,15 @@ describe('restart: the durable watch-shipping handler', () => {
     const shop = await startShop('8s')
     try {
       await shop.spawnWorker()
+      const readCounts = readCountsFor(shop)
 
       const placed = await placeOrder(pool, kyu, { tenantId, customerId: randomUUID() })
       const envelopeId = placed.envelopeIds.orderPlaced
 
       const waiting = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:waiting'), 60_000)
       await expectEventually(shop.engine, envelopeId, 'watch-shipping:waiting row', waiting)
+
+      const baseline = await readCounts()
 
       await shipOrder(pool, kyu, { tenantId: otherTenantId, orderId: placed.orderId, carrier: 'dhl' })
 
@@ -205,6 +238,17 @@ describe('restart: the durable watch-shipping handler', () => {
 
       const orderRow = await admin.query('SELECT shipped_at FROM shop_order WHERE id = $1', [placed.orderId])
       expect(orderRow.rows[0]?.shipped_at).toBeNull()
+
+      // A wrong-tenant shipment is a dead letter, not a silent no-op
+      // (AGENTS.md: a failed run is alerted on and replayable).
+      const deadLettered = await waitUntil(async () => {
+        const counts = await readCounts()
+        return (
+          subscriptionCounts(counts, 'record-shipment').failed ===
+          subscriptionCounts(baseline, 'record-shipment').failed + 1
+        )
+      }, 60_000)
+      expect(deadLettered, 'record-shipment never gained a failed run for the wrong-tenant shipment').toBe(true)
     } finally {
       await shop.stopAll()
     }
@@ -360,14 +404,15 @@ describe('late shipment: a shipment after the watch timeout', () => {
       const firstShippedAt = first.rows[0]?.shipped_at
 
       // first-shipment-time-wins: a second shipment must not move it.
-      await shipOrder(pool, kyu, { tenantId, orderId: placed.orderId, carrier: 'dhl' })
-      await waitUntil(async () => {
+      const secondEnvelopeId = await shipOrder(pool, kyu, { tenantId, orderId: placed.orderId, carrier: 'dhl' })
+      const secondLogged = await waitUntil(async () => {
         const rows = await admin.query(
           "SELECT 1 FROM shop_handler_log WHERE handler = 'record-shipment' AND order_id = $1",
           [placed.orderId],
         )
         return rows.rows.length === 2
       }, 60_000)
+      await expectEventually(shop.engine, secondEnvelopeId, 'second record-shipment log row', secondLogged)
 
       const second = await admin.query('SELECT shipped_at FROM shop_order WHERE id = $1', [placed.orderId])
       expect(second.rows[0]?.shipped_at).toEqual(firstShippedAt)

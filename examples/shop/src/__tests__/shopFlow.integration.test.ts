@@ -135,12 +135,21 @@ describe('shopFlow: checkout, invoice and shipping against the local engine', ()
           [placed.orderId],
         )
         completedRowCount = completedLog.rows.length
-        return completedRowCount === 1
+        return completedRowCount >= 1
       },
       60_000,
       () =>
-        `shop_handler_log has ${String(completedRowCount)} watch-shipping:completed rows for order ${placed.orderId}, want 1`,
+        `shop_handler_log has ${String(completedRowCount)} watch-shipping:completed rows for order ${placed.orderId}, want at least 1`,
     )
+
+    // Re-read once the poll has settled, so a duplicate completed row (a bug,
+    // since onceById's unique index should make this impossible) is caught
+    // instead of being masked by a poll that stops at the first sighting.
+    const completedLog = await admin.query(
+      "SELECT 1 FROM shop_handler_log WHERE handler = 'watch-shipping:completed' AND order_id = $1",
+      [placed.orderId],
+    )
+    expect(completedLog.rows).toHaveLength(1)
   }, 180_000)
 
   it('an unknown product id commits nothing and publishes nothing (S2)', async () => {
