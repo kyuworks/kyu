@@ -10,7 +10,7 @@
     "../../oxlint-rules/language.oxlintrc.json",
     "../../oxlint-rules/typescript.oxlintrc.json"
   ],
-  "plugins": ["unicorn", "typescript", "oxc"],
+  "plugins": ["unicorn", "typescript", "oxc", "react"],
   "categories": {
     "correctness": "error"
   }

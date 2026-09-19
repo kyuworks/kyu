@@ -8,7 +8,6 @@ import { shipOrder } from '../producer/shipOrder.js'
 import type { BusTopology } from './busTopology.js'
 import { readBusCounts } from './busCounts.js'
 import { renderBusPage } from './busPage.js'
-import { renderUiPage } from './page.js'
 import type { PlaceOrderRequest, ShipOrderRequest } from './requests.js'
 import { placeOrderRequestSchema, shipOrderRequestSchema } from './requests.js'
 
@@ -17,6 +16,7 @@ export interface UiRequestDeps {
   qtaxis: Qtaxis
   dashboardUrl: string
   topology: BusTopology
+  readWeb(method: string, url: string): Promise<UiResponse | undefined>
 }
 
 export interface UiRequest {
@@ -131,11 +131,8 @@ async function handleBusJson(deps: UiRequestDeps): Promise<UiResponse> {
   }
 }
 
-/** Routes the playground's local web page: `GET /`, `POST /orders`, `POST /shipments`, `GET /bus`, `GET /bus.json`. */
+/** Routes the playground: the JSON and POST routes, then the web app's own files, last. */
 export async function handleUiRequest(deps: UiRequestDeps, request: UiRequest): Promise<UiResponse> {
-  if (request.method === 'GET' && request.url === '/') {
-    return { status: 200, contentType: 'text/html', body: renderUiPage(deps.dashboardUrl) }
-  }
   if (request.method === 'POST' && request.url === '/orders') {
     return checkPostBody(request) ?? handlePlaceOrder(deps, request.body)
   }
@@ -148,5 +145,11 @@ export async function handleUiRequest(deps: UiRequestDeps, request: UiRequest): 
   if (request.method === 'GET' && request.url === '/bus.json') {
     return handleBusJson(deps)
   }
+  if (request.method === 'GET' && request.url === '/ui.json') {
+    return jsonResponse(200, { dashboardUrl: deps.dashboardUrl })
+  }
+  // Consulted last: an API route can never be shadowed by a file on disk with the same name.
+  const asset = await deps.readWeb(request.method, request.url)
+  if (asset !== undefined) return asset
   return errorResponse(404, `no route for ${request.method} ${request.url}`)
 }
