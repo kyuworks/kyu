@@ -1,3 +1,16 @@
+import {
+  Alert,
+  AlertContent,
+  AlertIndicator,
+  AlertTitle,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Link,
+} from '@heroui/react'
+import { CreditCardIcon } from '@heroicons/react/24/outline'
 import { useState } from 'react'
 import { CartSummary } from '../components/CartSummary'
 import type { CartAction, CartLine } from '../lib/cart'
@@ -23,27 +36,31 @@ export interface CheckoutConfirmationProps {
 
 export function CheckoutConfirmation({ order, dashboardUrl }: CheckoutConfirmationProps) {
   return (
-    <div className="card">
-      <h1>Order placed</h1>
-      <p>
-        Order <code>{order.orderId}</code>, total {formatCents(order.totalCents)}.
-      </p>
-      <p className="muted">
-        Envelope ids: <code>{order.orderPlacedEnvelopeId}</code>, <code>{order.sendInvoiceEnvelopeId}</code>
-      </p>
-      <p>
-        <a href="/orders">See your orders</a>
-        {dashboardUrl !== '' && (
-          <>
-            {' '}
-            &middot;{' '}
-            <a href={dashboardUrl} target="_blank" rel="noreferrer">
-              Hatchet dashboard
-            </a>
-          </>
-        )}
-      </p>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle render={(props) => <h1 {...props} />}>Order placed</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <p>
+          Order <code>{order.orderId}</code>, total {formatCents(order.totalCents)}.
+        </p>
+        <p className="text-sm text-muted">
+          Envelope ids: <code>{order.orderPlacedEnvelopeId}</code>, <code>{order.sendInvoiceEnvelopeId}</code>
+        </p>
+        <p>
+          <Link href="/orders">See your orders</Link>
+          {dashboardUrl !== '' && (
+            <>
+              {' '}
+              &middot;{' '}
+              <Link href={dashboardUrl} target="_blank" rel="noreferrer">
+                Hatchet dashboard
+              </Link>
+            </>
+          )}
+        </p>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -61,6 +78,7 @@ export function CheckoutPage({
   const [placedOrder, setPlacedOrder] = useState<PlacedOrder | undefined>(undefined)
 
   const summary = cartSummary(cartLines, products)
+  const displayStatus = statusMessage !== '' ? statusMessage : productsStatusMessage
 
   function payAndPlaceOrder(): void {
     setStatusMessage('')
@@ -94,20 +112,28 @@ export function CheckoutPage({
   }
 
   return (
-    <div className="shop-layout">
+    <div className="grid gap-6 items-start md:grid-cols-[1fr_18rem]">
       <div>
         <h1>Checkout</h1>
-        <p className="status">{statusMessage !== '' ? statusMessage : productsStatusMessage}</p>
-        <p className="muted">Payment is simulated: pressing pay marks the order paid immediately.</p>
+        {displayStatus !== '' && (
+          <Alert status="danger" role="alert">
+            <AlertIndicator />
+            <AlertContent>
+              <AlertTitle>{displayStatus}</AlertTitle>
+            </AlertContent>
+          </Alert>
+        )}
+        <p className="text-muted">Payment is simulated: pressing pay marks the order paid immediately.</p>
       </div>
       <CartSummary
         lines={summary.lines}
         totalCents={summary.totalCents}
         onRemove={(productId) => onCartAction({ kind: 'set', productId, quantity: 0 })}
       >
-        <button type="button" onClick={payAndPlaceOrder} disabled={submitting || summary.lines.length === 0}>
+        <Button variant="primary" isDisabled={submitting || summary.lines.length === 0} onPress={payAndPlaceOrder}>
           Pay and place order
-        </button>
+          <CreditCardIcon className="size-4" aria-hidden="true" />
+        </Button>
       </CartSummary>
     </div>
   )

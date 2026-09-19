@@ -1,3 +1,5 @@
+import { Button, Card, CardContent, CardHeader, CardTitle, Chip, Link, Separator } from '@heroui/react'
+import { ArrowPathIcon } from '@heroicons/react/24/outline'
 import { useReducer, useState } from 'react'
 import { OrderTimeline } from '../components/OrderTimeline'
 import { formatCents } from '../lib/cart'
@@ -23,16 +25,24 @@ export interface ResendInvoiceActionViewProps {
 export function ResendInvoiceActionView({ phase, onSubmit }: ResendInvoiceActionViewProps) {
   const submitting = phase.kind === 'submitting'
   const sent = phase.kind === 'done'
+  // undefined (not 'error') while idle/submitting: the paragraph is empty then, and an
+  // absent attribute is what "empty:hidden" and a screen reader's live region expect.
+  const tone = sent ? 'ok' : phase.kind === 'failed' ? 'error' : undefined
 
   return (
-    <div className="order-resend-invoice">
-      <button type="button" onClick={onSubmit} disabled={submitting || sent}>
+    <div className="mt-1 flex flex-col gap-2 border-t border-border pt-4">
+      <Button variant="secondary" size="sm" isDisabled={submitting || sent} onPress={onSubmit}>
         Resend invoice (simulated fault)
-      </button>
-      <p className="muted">
+        <ArrowPathIcon className="size-4" aria-hidden="true" />
+      </Button>
+      <p className="text-sm text-muted">
         Sends the invoice command for an id with no row, so the bus page has a dead letter to show.
       </p>
-      <p className={sent ? 'status status-ok' : 'status'} aria-live="polite">
+      <p
+        data-tone={tone}
+        aria-live="polite"
+        className="font-mono text-sm data-[tone=ok]:text-success data-[tone=error]:text-danger"
+      >
         {sent ? 'Sent, check the bus page for the failed run.' : phase.kind === 'failed' ? phase.error : ''}
       </p>
     </div>
@@ -80,32 +90,43 @@ export interface OrderCardProps {
 /** One order: its id, lines, total and stage timeline; a "yours" badge for the browser's own orders. */
 export function OrderCard({ order, customerId }: OrderCardProps) {
   return (
-    <li className="card order-card">
-      <div className="order-card-header">
-        <h2>
-          Order <code>{shortOrderId(order.id)}</code>
-          {order.customerId === customerId && <span className="order-yours">yours</span>}
-        </h2>
-        {order.paidAt !== null && <p className="muted">{ORDER_DATE_FORMAT.format(new Date(order.paidAt))}</p>}
-      </div>
-      <ul className="order-lines" role="list">
-        {order.lines.map((line) => (
-          <li key={line.productId} className="order-line">
-            <span>
-              {line.name} &times; {line.quantity}
-            </span>
-            <span>
-              {formatCents(line.unitPriceCents)} each &middot; {formatCents(line.unitPriceCents * line.quantity)}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <p className="order-total">
-        <span>Total</span>
-        <span>{formatCents(order.totalCents)}</span>
-      </p>
-      <OrderTimeline stage={order.stage} />
-      <ResendInvoiceAction orderId={order.id} />
+    <li>
+      <Card>
+        <CardHeader className="flex-row items-baseline justify-between gap-4">
+          <CardTitle render={(props) => <h2 {...props} />}>
+            Order <code>{shortOrderId(order.id)}</code>
+            {order.customerId === customerId && (
+              <Chip color="default" size="sm" className="ml-2">
+                yours
+              </Chip>
+            )}
+          </CardTitle>
+          {order.paidAt !== null && (
+            <p className="text-sm text-muted">{ORDER_DATE_FORMAT.format(new Date(order.paidAt))}</p>
+          )}
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          <ul className="m-0 list-none p-0" role="list">
+            {order.lines.map((line) => (
+              <li key={line.productId} className="flex items-center justify-between gap-4 border-b border-border py-2">
+                <span>
+                  {line.name} &times; {line.quantity}
+                </span>
+                <span>
+                  {formatCents(line.unitPriceCents)} each &middot; {formatCents(line.unitPriceCents * line.quantity)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <Separator className="my-3" />
+          <p className="flex justify-between font-semibold">
+            <span>Total</span>
+            <span>{formatCents(order.totalCents)}</span>
+          </p>
+          <OrderTimeline stage={order.stage} />
+          <ResendInvoiceAction orderId={order.id} />
+        </CardContent>
+      </Card>
     </li>
   )
 }
@@ -121,7 +142,7 @@ export interface OrderListProps {
 /** The order cards, newest first. */
 export function OrderList({ orders, customerId }: OrderListProps) {
   return (
-    <ul className="order-list" role="list">
+    <ul className="m-0 mt-4 flex list-none flex-col gap-4 p-0" role="list">
       {orders.map((order) => (
         <OrderCard key={order.id} order={order} customerId={customerId} />
       ))}
@@ -142,26 +163,28 @@ export function OrdersPage({ dashboardUrl }: OrdersPageProps) {
   const [customerId] = useState(() => readCustomerId())
 
   return (
-    <div className="card">
-      <h1>Orders</h1>
-      <p>
-        <a href="/">Back to the shop</a>
-        {dashboardUrl !== '' && (
-          <>
-            {' '}
-            &middot;{' '}
-            <a href={dashboardUrl} target="_blank" rel="noreferrer">
-              Hatchet dashboard
-            </a>
-          </>
-        )}
-      </p>
-      {limit !== undefined && <p className="muted">Showing the newest {limit} orders.</p>}
-      <p className="status" aria-live="polite">
-        {error ?? ''}
-      </p>
-      {orders !== undefined && orders.length === 0 && <p className="muted">No orders yet.</p>}
-      {orders !== undefined && orders.length > 0 && <OrderList orders={orders} customerId={customerId} />}
-    </div>
+    <Card>
+      <CardContent className="flex flex-col gap-2">
+        <h1>Orders</h1>
+        <p>
+          <Link href="/">Back to the shop</Link>
+          {dashboardUrl !== '' && (
+            <>
+              {' '}
+              &middot;{' '}
+              <Link href={dashboardUrl} target="_blank" rel="noreferrer">
+                Hatchet dashboard
+              </Link>
+            </>
+          )}
+        </p>
+        {limit !== undefined && <p className="text-sm text-muted">Showing the newest {limit} orders.</p>}
+        <p aria-live="polite" className="empty:hidden font-mono text-sm text-danger">
+          {error ?? ''}
+        </p>
+        {orders !== undefined && orders.length === 0 && <p className="text-muted">No orders yet.</p>}
+        {orders !== undefined && orders.length > 0 && <OrderList orders={orders} customerId={customerId} />}
+      </CardContent>
+    </Card>
   )
 }

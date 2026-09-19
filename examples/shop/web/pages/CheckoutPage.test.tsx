@@ -52,6 +52,22 @@ describe('CheckoutPage', () => {
     expect(markup).toMatch(/<button[^>]*disabled[^>]*>Pay and place order/)
     expect(markup).toContain('products.json failed: HTTP 500')
   })
+
+  it('composes the error as a danger alert, not a bare string HeroUI cannot colour', () => {
+    const markup = renderToStaticMarkup(
+      <CheckoutPage
+        products={[]}
+        productsStatusMessage="products.json failed: HTTP 500"
+        cartLines={[{ productId: 'p1', quantity: 1 }]}
+        dashboardUrl=""
+        onCartAction={() => undefined}
+        onOrderPlaced={() => undefined}
+      />,
+    )
+
+    expect(markup).toContain('alert--danger')
+    expect(markup).toContain('data-slot="alert-title"')
+  })
 })
 
 describe('CheckoutConfirmation', () => {

@@ -22,7 +22,7 @@ describe('OrderCard', () => {
   it('shows the short order id, the lines with quantities, unit prices and line amounts, and the total', () => {
     const markup = renderToStaticMarkup(<OrderCard order={order} customerId="someone-else" />)
 
-    expect(markup).toContain('<code>order-00</code>')
+    expect(markup).toContain('>order-00<')
     expect(markup).not.toContain('order-00000001')
     expect(markup).toContain('Enamel mug')
     expect(markup).toContain('× 3')
@@ -38,19 +38,19 @@ describe('OrderCard', () => {
   it('shows the yours badge when the customer id matches', () => {
     const markup = renderToStaticMarkup(<OrderCard order={order} customerId="customer-1" />)
 
-    expect(markup).toContain('order-yours')
+    expect(markup).toContain('>yours<')
   })
 
   it('omits the yours badge for another browser’s order', () => {
     const markup = renderToStaticMarkup(<OrderCard order={order} customerId="someone-else" />)
 
-    expect(markup).not.toContain('order-yours')
+    expect(markup).not.toContain('yours')
   })
 
   it('gives its line list an explicit role, since list-style: none strips it in Safari', () => {
     const markup = renderToStaticMarkup(<OrderCard order={order} customerId="someone-else" />)
 
-    expect(markup).toContain('<ul class="order-lines" role="list">')
+    expect(markup).toMatch(/<ul[^>]*role="list"/)
   })
 
   it('carries the resend-invoice action, labelled as a simulated fault', () => {
@@ -70,7 +70,7 @@ describe('ResendInvoiceAction', () => {
   it('marks its status paragraph aria-live="polite"', () => {
     const markup = renderToStaticMarkup(<ResendInvoiceAction orderId="order-1" />)
 
-    expect(markup).toContain('<p class="status" aria-live="polite">')
+    expect(markup).toMatch(/<p[^>]*aria-live="polite"/)
   })
 })
 
@@ -91,7 +91,7 @@ describe('ResendInvoiceActionView', () => {
 
     expect(markup).toMatch(/<button[^>]*disabled[^>]*>Resend invoice/)
     expect(markup).toContain('Sent, check the bus page for the failed run.')
-    expect(markup).toContain('status-ok')
+    expect(markup).toContain('data-tone="ok"')
   })
 
   it('enables the button and shows the error once failed, not in the ok style', () => {
@@ -101,7 +101,7 @@ describe('ResendInvoiceActionView', () => {
 
     expect(markup).not.toMatch(/<button[^>]*disabled[^>]*>Resend invoice/)
     expect(markup).toContain('resend invoice failed: HTTP 404')
-    expect(markup).not.toContain('status-ok')
+    expect(markup).toContain('data-tone="error"')
   })
 })
 
@@ -109,7 +109,7 @@ describe('OrderList', () => {
   it('gives the list an explicit role, since list-style: none strips it in Safari', () => {
     const markup = renderToStaticMarkup(<OrderList orders={[order]} customerId="someone-else" />)
 
-    expect(markup).toContain('<ul class="order-list" role="list">')
+    expect(markup).toMatch(/<ul[^>]*role="list"/)
   })
 })
 
@@ -125,12 +125,12 @@ describe('OrdersPage', () => {
     // renderToStaticMarkup drops effects, so the refresh hook never fetches here.
     const markup = renderToStaticMarkup(<OrdersPage dashboardUrl="" />)
 
-    expect(markup).not.toContain('order-card')
+    expect(markup).not.toContain('Total')
   })
 
   it('marks the status paragraph aria-live="polite", so a polled error announces', () => {
     const markup = renderToStaticMarkup(<OrdersPage dashboardUrl="" />)
 
-    expect(markup).toContain('<p class="status" aria-live="polite">')
+    expect(markup).toMatch(/<p[^>]*aria-live="polite"/)
   })
 })

@@ -35,6 +35,12 @@ describe('CartSummary', () => {
     expect(markup).toMatch(/<ul[^>]*role="list"/)
   })
 
+  it('is an aside landmark, distinct from the page main content', () => {
+    const markup = renderToStaticMarkup(<CartSummary lines={[]} totalCents={0} />)
+
+    expect(markup).toMatch(/<aside[^>]*>/)
+  })
+
   it('says the cart is empty when it holds no lines', () => {
     const markup = renderToStaticMarkup(<CartSummary lines={[]} totalCents={0} />)
 

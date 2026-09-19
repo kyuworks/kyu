@@ -1,10 +1,10 @@
 /* Tailwind's preflight (part of @import 'tailwindcss' in theme.css) resets a/h1-h3/p to
    inherit everything and strips their UA defaults. Restored here, unlayered, for the pages
-   this PR series has not reached yet — a @layer block would still lose to preflight, which
-   is itself layered but wins on source order. :where(...) keeps the specificity at zero, like
-   the UA styles it replaces, so .app-title, .status and every other class rule below still
-   wins without a fight; :not([data-slot]) keeps it off HeroUI's own <Link> and <CardTitle>,
-   which render <a>/<h3> too. Deleted page by page as #81 restyles them. */
+   this PR series has not reached yet — an unlayered rule outranks every @layer, so this wins
+   over both preflight and @layer utilities regardless of import order. :where(...) keeps the
+   specificity at zero, like the UA styles it replaces, so .app-title, .status and every other
+   class rule below still wins without a fight; :not([data-slot]) keeps it off HeroUI's own
+   <Link> and <CardTitle>, which render <a>/<h3> too. Deleted page by page as #81 restyles them. */
 :where(a:not([data-slot])) {
   color: var(--accent);
   text-decoration: underline;
@@ -245,90 +245,6 @@ button:not([data-slot]):disabled {
   color: var(--accent-text);
   font-size: 0.75rem;
   line-height: 1.4;
-}
-
-.order-list {
-  list-style: none;
-  margin: calc(var(--space) * 2) 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: calc(var(--space) * 2);
-}
-
-.order-card-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: calc(var(--space) * 2);
-}
-
-.order-yours {
-  margin-left: calc(var(--space) / 2);
-  padding: 0 calc(var(--space) / 2);
-  border-radius: var(--radius);
-  background: var(--raised);
-  color: var(--muted);
-  font-size: 0.7rem;
-  text-transform: uppercase;
-}
-
-.order-lines {
-  list-style: none;
-  margin: calc(var(--space) * 1.5) 0;
-  padding: 0;
-}
-
-.order-line {
-  display: flex;
-  justify-content: space-between;
-  gap: calc(var(--space) * 2);
-  padding: calc(var(--space) / 2) 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.order-total {
-  display: flex;
-  justify-content: space-between;
-  font-weight: 600;
-  margin: calc(var(--space) / 2) 0 calc(var(--space) * 1.5);
-}
-
-.order-timeline {
-  display: flex;
-  gap: calc(var(--space) * 1.5);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  font-size: 0.85rem;
-}
-
-.order-step {
-  padding-bottom: calc(var(--space) / 2);
-  border-bottom: 2px solid var(--line);
-  color: var(--muted);
-}
-
-.order-step-reached {
-  /* Width, not only colour, marks a reached step — readable without colour vision. */
-  border-bottom-width: 4px;
-  border-bottom-color: var(--accent);
-  color: var(--text);
-}
-
-.order-step-current {
-  font-weight: 600;
-}
-
-.order-resend-invoice {
-  margin-top: calc(var(--space) * 1.5);
-  padding-top: calc(var(--space) * 1.5);
-  border-top: 1px solid var(--line);
-}
-
-.order-resend-invoice .muted {
-  font-size: 0.8rem;
-  margin: calc(var(--space) / 2) 0 0;
 }
 
 .warehouse-list {

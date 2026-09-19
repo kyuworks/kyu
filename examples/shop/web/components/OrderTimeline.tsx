@@ -31,14 +31,19 @@ function timelineSteps(stage: OrderStage): TimelineStep[] {
 /** Three-step order stage: placed, invoice sent, shipped — timed out replaces the last step's label when that is what happened. */
 export function OrderTimeline({ stage }: OrderTimelineProps) {
   return (
-    // Explicit role: list-style: none (styles.css) strips the implicit list
-    // role in Safari. aria-current names the current step for anyone who
-    // cannot rely on the reached/unreached colour alone.
-    <ol className="order-timeline" role="list">
+    // Explicit role: list-style: none (Tailwind's preflight) strips the
+    // implicit list role in Safari. aria-current names the current step for
+    // anyone who cannot rely on the reached/unreached colour alone.
+    <ol className="m-0 flex list-none gap-4 p-0 text-sm" role="list">
       {timelineSteps(stage).map((step) => (
         <li
           key={step.key}
-          className={`order-step${step.reached ? ' order-step-reached' : ''}${step.current ? ' order-step-current' : ''}`}
+          data-reached={step.reached ? 'true' : undefined}
+          className={
+            'border-b-2 border-border pb-1 text-muted ' +
+            'data-[reached]:border-b-4 data-[reached]:border-accent data-[reached]:text-foreground ' +
+            'aria-[current=step]:font-semibold'
+          }
           aria-current={step.current ? 'step' : undefined}
         >
           {step.label}
