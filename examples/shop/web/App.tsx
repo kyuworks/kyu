@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { parseUiConfig } from './lib/uiConfig'
+import { BusPage } from './pages/BusPage'
 import { HomePage } from './pages/HomePage'
 
 interface NavLink {
@@ -8,10 +9,7 @@ interface NavLink {
 }
 
 // One entry per page; a click is a full page load, not a client-side
-// route. Shop is served by the SPA fallback in src/ui/serveWeb.ts's
-// APP_ROUTES; Bus still goes to the legacy busPage.ts HTML page — it is
-// not in APP_ROUTES and not rendered by this app until a later pull
-// request replaces it with React.
+// route, so this cannot desynchronise from src/ui/serveWeb.ts's APP_ROUTES.
 const NAV_LINKS: readonly NavLink[] = [
   { href: '/', label: 'Shop' },
   { href: '/bus', label: 'Bus' },
@@ -61,7 +59,7 @@ export function App() {
       </header>
       <main className="app-main">
         <p className="status">{statusMessage}</p>
-        <HomePage dashboardUrl={dashboardUrl} />
+        {pathname === '/bus' ? <BusPage dashboardUrl={dashboardUrl} /> : <HomePage dashboardUrl={dashboardUrl} />}
       </main>
     </>
   )
