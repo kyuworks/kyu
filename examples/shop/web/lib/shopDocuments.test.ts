@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ShopOrder as ServerShopOrder, ShopProduct as ServerShopProduct } from '../../src/ui/shopQueries.js'
+import { ORDER_HISTORY_LIMIT } from '../../src/ui/shopQueries.js'
 import { parseOrdersDocument, parsePlacedOrder, parseProductsDocument } from './shopDocuments'
 
 describe('parseProductsDocument', () => {
@@ -37,9 +38,9 @@ describe('parseOrdersDocument', () => {
       },
     ]
 
-    const outcome = parseOrdersDocument(JSON.stringify({ orders }))
+    const outcome = parseOrdersDocument(JSON.stringify({ orders, limit: ORDER_HISTORY_LIMIT }))
 
-    expect(outcome).toEqual({ ok: true, orders })
+    expect(outcome).toEqual({ ok: true, orders, limit: ORDER_HISTORY_LIMIT })
   })
 
   it('refuses a body whose stage is not one of the agreed values', () => {
@@ -55,8 +56,15 @@ describe('parseOrdersDocument', () => {
             lines: [],
           },
         ],
+        limit: ORDER_HISTORY_LIMIT,
       }),
     )
+
+    expect(outcome.ok).toBe(false)
+  })
+
+  it('refuses a body missing the limit', () => {
+    const outcome = parseOrdersDocument(JSON.stringify({ orders: [] }))
 
     expect(outcome.ok).toBe(false)
   })

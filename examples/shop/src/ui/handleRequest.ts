@@ -11,7 +11,7 @@ import type { BusTopology } from './busTopology.js'
 import { readBusCounts } from './busCounts.js'
 import type { PlaceOrderRequest, SendInvoiceRequest, ShipOrderRequest } from './requests.js'
 import { placeOrderRequestSchema, sendInvoiceRequestSchema, shipOrderRequestSchema } from './requests.js'
-import { readOrders, readProducts } from './shopQueries.js'
+import { ORDER_HISTORY_LIMIT, readOrders, readProducts } from './shopQueries.js'
 
 export interface UiRequestDeps {
   pool: Pool
@@ -165,7 +165,7 @@ async function handleProductsJson(deps: UiRequestDeps): Promise<UiResponse> {
 async function handleOrdersJson(deps: UiRequestDeps): Promise<UiResponse> {
   try {
     const orders = await readOrders(deps.pool, DEMO_TENANT_ID)
-    return jsonResponse(200, { orders })
+    return jsonResponse(200, { orders, limit: ORDER_HISTORY_LIMIT })
   } catch (error) {
     log('ui', 'failed', { message: describeError(error) })
     return errorResponse(500, describeError(error))

@@ -34,7 +34,6 @@ const shopOrderLineSchema = z.object({
   quantity: z.number(),
   unitPriceCents: z.number(),
 })
-export type ShopOrderLine = z.infer<typeof shopOrderLineSchema>
 
 const shopOrderSchema = z.object({
   id: z.string(),
@@ -46,8 +45,8 @@ const shopOrderSchema = z.object({
 })
 export type ShopOrder = z.infer<typeof shopOrderSchema>
 
-const ordersDocumentSchema = z.object({ orders: z.array(shopOrderSchema) })
-export type OrdersDocumentOutcome = { ok: true; orders: ShopOrder[] } | { ok: false; error: string }
+const ordersDocumentSchema = z.object({ orders: z.array(shopOrderSchema), limit: z.number() })
+export type OrdersDocumentOutcome = { ok: true; orders: ShopOrder[]; limit: number } | { ok: false; error: string }
 
 /** Parses a `GET /orders.json` body. The only place that body is looked at. */
 export function parseOrdersDocument(body: string): OrdersDocumentOutcome {
@@ -59,7 +58,7 @@ export function parseOrdersDocument(body: string): OrdersDocumentOutcome {
   }
   const result = ordersDocumentSchema.safeParse(json)
   if (!result.success) return { ok: false, error: firstIssueMessage(result.error) }
-  return { ok: true, orders: result.data.orders }
+  return { ok: true, orders: result.data.orders, limit: result.data.limit }
 }
 
 const placedOrderSchema = z.object({

@@ -7,6 +7,7 @@ import { ENGINE_WINDOW_LIMIT } from './busCounts.js'
 import type { BusTopology } from './busTopology.js'
 import type { UiRequest, UiRequestDeps, UiResponse } from './handleRequest.js'
 import { handleUiRequest } from './handleRequest.js'
+import { ORDER_HISTORY_LIMIT } from './shopQueries.js'
 
 function jsonPost(url: string, body: string): UiRequest {
   return { method: 'POST', url, contentType: 'application/json', body }
@@ -334,10 +335,10 @@ describe('handleUiRequest', () => {
     const response = await handleUiRequest(deps(pool, qtaxis), getRequest('/orders.json'))
 
     expect(response.status).toBe(200)
-    expect(JSON.parse(response.body)).toEqual({ orders: [] })
+    expect(JSON.parse(response.body)).toEqual({ orders: [], limit: ORDER_HISTORY_LIMIT })
   })
 
-  it('serves the orders page for GET /orders, the read model for GET /orders.json, and still publishes for POST /orders (W8)', async () => {
+  it('serves the orders page for GET /orders, the read model for GET /orders.json, and still publishes for POST /orders', async () => {
     const shell: UiResponse = { status: 200, contentType: 'text/html', body: '<!doctype html>orders page' }
     const readWeb: ReadWeb = (method, url) => Promise.resolve(method === 'GET' && url === '/orders' ? shell : undefined)
     const qtaxis1 = fakeQtaxis([])
@@ -355,7 +356,7 @@ describe('handleUiRequest', () => {
       getRequest('/orders.json'),
     )
     expect(jsonResponse.status).toBe(200)
-    expect(JSON.parse(jsonResponse.body)).toEqual({ orders: [] })
+    expect(JSON.parse(jsonResponse.body)).toEqual({ orders: [], limit: ORDER_HISTORY_LIMIT })
 
     const publishes: RecordedPublish[] = []
     const postResponses = new Map<string, FakeQueryResponse>([

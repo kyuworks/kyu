@@ -1,82 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { OrderTimeline } from '../components/OrderTimeline'
 import { formatCents } from '../lib/cart'
 import { readCustomerId } from '../lib/customer'
-import { describeFetchFailure } from '../lib/fetchJson'
 import type { ShopOrder } from '../lib/shopDocuments'
-import { parseOrdersDocument } from '../lib/shopDocuments'
-
-interface OrdersState {
-  orders: ShopOrder[] | undefined
-  error: string | undefined
-}
-
-interface OrdersFetchOutcome {
-  ok: boolean
-  status: number
-  bodyText: string
-}
-
-const REFRESH_INTERVAL_MS = 5000
-const EMPTY_STATE: OrdersState = { orders: undefined, error: undefined }
-
-// A good body clears any previous error; a bad one keeps the last good list.
-// Pure and unit-tested — a hook cannot run under renderToStaticMarkup.
-export function nextOrdersState(previous: OrdersState, outcome: OrdersFetchOutcome): OrdersState {
-  if (!outcome.ok) {
-    return {
-      orders: previous.orders,
-      error: `orders.json failed: ${describeFetchFailure(outcome.status, outcome.bodyText)}`,
-    }
-  }
-  const parsed = parseOrdersDocument(outcome.bodyText)
-  if (parsed.ok) return { orders: parsed.orders, error: undefined }
-  return { orders: previous.orders, error: `orders.json failed: ${parsed.error}` }
-}
-
-// Mirrors web/lib/useBusCounts.ts: each mount owns its own AbortController and in-flight guard.
-function useOrders(): OrdersState {
-  const [state, setState] = useState<OrdersState>(EMPTY_STATE)
-  const fetching = useRef(false)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    fetching.current = false
-
-    function refresh(): void {
-      if (fetching.current) return
-      fetching.current = true
-      fetch('/orders.json', { signal: controller.signal })
-        .then((response) =>
-          response
-            .text()
-            .then((bodyText): OrdersFetchOutcome => ({ ok: response.ok, status: response.status, bodyText })),
-        )
-        .then((outcome) => {
-          setState((previous) => nextOrdersState(previous, outcome))
-        })
-        .catch((error) => {
-          if (controller.signal.aborted) return
-          const message = error instanceof Error ? error.message : String(error)
-          setState((previous) => ({ orders: previous.orders, error: `orders.json failed: ${message}` }))
-        })
-        .finally(() => {
-          fetching.current = false
-        })
-    }
-
-    refresh()
-    const interval = setInterval(refresh, REFRESH_INTERVAL_MS)
-
-    return () => {
-      controller.abort()
-      fetching.current = false
-      clearInterval(interval)
-    }
-  }, [])
-
-  return state
-}
+import { useOrders } from '../lib/useOrders'
 
 // Fixed locale, not the browser's: a test's expected string must not depend on the machine it runs on.
 const ORDER_DATE_FORMAT = new Intl.DateTimeFormat('en-NZ', { dateStyle: 'medium', timeStyle: 'short' })
@@ -101,13 +28,15 @@ export function OrderCard({ order, customerId }: OrderCardProps) {
         </h2>
         {order.paidAt !== null && <p className="muted">{ORDER_DATE_FORMAT.format(new Date(order.paidAt))}</p>}
       </div>
-      <ul className="order-lines">
+      <ul className="order-lines" role="list">
         {order.lines.map((line) => (
           <li key={line.productId} className="order-line">
             <span>
               {line.name} &times; {line.quantity}
             </span>
-            <span>{formatCents(line.unitPriceCents * line.quantity)}</span>
+            <span>
+              {formatCents(line.unitPriceCents)} each &middot; {formatCents(line.unitPriceCents * line.quantity)}
+            </span>
           </li>
         ))}
       </ul>
@@ -124,10 +53,12 @@ export interface OrdersPageProps {
   dashboardUrl: string
 }
 
-/** Every order for the demo tenant, newest first, with its lines, total and the stage the bus moved it to. */
+/** The newest `limit` orders for the demo tenant, newest first, with their lines, total and stage. */
 export function OrdersPage({ dashboardUrl }: OrdersPageProps) {
-  const { orders, error } = useOrders()
-  // Read once per mount: readCustomerId() is idempotent, but the badge must not flicker mid-session.
+  const { orders, limit, error } = useOrders()
+  // Read once per mount, not on every render: if storage throws,
+  // readCustomerId() mints a fresh random id each call, and re-reading it
+  // would make the "yours" badge flicker between different ids.
   const [customerId] = useState(() => readCustomerId())
 
   return (
@@ -145,10 +76,11 @@ export function OrdersPage({ dashboardUrl }: OrdersPageProps) {
           </>
         )}
       </p>
+      {limit !== undefined && <p className="muted">Showing the newest {limit} orders.</p>}
       <p className="status">{error ?? ''}</p>
       {orders !== undefined && orders.length === 0 && <p className="muted">No orders yet.</p>}
       {orders !== undefined && orders.length > 0 && (
-        <ul className="order-list">
+        <ul className="order-list" role="list">
           {orders.map((order) => (
             <OrderCard key={order.id} order={order} customerId={customerId} />
           ))}

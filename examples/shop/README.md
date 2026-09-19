@@ -95,12 +95,13 @@ error — the browser has no way to tell "the write failed" from "the response n
 pressing pay again places a second order. The bus is at-least-once and this demo does not
 deduplicate; a real storefront would show the order it already has instead of retrying blind.
 
-`/orders` lists every order for the demo tenant, newest first, from `GET /orders.json`: each
-card shows the order's short id, its lines with quantities and unit prices, its total, a "yours"
-badge when the order's customer id matches this browser's, and a three-step timeline — placed,
-invoice sent, shipped — with "timed out" replacing the last step's label when `watch-shipping`'s
-correlated wait ran out instead of hearing back. The page refreshes every 5 seconds, the same
-in-flight guard and status-line rule as `/bus`.
+`/orders` lists the newest 50 orders for the demo tenant (`ORDER_HISTORY_LIMIT`), not every order,
+newest first, from `GET /orders.json`: each card shows the order's short id, its lines with
+quantities, unit prices and line amounts, its total, a "yours" badge when the order's customer id
+matches this browser's, and a three-step timeline — placed, invoice sent, shipped — with "timed
+out" replacing the last step's label when `watch-shipping`'s correlated wait ran out instead of
+hearing back. The page refreshes every 5 seconds, the same in-flight guard and status-line rule as
+`/bus`.
 
 `/bus` is a React page now: it draws the producer, the outbox, and one column per subscription
 in registry order, refreshed every 5 seconds. Outbox stages — published, waiting for relay,

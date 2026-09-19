@@ -367,6 +367,8 @@ button:disabled {
 }
 
 .order-step-reached {
+  /* Width, not only colour, marks a reached step — readable without colour vision. */
+  border-bottom-width: 4px;
   border-bottom-color: var(--accent);
   color: var(--text);
 }

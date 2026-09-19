@@ -6,7 +6,7 @@ import { OrderTimeline } from './OrderTimeline'
 // surrounding tags avoids the two type checkers disagreeing over whether an
 // indexed capture group can be undefined.
 function reachedLabels(markup: string): string[] {
-  const entries = markup.match(/<li class="order-step order-step-reached[^"]*">[^<]+<\/li>/g) ?? []
+  const entries = markup.match(/<li class="order-step order-step-reached[^"]*"[^>]*>[^<]+<\/li>/g) ?? []
   return entries.map((entry) => entry.replace(/<[^>]+>/g, ''))
 }
 
@@ -35,5 +35,18 @@ describe('OrderTimeline', () => {
     const markup = renderToStaticMarkup(<OrderTimeline stage="placed" />)
 
     expect(reachedLabels(markup)).toEqual(['Placed'])
+  })
+
+  it('marks exactly the current step with aria-current="step", for screen readers that cannot rely on colour', () => {
+    const markup = renderToStaticMarkup(<OrderTimeline stage="invoice-sent" />)
+
+    expect(markup.match(/aria-current="step"/g)).toHaveLength(1)
+    expect(markup).toMatch(/aria-current="step">Invoice sent</)
+  })
+
+  it('gives the list an explicit role, since list-style: none strips it in Safari', () => {
+    const markup = renderToStaticMarkup(<OrderTimeline stage="placed" />)
+
+    expect(markup).toContain('role="list"')
   })
 })

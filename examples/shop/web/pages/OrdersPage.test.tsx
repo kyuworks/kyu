@@ -1,25 +1,38 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { ShopOrder } from '../lib/shopDocuments'
-import { OrderCard, OrdersPage, nextOrdersState } from './OrdersPage'
+import { OrderCard, OrdersPage } from './OrdersPage'
 
+// Every number below is distinct — unit price, quantity, line amount and the
+// order total never collide — so reverting the line amount, the total, or
+// the short-id slice each fails a different assertion, not the same one.
 const order: ShopOrder = {
   id: 'order-00000001',
   customerId: 'customer-1',
-  totalCents: 2800,
+  totalCents: 6000,
   paidAt: '2026-09-19T00:00:00.000Z',
   stage: 'invoice-sent',
-  lines: [{ productId: 'p1', name: 'Enamel mug', quantity: 2, unitPriceCents: 1400 }],
+  lines: [
+    { productId: 'p1', name: 'Enamel mug', quantity: 3, unitPriceCents: 1400 },
+    { productId: 'p2', name: 'Baseball cap', quantity: 2, unitPriceCents: 900 },
+  ],
 }
 
 describe('OrderCard', () => {
-  it('shows the short order id, the lines with quantities and unit prices, and the total', () => {
+  it('shows the short order id, the lines with quantities, unit prices and line amounts, and the total', () => {
     const markup = renderToStaticMarkup(<OrderCard order={order} customerId="someone-else" />)
 
-    expect(markup).toContain('order-00')
+    expect(markup).toContain('<code>order-00</code>')
+    expect(markup).not.toContain('order-00000001')
     expect(markup).toContain('Enamel mug')
+    expect(markup).toContain('× 3')
+    expect(markup).toContain('$14.00 each')
+    expect(markup).toContain('$42.00')
+    expect(markup).toContain('Baseball cap')
     expect(markup).toContain('× 2')
-    expect(markup).toContain('$28.00')
+    expect(markup).toContain('$9.00 each')
+    expect(markup).toContain('$18.00')
+    expect(markup).toContain('$60.00')
   })
 
   it('shows the yours badge when the customer id matches', () => {
@@ -48,36 +61,5 @@ describe('OrdersPage', () => {
     const markup = renderToStaticMarkup(<OrdersPage dashboardUrl="" />)
 
     expect(markup).not.toContain('order-card')
-  })
-})
-
-describe('nextOrdersState', () => {
-  it('sets the orders and clears a previous error on a good fetch', () => {
-    const previous = { orders: undefined, error: 'orders.json failed: stale' }
-
-    const next = nextOrdersState(previous, { ok: true, status: 200, bodyText: JSON.stringify({ orders: [order] }) })
-
-    expect(next).toEqual({ orders: [order], error: undefined })
-  })
-
-  it('keeps the last good list and surfaces the server error on a non-2xx response', () => {
-    const previous = { orders: [order], error: undefined }
-
-    const next = nextOrdersState(previous, {
-      ok: false,
-      status: 500,
-      bodyText: JSON.stringify({ error: 'engine down' }),
-    })
-
-    expect(next).toEqual({ orders: [order], error: 'orders.json failed: engine down' })
-  })
-
-  it('keeps the last good list when a 200 body is not the agreed shape', () => {
-    const previous = { orders: [order], error: undefined }
-
-    const next = nextOrdersState(previous, { ok: true, status: 200, bodyText: JSON.stringify({ nope: true }) })
-
-    expect(next.orders).toBe(previous.orders)
-    expect(next.error).toContain('orders.json failed:')
   })
 })

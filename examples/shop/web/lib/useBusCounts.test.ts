@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BusDocument } from './busDocument'
-import type { BusFetchOutcome } from './useBusCounts'
+import type { JsonFetchOutcome } from './fetchJson'
 import { nextBusState } from './useBusCounts'
 
 const document: BusDocument = {
@@ -18,7 +18,7 @@ const otherDocument: BusDocument = {
   counts: { ...document.counts, outbox: { published: 2, waitingForRelay: 1, shipped: 1 } },
 }
 
-function okOutcome(body: BusDocument): BusFetchOutcome {
+function okOutcome(body: BusDocument): JsonFetchOutcome {
   return { ok: true, status: 200, bodyText: JSON.stringify(body) }
 }
 
@@ -41,7 +41,7 @@ describe('nextBusState', () => {
 
   it('keeps the last good document and surfaces the server error on a non-2xx response', () => {
     const previous = { document, error: undefined }
-    const outcome: BusFetchOutcome = { ok: false, status: 500, bodyText: JSON.stringify({ error: 'engine down' }) }
+    const outcome: JsonFetchOutcome = { ok: false, status: 500, bodyText: JSON.stringify({ error: 'engine down' }) }
 
     const next = nextBusState(previous, outcome)
 
@@ -50,7 +50,7 @@ describe('nextBusState', () => {
 
   it('keeps the last good document and names the status when a non-2xx body has no error field', () => {
     const previous = { document, error: undefined }
-    const outcome: BusFetchOutcome = { ok: false, status: 503, bodyText: 'not json' }
+    const outcome: JsonFetchOutcome = { ok: false, status: 503, bodyText: 'not json' }
 
     const next = nextBusState(previous, outcome)
 
@@ -59,7 +59,7 @@ describe('nextBusState', () => {
 
   it('keeps the last good document when a 200 body is not the agreed shape', () => {
     const previous = { document, error: undefined }
-    const outcome: BusFetchOutcome = { ok: true, status: 200, bodyText: JSON.stringify({ nope: true }) }
+    const outcome: JsonFetchOutcome = { ok: true, status: 200, bodyText: JSON.stringify({ nope: true }) }
 
     const next = nextBusState(previous, outcome)
 

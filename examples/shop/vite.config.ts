@@ -15,8 +15,17 @@ export default defineConfig({
       '/ui.json': uiOrigin,
       '/bus.json': uiOrigin,
       '/products.json': uiOrigin,
-      // GET /orders is the page; only the POST (placing an order) belongs to the ui process.
-      '/orders': { target: uiOrigin, bypass: (req) => (req.method === 'GET' ? '/index.html' : undefined) },
+      // Vite matches proxy keys by prefix, so this entry also catches
+      // /orders.json: bypass only an exact GET /orders (the page), never a
+      // prefix match, or /orders.json would get the app shell instead of JSON.
+      '/orders': {
+        target: uiOrigin,
+        bypass: (req) => {
+          const url = req.url ?? ''
+          const isOrdersPage = url === '/orders' || url.startsWith('/orders?')
+          return req.method === 'GET' && isOrdersPage ? '/index.html' : undefined
+        },
+      },
       '/shipments': uiOrigin,
     },
   },
