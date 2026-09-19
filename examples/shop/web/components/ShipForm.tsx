@@ -1,3 +1,5 @@
+import { Button, Input, Label, TextField } from '@heroui/react'
+import { TruckIcon } from '@heroicons/react/24/outline'
 import { useReducer, useState } from 'react'
 import { describeSubmitFailure, postJsonOutcome } from '../lib/fetchJson'
 import { SHIP_ORDER_PATH, buildShipOrderBody } from '../lib/shipOrder'
@@ -19,28 +21,35 @@ export interface ShipFormViewProps {
 export function ShipFormView({ orderId, carrier, phase, onCarrierChange, onSubmit }: ShipFormViewProps) {
   const submitting = phase.kind === 'submitting'
   const shipped = phase.kind === 'done'
+  // undefined (not 'error') while idle/submitting, matching ResendInvoiceActionView's tone shape.
+  const tone = shipped ? 'ok' : phase.kind === 'failed' ? 'error' : undefined
 
   return (
     <form
-      className="ship-form"
+      className="mt-3 flex flex-wrap items-center gap-3"
       onSubmit={(event) => {
         event.preventDefault()
         onSubmit()
       }}
     >
-      <label>
-        Carrier
-        <input
+      {/* isDisabled goes on TextField: on a bare Input it emits no disabled attribute. */}
+      <TextField isDisabled={shipped} className="flex-row items-center gap-2">
+        <Label>Carrier</Label>
+        <Input
           aria-label={`Carrier for order ${orderId}`}
           value={carrier}
-          disabled={shipped}
           onChange={(event) => onCarrierChange(event.target.value)}
         />
-      </label>
-      <button type="submit" disabled={submitting || shipped}>
+      </TextField>
+      <Button type="submit" variant="primary" size="sm" isDisabled={submitting || shipped}>
         Ship
-      </button>
-      <p className={shipped ? 'status status-ok' : 'status'} aria-live="polite">
+        <TruckIcon className="size-4" aria-hidden="true" />
+      </Button>
+      <p
+        data-tone={tone}
+        aria-live="polite"
+        className="empty:hidden font-mono text-sm data-[tone=ok]:text-success data-[tone=error]:text-danger"
+      >
         {shipped ? 'Shipped, leaving the list.' : phase.kind === 'failed' ? phase.error : ''}
       </p>
     </form>

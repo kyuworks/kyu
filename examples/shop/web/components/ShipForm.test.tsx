@@ -19,7 +19,7 @@ describe('ShipForm', () => {
   it('marks its status paragraph aria-live="polite"', () => {
     const markup = renderToStaticMarkup(<ShipForm orderId="order-1" />)
 
-    expect(markup).toContain('<p class="status" aria-live="polite">')
+    expect(markup).toMatch(/<p[^>]*aria-live="polite"/)
   })
 })
 
@@ -57,7 +57,7 @@ describe('ShipFormView', () => {
     expect(markup).toMatch(/<button[^>]*disabled[^>]*>Ship/)
     expect(markup).toMatch(/<input[^>]*disabled/)
     expect(markup).toContain('Shipped, leaving the list.')
-    expect(markup).toContain('status-ok')
+    expect(markup).toContain('data-tone="ok"')
   })
 
   it('enables the button and shows the error once failed, not in the ok style, so a retry is possible', () => {
@@ -73,6 +73,6 @@ describe('ShipFormView', () => {
 
     expect(markup).not.toMatch(/<button[^>]*disabled[^>]*>Ship/)
     expect(markup).toContain('ship failed: HTTP 400')
-    expect(markup).not.toContain('status-ok')
+    expect(markup).toContain('data-tone="error"')
   })
 })

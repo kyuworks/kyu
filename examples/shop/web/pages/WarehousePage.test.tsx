@@ -30,13 +30,13 @@ describe('WarehousePage', () => {
     // renderToStaticMarkup drops effects, so the refresh hook never fetches here.
     const markup = renderToStaticMarkup(<WarehousePage dashboardUrl="" />)
 
-    expect(markup).not.toContain('warehouse-row')
+    expect(markup).not.toContain('Ship')
   })
 
   it('marks the status paragraph aria-live="polite", so a polled error announces', () => {
     const markup = renderToStaticMarkup(<WarehousePage dashboardUrl="" />)
 
-    expect(markup).toContain('<p class="status" aria-live="polite">')
+    expect(markup).toMatch(/<p[^>]*aria-live="polite"/)
   })
 })
 
@@ -44,7 +44,7 @@ describe('WarehouseRow', () => {
   it('shows the order id, its lines in one line, the total, and a carrier input defaulted to Speedy', () => {
     const markup = renderToStaticMarkup(<WarehouseRow order={order('order-00000001', 'placed', 1400)} />)
 
-    expect(markup).toContain('<code>order-00</code>')
+    expect(markup).toContain('>order-00<')
     expect(markup).toContain('Enamel mug')
     expect(markup).toContain('$14.00')
     expect(markup).toMatch(/value="Speedy"/)
@@ -56,6 +56,6 @@ describe('WarehouseList', () => {
   it('gives the list an explicit role, since list-style: none strips it in Safari', () => {
     const markup = renderToStaticMarkup(<WarehouseList orders={[order('order-1', 'placed', 1000)]} />)
 
-    expect(markup).toContain('<ul class="warehouse-list" role="list">')
+    expect(markup).toMatch(/<ul[^>]*role="list"/)
   })
 })

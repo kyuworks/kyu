@@ -18,6 +18,7 @@
 @import '@heroui/styles/components/card.css' layer(components);
 @import '@heroui/styles/components/input.css' layer(components);
 @import '@heroui/styles/components/number-field.css' layer(components);
+@import '@heroui/styles/components/textfield.css' layer(components);
 @import '@heroui/styles/components/separator.css' layer(components);
 @import '@heroui/styles/components/link.css' layer(components);
 

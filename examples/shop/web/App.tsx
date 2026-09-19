@@ -1,3 +1,5 @@
+import { Chip } from '@heroui/react'
+import { ShoppingBagIcon } from '@heroicons/react/24/outline'
 import { useEffect, useReducer, useState } from 'react'
 import { describeFetchFailure } from './lib/fetchJson'
 import { parseUiConfig } from './lib/uiConfig'
@@ -123,28 +125,37 @@ export function App() {
 
   return (
     <>
-      <header className="app-header">
-        <div className="app-header-inner">
-          <p className="app-title">Qtaxis shop</p>
-          <nav className="app-nav">
+      <header className="border-b border-border bg-surface">
+        <div className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-4">
+          <p className="m-0 flex items-center gap-2 text-lg font-semibold">
+            <ShoppingBagIcon className="size-5" aria-hidden="true" />
+            Qtaxis shop
+          </p>
+          <nav className="flex flex-1 items-center gap-4">
             {NAV_LINKS.map((link) => (
-              <a key={link.href} href={link.href} aria-current={pathname === link.href ? 'page' : undefined}>
+              <a
+                key={link.href}
+                href={link.href}
+                aria-current={pathname === link.href ? 'page' : undefined}
+                className="border-b-2 border-transparent py-1 text-muted no-underline aria-[current=page]:border-accent aria-[current=page]:text-foreground"
+              >
                 {link.label}
               </a>
             ))}
             {cartCount > 0 && (
-              <span
-                className="cart-badge"
+              <Chip
+                color="default"
+                size="sm"
                 role="status"
                 aria-label={`${cartCount} item${cartCount === 1 ? '' : 's'} in your order`}
               >
                 {cartCount}
-              </span>
+              </Chip>
             )}
           </nav>
         </div>
       </header>
-      <main className="app-main">
+      <main className="mx-auto max-w-5xl px-4 py-6">
         <p className="status">{statusMessage}</p>
         {renderPage()}
       </main>
