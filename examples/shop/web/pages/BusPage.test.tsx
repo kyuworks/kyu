@@ -56,4 +56,10 @@ describe('BusDiagram on the Bus page', () => {
     // React HTML-escapes "&" in attribute values, so the class attribute reads "[&amp;_strong]:...".
     expect(markup).toContain('[&amp;_strong]:text-danger')
   })
+
+  it('bolds the stage-box headings, not left at body weight', () => {
+    const markup = renderToStaticMarkup(<BusDiagram busDocument={oneFailedFixture} />)
+
+    expect(markup).toContain('text-[0.95rem] font-bold">Producer: shop</h3>')
+  })
 })

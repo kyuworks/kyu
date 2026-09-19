@@ -142,7 +142,7 @@ Tracked across issue #81 (Tailwind v4, HeroUI v3, Heroicons), `pnpm --filter @qt
 |---|---|---|---|---|
 | `main` (before #81) | 325.69 kB | 97.61 kB | 6.38 kB | 1.65 kB |
 | after PR 3 (Warehouse, ship form, shell) | 476.51 kB | 145.08 kB | 81.53 kB | 10.10 kB |
-| after PR 4 (Bus page, `styles.css` deleted) | 478.05 kB | 145.23 kB | 77.62 kB | 9.59 kB |
+| after PR 4 (Bus page, `styles.css` deleted) | 478.05 kB | 145.23 kB | 77.62 kB | 9.58 kB |
 
 ## Environment variables
 

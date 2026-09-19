@@ -24,6 +24,17 @@
 @import '@heroui/styles/components/card.css' layer(components);
 @import '@heroui/styles/components/separator.css' layer(components);
 
+/* .link's own no-underline default (link.css, this same layer) only shows an underline on
+   hover/press/focus. This must be in @layer components, after link.css's @import: a rule in
+   @layer base always loses to one in @layer components regardless of specificity or source
+   order, because base comes first in the top-of-file @layer statement — an earlier attempt at
+   this in @layer base was silently overridden by .link's own rule for exactly that reason. */
+@layer components {
+  [data-slot='link'] {
+    text-decoration-line: underline;
+  }
+}
+
 @source './';
 @source not './**/*.test.tsx';
 
@@ -69,11 +80,5 @@
   /* HeroUI's base layer sets no page canvas; without this the body stays browser-default in dark. */
   body {
     @apply bg-background text-foreground;
-  }
-
-  /* .link's own no-underline default only shows an underline on hover/press/focus. An in-page
-     link (Back to the shop, See your orders, the dashboard link) needs to read as a link at rest. */
-  [data-slot='link'] {
-    text-decoration-line: underline;
   }
 }
