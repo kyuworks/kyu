@@ -1,5 +1,12 @@
 import { z } from 'zod'
 
+/** What every polling hook normalizes a `fetch` response into before parsing the body. */
+export interface JsonFetchOutcome {
+  ok: boolean
+  status: number
+  bodyText: string
+}
+
 const errorBodySchema = z.object({ error: z.string() })
 
 // The server's own { error } message (src/ui/handleRequest.ts's

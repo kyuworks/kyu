@@ -20,7 +20,6 @@ export interface CheckoutConfirmationProps {
   dashboardUrl: string
 }
 
-// Links to the bus, not to /orders: that page lands in a later pull request.
 export function CheckoutConfirmation({ order, dashboardUrl }: CheckoutConfirmationProps) {
   return (
     <div className="card">
@@ -32,7 +31,7 @@ export function CheckoutConfirmation({ order, dashboardUrl }: CheckoutConfirmati
         Envelope ids: <code>{order.orderPlacedEnvelopeId}</code>, <code>{order.sendInvoiceEnvelopeId}</code>
       </p>
       <p>
-        <a href="/bus">See it on the bus</a>
+        <a href="/orders">See your orders</a>
         {dashboardUrl !== '' && (
           <>
             {' '}

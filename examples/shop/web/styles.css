@@ -303,3 +303,76 @@ button:disabled {
   font-weight: 600;
   margin-top: calc(var(--space) * 1.5);
 }
+
+.order-list {
+  list-style: none;
+  margin: calc(var(--space) * 2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 2);
+}
+
+.order-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: calc(var(--space) * 2);
+}
+
+.order-yours {
+  margin-left: calc(var(--space) / 2);
+  padding: 0 calc(var(--space) / 2);
+  border-radius: var(--radius);
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.order-lines {
+  list-style: none;
+  margin: calc(var(--space) * 1.5) 0;
+  padding: 0;
+}
+
+.order-line {
+  display: flex;
+  justify-content: space-between;
+  gap: calc(var(--space) * 2);
+  padding: calc(var(--space) / 2) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.order-total {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+  margin: calc(var(--space) / 2) 0 calc(var(--space) * 1.5);
+}
+
+.order-timeline {
+  display: flex;
+  gap: calc(var(--space) * 1.5);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.order-step {
+  padding-bottom: calc(var(--space) / 2);
+  border-bottom: 2px solid var(--line);
+  color: var(--muted);
+}
+
+.order-step-reached {
+  /* Width, not only colour, marks a reached step — readable without colour vision. */
+  border-bottom-width: 4px;
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+
+.order-step-current {
+  font-weight: 600;
+}

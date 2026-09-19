@@ -25,6 +25,42 @@ export function parseProductsDocument(body: string): ProductsDocumentOutcome {
   return { ok: true, products: result.data.products }
 }
 
+const orderStageSchema = z.enum(['placed', 'invoice-sent', 'shipped', 'timed-out'])
+export type OrderStage = z.infer<typeof orderStageSchema>
+
+const shopOrderLineSchema = z.object({
+  productId: z.string(),
+  name: z.string(),
+  quantity: z.number(),
+  unitPriceCents: z.number(),
+})
+
+const shopOrderSchema = z.object({
+  id: z.string(),
+  customerId: z.string(),
+  totalCents: z.number(),
+  paidAt: z.string().nullable(),
+  stage: orderStageSchema,
+  lines: z.array(shopOrderLineSchema),
+})
+export type ShopOrder = z.infer<typeof shopOrderSchema>
+
+const ordersDocumentSchema = z.object({ orders: z.array(shopOrderSchema), limit: z.number() })
+export type OrdersDocumentOutcome = { ok: true; orders: ShopOrder[]; limit: number } | { ok: false; error: string }
+
+/** Parses a `GET /orders.json` body. The only place that body is looked at. */
+export function parseOrdersDocument(body: string): OrdersDocumentOutcome {
+  let json: unknown
+  try {
+    json = JSON.parse(body)
+  } catch {
+    return { ok: false, error: 'invalid JSON body' }
+  }
+  const result = ordersDocumentSchema.safeParse(json)
+  if (!result.success) return { ok: false, error: firstIssueMessage(result.error) }
+  return { ok: true, orders: result.data.orders, limit: result.data.limit }
+}
+
 const placedOrderSchema = z.object({
   orderId: z.string(),
   invoiceId: z.string(),

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { parseBusDocument } from './busDocument'
 import type { BusDocument } from './busDocument'
 import { describeFetchFailure } from './fetchJson'
+import type { JsonFetchOutcome } from './fetchJson'
 
 export interface BusCountsState {
   busDocument: BusDocument | undefined
@@ -13,18 +14,12 @@ interface BusState {
   error: string | undefined
 }
 
-export interface BusFetchOutcome {
-  ok: boolean
-  status: number
-  bodyText: string
-}
-
 const REFRESH_INTERVAL_MS = 5000
 const EMPTY_STATE: BusState = { document: undefined, error: undefined }
 
 // A good body clears any previous error; a bad one keeps the last good
 // document. Pure and unit-tested — a hook cannot run under renderToStaticMarkup.
-export function nextBusState(previous: BusState, outcome: BusFetchOutcome): BusState {
+export function nextBusState(previous: BusState, outcome: JsonFetchOutcome): BusState {
   if (!outcome.ok) {
     return {
       document: previous.document,
@@ -51,7 +46,9 @@ export function useBusCounts(): BusCountsState {
       fetching.current = true
       fetch('/bus.json', { signal: controller.signal })
         .then((response) =>
-          response.text().then((bodyText): BusFetchOutcome => ({ ok: response.ok, status: response.status, bodyText })),
+          response
+            .text()
+            .then((bodyText): JsonFetchOutcome => ({ ok: response.ok, status: response.status, bodyText })),
         )
         .then((outcome) => {
           setState((previous) => nextBusState(previous, outcome))
