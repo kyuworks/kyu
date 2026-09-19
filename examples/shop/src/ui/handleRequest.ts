@@ -4,7 +4,7 @@ import type { Pool } from 'pg'
 import type { z } from 'zod'
 import { describeError, log } from '../log.js'
 import { placeOrder } from '../producer/placeOrder.js'
-import { sendInvoiceCommand } from '../producer/sendInvoiceCommand.js'
+import { OrderNotFoundError, sendInvoiceCommand } from '../producer/sendInvoiceCommand.js'
 import { shipOrder } from '../producer/shipOrder.js'
 import { DEMO_TENANT_ID } from '../shop.js'
 import type { BusTopology } from './busTopology.js'
@@ -136,6 +136,7 @@ async function handleSendInvoice(deps: UiRequestDeps, body: string): Promise<UiR
     })
     return jsonResponse(201, { orderId: parsed.value.orderId, invoiceId: sent.invoiceId, envelopeId: sent.envelopeId })
   } catch (error) {
+    if (error instanceof OrderNotFoundError) return errorResponse(404, error.message)
     log('ui', 'failed', { message: describeError(error) })
     return errorResponse(500, describeError(error))
   }

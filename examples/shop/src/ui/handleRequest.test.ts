@@ -121,6 +121,7 @@ function fakeQueryPool(responses: readonly Unparsed[][]): Pool {
 
 const productId = '018f0000-0000-7000-8000-000000000009'
 const LINE_INSERT_PREFIX = 'INSERT INTO shop_order_line'
+const ORDER_EXISTS_PREFIX = 'SELECT 1 FROM shop_order'
 
 describe('handleUiRequest', () => {
   it('rejects an empty place-order body with 400 and never opens a connection (S6)', async () => {
@@ -268,7 +269,8 @@ describe('handleUiRequest', () => {
   })
 
   it('sends an invoice command for a missing invoice id, tenant from the server (the simulated fault)', async () => {
-    const client = fakeClient([])
+    const responses = new Map<string, FakeQueryResponse>([[ORDER_EXISTS_PREFIX, { rowCount: 1 }]])
+    const client = fakeClient([], responses)
     const pool = fakePool([], client)
     const publishes: RecordedPublish[] = []
     const qtaxis = fakeQtaxis(publishes)
@@ -281,6 +283,24 @@ describe('handleUiRequest', () => {
     expect(parsed.orderId).toBe(orderId)
     expect(parsed.invoiceId).toEqual(expect.any(String))
     expect(publishes).toEqual([{ name: 'shop.invoice.send', tenantId: DEMO_TENANT_ID }])
+  })
+
+  // Named red test (review finding 1): watch this fail before
+  // sendInvoiceCommand.ts checks the order exists, then pass once a missing
+  // order 404s and publishes nothing.
+  it('returns 404 and publishes nothing for /invoices naming an order that does not exist', async () => {
+    const client = fakeClient([]) // no configured responses: the order-existence check sees rowCount 0
+    const pool = fakePool([], client)
+    const publishes: RecordedPublish[] = []
+    const qtaxis = fakeQtaxis(publishes)
+    const orderId = '018f0000-0000-7000-8000-000000000005'
+
+    const response = await handleUiRequest(deps(pool, qtaxis), jsonPost('/invoices', JSON.stringify({ orderId })))
+
+    expect(response.status).toBe(404)
+    const parsed: { error: string } = JSON.parse(response.body)
+    expect(parsed.error).toBe(`order ${orderId} not found`)
+    expect(publishes).toEqual([])
   })
 
   it('rejects a send-invoice body missing the order id (S6)', async () => {
