@@ -72,6 +72,8 @@ assert_exit "unset ARMED defaults to disarmed on an edited migration" 0 \
   run_repo "${EDIT}" BASE_SHA="${EDIT_BASE}"
 assert_output_contains "unset ARMED default prints SKIP" "SKIP" \
   run_repo "${EDIT}" BASE_SHA="${EDIT_BASE}"
+assert_output_lacks "unset ARMED default does not name the file" "20260101000000_base.sql" \
+  run_repo "${EDIT}" BASE_SHA="${EDIT_BASE}"
 
 CLEAN="${WORK}/clean"
 init_repo "${CLEAN}"

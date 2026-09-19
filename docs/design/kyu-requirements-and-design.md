@@ -20,7 +20,7 @@ Build one message bus, owned by the company and run as its own system, that ever
 
 The engine is [Hatchet](https://github.com/hatchet-dev/hatchet), self-hosted. Everything company-specific lives in a thin SDK and a set of conventions on top of it. This document is the requirements and the design for that system.
 
-**Name.** Kyu sounds like queue, and the kanji 急 (kyū) means urgent or express, as in express delivery. The kanji is the logo. A message moves deliberately toward the consumers that asked for it, not by accident and not everywhere at once. That is what this system does for messages. The name is short and industry-neutral, so a project in any industry can adopt it without the name pointing at another product.
+**Name.** Kyu sounds like queue, and the kanji 急 (kyū) means urgent or express, as in express delivery. The kanji is the logo. A message is express: it is delivered promptly to the consumers that subscribed, and nowhere else. That is what this system does for messages. The name is short and industry-neutral, so a project in any industry can adopt it without the name pointing at another product.
 
 ## 2. Context
 
