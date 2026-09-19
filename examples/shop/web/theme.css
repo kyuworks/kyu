@@ -1,0 +1,77 @@
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss' source(none);
+@import 'tw-animate-css';
+@import '@heroui/styles/base' layer(base);
+@import '@heroui/styles/base/scrollbar.css' layer(base);
+@import '@heroui/styles/themes/default';
+@import '@heroui/styles/utilities';
+@import '@heroui/styles/variants';
+
+/* Shared component structures first: @heroui/styles/components/index.css says so. */
+@import '@heroui/styles/components/close-button.css' layer(components);
+@import '@heroui/styles/components/description.css' layer(components);
+@import '@heroui/styles/components/error-message.css' layer(components);
+@import '@heroui/styles/components/label.css' layer(components);
+@import '@heroui/styles/components/button.css' layer(components);
+@import '@heroui/styles/components/card.css' layer(components);
+@import '@heroui/styles/components/chip.css' layer(components);
+@import '@heroui/styles/components/input.css' layer(components);
+@import '@heroui/styles/components/number-field.css' layer(components);
+@import '@heroui/styles/components/separator.css' layer(components);
+@import '@heroui/styles/components/link.css' layer(components);
+
+@source './';
+
+@layer base {
+  /* Our palette over HeroUI's. Same values as the old styles.css, in oklch. */
+  :root,
+  [data-theme='light'] {
+    --background: oklch(0.9878 0.0013 106.42);
+    --surface: oklch(1 0 0);
+    --surface-secondary: oklch(0.9608 0.0054 95.1);
+    --foreground: oklch(0.221 0.0057 106.86);
+    --muted: oklch(0.4833 0.011 106.8);
+    --border: oklch(0.8941 0.0097 93.58);
+    --separator: oklch(0.8941 0.0097 93.58);
+    --accent: oklch(0.4413 0.0556 173.19);
+    --accent-foreground: oklch(1 0 0);
+    --success: oklch(0.4413 0.0556 173.19);
+    --danger: oklch(0.4913 0.1452 29.97);
+    --radius: 0.375rem;
+  }
+
+  .dark,
+  [data-theme='dark'] {
+    --background: oklch(0.2092 0.0061 271.12);
+    --surface: oklch(0.2442 0.0077 274.63);
+    --surface-secondary: oklch(0.2769 0.0096 268.32);
+    --foreground: oklch(0.9248 0.0083 91.49);
+    --muted: oklch(0.6962 0.012 89.76);
+    --border: oklch(0.3333 0.0109 271.08);
+    --separator: oklch(0.3333 0.0109 271.08);
+    --accent: oklch(0.7252 0.0603 172.26);
+    --accent-foreground: oklch(0.2407 0.0227 171.42);
+    --success: oklch(0.7252 0.0603 172.26);
+    --danger: oklch(0.7097 0.1155 31.43);
+    --radius: 0.375rem;
+  }
+
+  /* Bridges the rules still left in styles.css. Deleted with styles.css in the last PR of #81. */
+  :root {
+    --bg: var(--background);
+    --raised: var(--surface-secondary);
+    --text: var(--foreground);
+    --line: var(--border);
+    --accent-text: var(--accent-foreground);
+    --ok: var(--success);
+    --font: var(--font-sans);
+    --mono: var(--font-mono);
+    --space: 8px;
+  }
+
+  /* HeroUI's base layer sets no page canvas; without this the body stays browser-default in dark. */
+  body {
+    @apply bg-background text-foreground;
+  }
+}

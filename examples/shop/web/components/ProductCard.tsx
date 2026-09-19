@@ -1,3 +1,5 @@
+import { Button, Card, CardContent, CardHeader, CardTitle, NumberField, NumberFieldInput } from '@heroui/react'
+import { PlusIcon } from '@heroicons/react/24/outline'
 import { useState } from 'react'
 import { MAX_LINE_QUANTITY, formatCents } from '../lib/cart'
 import type { ShopProduct } from '../lib/shopDocuments'
@@ -26,21 +28,26 @@ export function ProductCard({ product, onAdd }: ProductCardProps) {
   }
 
   return (
-    <div className="card product-card">
-      <h3>{product.name}</h3>
-      <p className="muted">{formatCents(product.priceCents)}</p>
-      <input
-        type="number"
-        aria-label={`Quantity of ${product.name}`}
-        min={MIN_QUANTITY}
-        max={MAX_LINE_QUANTITY}
-        value={quantityText}
-        onChange={(event) => setQuantityText(event.target.value)}
-        onBlur={commitQuantity}
-      />
-      <button type="button" onClick={() => onAdd(product.id, commitQuantity())}>
-        Add to order
-      </button>
-    </div>
+    <Card className="flex flex-col gap-2">
+      <CardHeader>
+        <CardTitle>{product.name}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <p className="text-muted">{formatCents(product.priceCents)}</p>
+        <NumberField
+          aria-label={`Quantity of ${product.name}`}
+          minValue={MIN_QUANTITY}
+          maxValue={MAX_LINE_QUANTITY}
+          value={Number(quantityText)}
+          onChange={(value) => setQuantityText(String(value))}
+        >
+          <NumberFieldInput />
+        </NumberField>
+        <Button variant="primary" size="sm" onPress={() => onAdd(product.id, commitQuantity())}>
+          Add to order
+          <PlusIcon className="size-4" aria-hidden="true" />
+        </Button>
+      </CardContent>
+    </Card>
   )
 }

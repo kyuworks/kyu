@@ -79,6 +79,12 @@ unlike `src/`, which is NodeNext and always does. Do not mix the two styles insi
 `typecheck:tests` type-checks `web/` too, through `tsconfig.web.json`. `web/index.html` is not
 picked up by `pnpm format` or by the changed-file selector; it is not worth a glob for one file.
 
+Styling is Tailwind CSS v4 through `@tailwindcss/vite`, with HeroUI v3 components and Heroicons.
+The entry is `web/theme.css`, which imports only the HeroUI component stylesheets the pages
+actually use. Light and dark follow the OS through `useTheme('system')` in `App.tsx` — HeroUI
+ships no provider, so nothing else is mounted. `web/styles.css` is what is left of the old
+hand-written stylesheet; it shrinks to nothing over the rest of issue #81.
+
 `/` is the Shop page: a grid of product cards from `GET /products.json`, each with a quantity
 stepper and an "Add to order" button, next to a cart summary with the running total. `/checkout`
 shows the cart's lines and total and one button, **Pay and place order** — there is no payment

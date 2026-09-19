@@ -1,3 +1,4 @@
+import { useTheme } from '@heroui/react'
 import { useEffect, useReducer, useState } from 'react'
 import { describeFetchFailure } from './lib/fetchJson'
 import { parseUiConfig } from './lib/uiConfig'
@@ -26,6 +27,9 @@ const NAV_LINKS: readonly NavLink[] = [
 ]
 
 export function App() {
+  // Follows the OS appearance and applies .dark / data-theme to <html>; HeroUI's own
+  // variables do not read prefers-color-scheme. Persists nothing unless setTheme is called.
+  useTheme('system')
   // Empty until /ui.json answers: no dashboard link rather than a guessed one.
   const [dashboardUrl, setDashboardUrl] = useState('')
   const [statusMessage, setStatusMessage] = useState('')
