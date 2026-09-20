@@ -454,6 +454,26 @@ describe('startRelay: poll loop scheduling', () => {
     await relay.stop()
   })
 
+  it('names the retired ids in the onError message when a tick both fails a push and retires a row', async () => {
+    vi.useFakeTimers()
+    const rowA = makeRow('018f0000-0000-7000-8000-00000000000a', 'shop.relay.a')
+    const badId = '018f0000-0000-7000-8000-00000000000b'
+    const { db } = createFakeDb([[rowA, { id: badId, not: 'an envelope' }]])
+    const bulkPush = vi.fn<BulkPushProcedure>().mockRejectedValue(new Error('engine unreachable'))
+    const hatchet = { events: fakeEvents(bulkPush) } as HatchetClient
+    const onError = vi.fn()
+    const pollIntervalMs = 1000
+
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1', pollIntervalMs, onError })
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onError).toHaveBeenCalledTimes(1)
+    const reported = onError.mock.calls[0]?.[0] as Error
+    expect(reported.message).toContain(badId)
+
+    await relay.stop()
+  })
+
   it('doubles the backoff on consecutive failed ticks up to the 30 s cap, and a success resets it', async () => {
     vi.useFakeTimers()
     const rowA = makeRow('018f0000-0000-7000-8000-00000000000a', 'shop.relay.a')

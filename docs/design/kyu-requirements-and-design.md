@@ -278,10 +278,16 @@ SELECT min(created_at) AS oldest_pending FROM kyu_outbox WHERE published_at IS N
 SELECT id, name, attempts, last_error FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND attempts > 10;
 ```
 
-**Retired rows.** The relay's own dead letter; alert on any row:
+**Retired rows.** The relay's own dead letter; alert on any row. A retired row is a message that will never be delivered, and a permanent gap in its key's order:
 
 ```sql
 SELECT id, name, attempts, last_error, dead_at FROM kyu_outbox WHERE dead_at IS NOT NULL ORDER BY dead_at DESC;
+```
+
+An operator who fixes the envelope by hand revives the row so the relay claims it again:
+
+```sql
+UPDATE kyu_outbox SET dead_at = NULL, attempts = 0, last_error = NULL WHERE id = $1;
 ```
 
 Rows published more than 7 days ago are pruned by a scheduled bus task (`prunePublished`); retired rows are pruned by the same task with `pruneRetired` once an operator has seen them.

@@ -7,7 +7,7 @@ import { outboxRowSchema } from './rows.js'
 const outboxRowIdSchema = z.object({ id: z.uuid() })
 const retireResultSchema = z.object({ dead_at: z.date().nullable() })
 
-// A row whose envelope never parses is retired after this many claims:
+// A row whose envelope never parses is retired once `attempts` reaches this:
 // kyu_outbox.envelope is written once and never updated, so a later
 // attempt decodes exactly as this one did.
 const UNPARSEABLE_ATTEMPT_LIMIT = 3

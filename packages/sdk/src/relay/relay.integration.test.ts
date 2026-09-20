@@ -147,13 +147,17 @@ describe('relay against the local engine', () => {
     })
 
     const afterFirst = await client.query(
-      'SELECT claimed_at, attempts, last_error, published_at FROM kyu_outbox WHERE id = $1',
+      'SELECT claimed_at, attempts, last_error, published_at, dead_at FROM kyu_outbox WHERE id = $1',
       [envelope.id],
     )
     expect(afterFirst.rows[0]?.['claimed_at']).toBeNull()
     expect(afterFirst.rows[0]?.['attempts']).toBe(1)
     expect(afterFirst.rows[0]?.['last_error']).toEqual(expect.any(String))
     expect(afterFirst.rows[0]?.['published_at']).toBeNull()
+    // Pins "push failures are never retired" at the SQL level: a bulkPush
+    // rejection must never reach the retire UPDATE, which lives on the
+    // unparseable-row branch of claimPendingRows, not this one.
+    expect(afterFirst.rows[0]?.['dead_at']).toBeNull()
 
     const secondResult = await relay.tick()
     await relay.stop()

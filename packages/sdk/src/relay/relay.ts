@@ -216,8 +216,16 @@ export function startRelay(options: RelayOptions): Relay {
           }
           applyBackoff()
           const detail = lastTickFailureMessage ?? 'unknown error'
+          // onTick semantics are unchanged: this only widens the failure
+          // message so a tick that both fails a push and retires a row
+          // still surfaces the retirement, not only through the next
+          // successful onTick's `result.retired`.
+          const retiredSuffix =
+            result.retired.length > 0
+              ? `; retired ${result.retired.length} unparseable row(s): ${result.retired.join(', ')}`
+              : ''
           try {
-            options.onError?.(new Error(`${result.failed} envelope(s) failed to push: ${detail}`))
+            options.onError?.(new Error(`${result.failed} envelope(s) failed to push: ${detail}${retiredSuffix}`))
           } finally {
             scheduleNext(backoffMs)
           }
