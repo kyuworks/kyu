@@ -1,19 +1,20 @@
 import nodeProcess from 'node:process'
 import type { KyuRelayOptions, Relay } from '@kyuworks/sdk'
-import { Client } from 'pg'
+import type { Pool } from 'pg'
 import { readConfig } from './config.js'
+import { createPool } from './db/pool.js'
 import { createShopKyu } from './kyu.js'
 import { describeError, exitAfterLog, log } from './log.js'
 
 // SIGTERM/SIGINT both drain the relay before exiting; a supervisor sends
 // either depending on how it stops the process.
-async function shutdown(relay: Relay, db: Client): Promise<void> {
+async function shutdown(relay: Relay, db: Pool): Promise<void> {
   await relay.stop()
   await db.end()
   nodeProcess.exit(0)
 }
 
-function onShutdownSignal(relay: Relay, db: Client): void {
+function onShutdownSignal(relay: Relay, db: Pool): void {
   shutdown(relay, db).catch((error) => {
     exitAfterLog(1, 'relay', 'shutdown-failed', { message: describeError(error) })
   })
@@ -22,14 +23,17 @@ function onShutdownSignal(relay: Relay, db: Client): void {
 async function main(): Promise<void> {
   const config = readConfig()
 
-  // A dedicated Client, not a Pool: the SDK's Queryable rejects a pool by design.
-  const db = new Client({ connectionString: config.databaseUrl })
-  await db.connect()
-  // The connection dying quietly would stop the relay without a sign of
-  // life; exit non-zero instead so a supervisor restarts it.
+  // A pool of one, not a bare Client: the SDK's relay seam takes a pool, and
+  // pg replaces a dropped connection on the next tick. A Client cannot.
+  const db = createPool(config.databaseUrl, { max: 1 })
+  // A connection dropped while idle surfaces here; the relay reconnects on
+  // its next tick, so this logs rather than exits. Without a listener pg
+  // would take the process down.
   db.on('error', (error) => {
-    exitAfterLog(1, 'relay', 'db-error', { message: describeError(error) })
+    log('relay', 'db-connection-dropped', { message: describeError(error) })
   })
+  // Keeps today's fail-fast: an unreachable database fails before `ready`.
+  await db.query('SELECT 1')
 
   const kyu = createShopKyu(config)
   const relayOptions: KyuRelayOptions = {
@@ -49,6 +53,11 @@ async function main(): Promise<void> {
   }
   if (config.relayBatchSize !== undefined) relayOptions.batchSize = config.relayBatchSize
   const relay = kyu.startRelay(relayOptions)
+  // The relay stops itself only when the handle can never recover; a
+  // supervisor restarts the process on this non-zero exit.
+  relay.closed.catch((cause: unknown) => {
+    exitAfterLog(1, 'relay', 'connection-lost', { message: describeError(cause) })
+  })
 
   nodeProcess.on('SIGTERM', () => onShutdownSignal(relay, db))
   nodeProcess.on('SIGINT', () => onShutdownSignal(relay, db))

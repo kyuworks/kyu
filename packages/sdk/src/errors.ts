@@ -60,3 +60,17 @@ export class WorkerStoppingError extends KyuError {
     this.name = 'WorkerStoppingError'
   }
 }
+
+/**
+ * The relay's database handle will never serve another query: a `pg.Client`
+ * whose connection dropped, or a client or pool the process already ended.
+ * A `Client` cannot reconnect, so the relay stops rather than polling a
+ * corpse. Restart the process, or hand `startRelay` a pool, which replaces a
+ * dropped connection on the next tick.
+ */
+export class RelayConnectionLostError extends KyuError {
+  constructor(cause: Error) {
+    super(`relay stopped: the database connection is gone (${cause.message})`, { cause })
+    this.name = 'RelayConnectionLostError'
+  }
+}
