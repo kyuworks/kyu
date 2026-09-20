@@ -220,12 +220,16 @@ CREATE TABLE kyu_outbox (
   claimed_at    timestamptz,                -- set by the relay while it holds the row
   claimed_by    text,                       -- the claiming relay instance's worker id
   published_at  timestamptz,
+  dead_at       timestamptz,                -- set when the relay gives up on a row whose envelope never parses
   attempts      int NOT NULL DEFAULT 0,
   last_error    text,
   CONSTRAINT kyu_outbox_name_matches_envelope CHECK (name = envelope->>'name')
 );
-CREATE INDEX kyu_outbox_pending_idx ON kyu_outbox (created_at) WHERE published_at IS NULL;
+CREATE INDEX kyu_outbox_pending_idx ON kyu_outbox (created_at) WHERE published_at IS NULL AND dead_at IS NULL;
+CREATE INDEX kyu_outbox_dead_idx ON kyu_outbox (dead_at) WHERE dead_at IS NOT NULL;
 ```
+
+This is the cumulative shape. `dead_at` and the two index definitions come from the second migration file, not the first; migration files are immutable.
 
 The same migration creates `kyu_processed` (section 9.1):
 
@@ -247,9 +251,9 @@ CREATE INDEX kyu_processed_processed_at_idx ON kyu_processed (processed_at);
 
 A loop in the producer process that, every tick:
 
-1. Claims up to 100 pending rows with a single `UPDATE … SET claimed_at = now(), claimed_by = $workerId WHERE id IN (SELECT … ORDER BY created_at LIMIT 100 FOR UPDATE SKIP LOCKED) RETURNING *`, stamping the claim on the rows it takes. A row is pending when `published_at IS NULL` and its `claimed_at` is either unset or older than the relay's stale-claim window; any other in-progress claim is invisible to `SKIP LOCKED`.
+1. Claims up to 100 pending rows with a single `UPDATE … SET claimed_at = now(), claimed_by = $workerId WHERE id IN (SELECT … ORDER BY created_at LIMIT 100 FOR UPDATE SKIP LOCKED) RETURNING *`, stamping the claim on the rows it takes. A row is pending when `published_at IS NULL` and its `dead_at` is unset, and its `claimed_at` is either unset or older than the relay's stale-claim window; any other in-progress claim is invisible to `SKIP LOCKED`.
 2. Groups the claimed rows by message name and calls Hatchet `events.bulkPush` once per name.
-3. Marks the pushed rows' `published_at = now()`, scoped to rows this relay instance still owns (`claimed_by = $workerId`). On failure it increments `attempts`, records `last_error`, and releases the claim (`claimed_at`/`claimed_by` cleared) so the row is claimable again.
+3. Marks the pushed rows' `published_at = now()`, scoped to rows this relay instance still owns (`claimed_by = $workerId`). On failure it increments `attempts`, records `last_error`, and releases the claim (`claimed_at`/`claimed_by` cleared) so the row is claimable again. A claimed row whose `envelope` column does not parse cannot be shipped by any later attempt (the column is written once and never updated), so it records `last_error`, increments `attempts`, and on the third such claim sets `dead_at`. The row is then invisible to the claim, keeps its `attempts` and `last_error` for inspection, and is deleted by `pruneRetired`. A push failure is not retired: the engine being unavailable is transient, and a ceiling there would discard deliverable messages during an outage.
 4. Polls every 250 ms when idle; the relay re-ticks immediately only when the last batch was full and fully pushed. A batch with any push failure backs off (doubling, capped at 30 s) and alerts through `onError` instead.
 
 There is no advisory lock: a session-level lock is meaningless once connections come from a pool, and the row locks `FOR UPDATE SKIP LOCKED` takes end with the claiming statement, not the relay's lifetime — the `claimed_at`/`claimed_by` stamp is what actually protects a row while the relay is between the claim and the mark. A relay that crashes mid-batch leaves its claims to go stale; another relay instance (or the same one, restarted) reclaims and republishes them once the stale window passes. A thrown mark after a successful push releases the group's claims so the next tick pushes them again, a duplicate the consumer's `onceById` absorbs. A push response that reports fewer events than sent fails the whole group and retries it, including rows the engine already accepted. Consumers dedupe on `envelope.id` (section 9.1).
@@ -262,7 +266,31 @@ The relay preserves insertion order within one producer instance. Cross-instance
 
 ### 8.5 Operations
 
-Alert when the oldest pending row is older than 60 seconds or when `attempts` on any row exceeds 10. Rows published more than 7 days ago are pruned by a scheduled bus task.
+**Oldest pending row.** Alert when older than 60 seconds; retired rows excluded:
+
+```sql
+SELECT min(created_at) AS oldest_pending FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL;
+```
+
+**Rows retrying too long.** Alert when any row is past 10 attempts (push failures retry for ever by design):
+
+```sql
+SELECT id, name, attempts, last_error FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND attempts > 10;
+```
+
+**Retired rows.** The relay's own dead letter; alert on any row. A retired row is a message that will never be delivered, and a permanent gap in its key's order:
+
+```sql
+SELECT id, name, attempts, last_error, dead_at FROM kyu_outbox WHERE dead_at IS NOT NULL ORDER BY dead_at DESC;
+```
+
+An operator who fixes the envelope by hand revives the row so the relay claims it again:
+
+```sql
+UPDATE kyu_outbox SET dead_at = NULL, attempts = 0, last_error = NULL WHERE id = $1;
+```
+
+Rows published more than 7 days ago are pruned by a scheduled bus task (`prunePublished`); retired rows are pruned by the same task with `pruneRetired` once an operator has seen them.
 
 ## 9. Delivery semantics
 

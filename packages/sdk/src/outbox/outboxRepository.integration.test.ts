@@ -6,6 +6,7 @@ import {
   claimPendingRows,
   markPublished,
   prunePublished,
+  pruneRetired,
   recordPublishFailure,
   releaseClaims,
 } from './outboxRepository.js'
@@ -115,6 +116,36 @@ describe('prunePublished', () => {
     const remaining = await client.query('SELECT id FROM kyu_outbox ORDER BY id')
     const remainingIds: string[] = remaining.rows.map((row) => row.id)
     expect(remainingIds.sort()).toEqual([newId, pendingId].sort())
+  })
+})
+
+describe('pruneRetired', () => {
+  it('deletes only rows retired before the cutoff', async () => {
+    const pendingId = await insertGoodRow(1)
+    const publishedId = await insertGoodRow(2)
+    const badId = uuidv7()
+    await client.query('INSERT INTO kyu_outbox (id, name, tenant_id, envelope) VALUES ($1, $2, NULL, $3::jsonb)', [
+      badId,
+      'kyu.repo_test.happened',
+      JSON.stringify({ name: 'kyu.repo_test.happened', not: 'an envelope' }),
+    ])
+
+    // Three claims retire the bad row: attempts climbs 0 -> 1 -> 2 -> 3, and
+    // the third reaches UNPARSEABLE_ATTEMPT_LIMIT.
+    await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 0 })
+    await markPublished(client, 'worker-1', [publishedId])
+    await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 0 })
+    await claimPendingRows(client, { limit: 10, workerId: 'worker-1', staleAfterMs: 0 })
+
+    await client.query(`UPDATE kyu_outbox SET dead_at = now() - interval '2 days' WHERE id = $1`, [badId])
+
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const deletedCount = await pruneRetired(client, { retiredBefore: cutoff })
+
+    expect(deletedCount).toBe(1)
+    const remaining = await client.query('SELECT id FROM kyu_outbox ORDER BY id')
+    const remainingIds: string[] = remaining.rows.map((row) => row.id)
+    expect(remainingIds.sort()).toEqual([pendingId, publishedId].sort())
   })
 })
 

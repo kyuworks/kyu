@@ -137,21 +137,32 @@ describe('relay against the local engine', () => {
     const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
 
     const firstResult = await relay.tick()
-    expect(firstResult).toEqual({ claimed: 1, pushed: 0, failed: 1, skipped: [], failedIds: [envelope.id] })
+    expect(firstResult).toEqual({
+      claimed: 1,
+      pushed: 0,
+      failed: 1,
+      skipped: [],
+      retired: [],
+      failedIds: [envelope.id],
+    })
 
     const afterFirst = await client.query(
-      'SELECT claimed_at, attempts, last_error, published_at FROM kyu_outbox WHERE id = $1',
+      'SELECT claimed_at, attempts, last_error, published_at, dead_at FROM kyu_outbox WHERE id = $1',
       [envelope.id],
     )
     expect(afterFirst.rows[0]?.['claimed_at']).toBeNull()
     expect(afterFirst.rows[0]?.['attempts']).toBe(1)
     expect(afterFirst.rows[0]?.['last_error']).toEqual(expect.any(String))
     expect(afterFirst.rows[0]?.['published_at']).toBeNull()
+    // Pins "push failures are never retired" at the SQL level: a bulkPush
+    // rejection must never reach the retire UPDATE, which lives on the
+    // unparseable-row branch of claimPendingRows, not this one.
+    expect(afterFirst.rows[0]?.['dead_at']).toBeNull()
 
     const secondResult = await relay.tick()
     await relay.stop()
 
-    expect(secondResult).toEqual({ claimed: 1, pushed: 1, failed: 0, skipped: [], failedIds: [] })
+    expect(secondResult).toEqual({ claimed: 1, pushed: 1, failed: 0, skipped: [], retired: [], failedIds: [] })
     const afterSecond = await client.query('SELECT published_at FROM kyu_outbox WHERE id = $1', [envelope.id])
     expect(afterSecond.rows[0]?.['published_at']).not.toBeNull()
   })
@@ -355,6 +366,7 @@ describe('relay against the local engine', () => {
     await relay.stop()
 
     expect(result.skipped).toEqual([badId])
+    expect(result.retired).toEqual([])
     expect(result.pushed).toBe(2)
 
     const good = await client.query('SELECT published_at FROM kyu_outbox WHERE id = ANY($1)', [[goodA.id, goodB.id]])
@@ -362,6 +374,64 @@ describe('relay against the local engine', () => {
 
     const bad = await client.query('SELECT published_at FROM kyu_outbox WHERE id = $1', [badId])
     expect(bad.rows[0]?.['published_at']).toBeNull()
+  })
+
+  it('a row whose envelope never parses retires after three claims, stops being claimed, and leaves the pending query', async () => {
+    const goodA = await publisher.publish(client, orderPlaced, { n: 1 }, { tenantId: null })
+    const goodB = await publisher.publish(client, orderPlaced, { n: 2 }, { tenantId: null })
+    const badId = uuidv7()
+    await client.query('INSERT INTO kyu_outbox (id, name, tenant_id, envelope) VALUES ($1, $2, NULL, $3::jsonb)', [
+      badId,
+      'kyu.relay_test.order_placed',
+      JSON.stringify({ name: 'kyu.relay_test.order_placed', not: 'an envelope' }),
+    ])
+
+    const relay = startRelay({
+      db: client,
+      hatchet,
+      workerId: `worker-${randomUUID()}`,
+      staleClaimMs: 0,
+      pollIntervalMs: 60_000,
+    })
+
+    const first = await relay.tick()
+    expect(first.skipped).toEqual([badId])
+    expect(first.retired).toEqual([])
+    expect(first.pushed).toBe(2)
+
+    const second = await relay.tick()
+    expect(second.skipped).toEqual([badId])
+    expect(second.retired).toEqual([])
+
+    const third = await relay.tick()
+    expect(third.retired).toEqual([badId])
+    expect(third.skipped).toEqual([])
+
+    const badRow = await client.query(
+      'SELECT attempts, dead_at, last_error, published_at FROM kyu_outbox WHERE id = $1',
+      [badId],
+    )
+    expect(badRow.rows[0]?.['attempts']).toBe(3)
+    expect(badRow.rows[0]?.['dead_at']).not.toBeNull()
+    expect(badRow.rows[0]?.['last_error']).toEqual(expect.any(String))
+    expect(badRow.rows[0]?.['published_at']).toBeNull()
+
+    const fourth = await relay.tick()
+    await relay.stop()
+    expect(fourth.claimed).toBe(0)
+    expect(fourth.retired).toEqual([])
+    expect(fourth.skipped).toEqual([])
+
+    const stillAttempts = await client.query('SELECT attempts FROM kyu_outbox WHERE id = $1', [badId])
+    expect(stillAttempts.rows[0]?.['attempts']).toBe(3)
+
+    const oldest = await client.query(
+      'SELECT min(created_at) AS oldest FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL',
+    )
+    expect(oldest.rows[0]?.['oldest']).toBeNull()
+
+    const goodIds = await client.query('SELECT published_at FROM kyu_outbox WHERE id = ANY($1)', [[goodA.id, goodB.id]])
+    expect(goodIds.rows.every((row) => row['published_at'] !== null)).toBe(true)
   })
 })
 

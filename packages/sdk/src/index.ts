@@ -38,10 +38,16 @@ export {
   insertOutboxRow,
   markPublished,
   prunePublished,
+  pruneRetired,
   recordPublishFailure,
   releaseClaims,
 } from './outbox/outboxRepository.js'
-export type { ClaimedRows, ClaimPendingRowsOptions, PrunePublishedOptions } from './outbox/outboxRepository.js'
+export type {
+  ClaimedRows,
+  ClaimPendingRowsOptions,
+  PrunePublishedOptions,
+  PruneRetiredOptions,
+} from './outbox/outboxRepository.js'
 
 export { createPublisher, publishEnvelope } from './outbox/publish.js'
 export type { CreatePublisherOptions, Publisher, PublisherOptions } from './outbox/publish.js'

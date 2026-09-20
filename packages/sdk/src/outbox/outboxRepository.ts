@@ -5,6 +5,12 @@ import type { OutboxRow } from './rows.js'
 import { outboxRowSchema } from './rows.js'
 
 const outboxRowIdSchema = z.object({ id: z.uuid() })
+const retireResultSchema = z.object({ dead_at: z.date().nullable() })
+
+// A row whose envelope never parses is retired once `attempts` reaches this:
+// kyu_outbox.envelope is written once and never updated, so a later
+// attempt decodes exactly as this one did.
+const UNPARSEABLE_ATTEMPT_LIMIT = 3
 
 function assertNonEmptyWorkerId(workerId: string): void {
   if (workerId.trim() === '') throw new RangeError('workerId must not be empty')
@@ -48,7 +54,11 @@ export interface ClaimPendingRowsOptions {
 
 export interface ClaimedRows {
   rows: readonly OutboxRow[]
+  // Unparseable this tick; claimed again once the claim goes stale.
   skipped: readonly string[]
+  // Unparseable for the last time: `dead_at` is set, so the claim never
+  // returns them again. Disjoint from `skipped`.
+  retired: readonly string[]
 }
 
 // A crash between the claim and the bad-row mark below leaves the row
@@ -64,6 +74,7 @@ export async function claimPendingRows(db: RelayQueryable, options: ClaimPending
      WHERE id IN (
        SELECT id FROM kyu_outbox
        WHERE published_at IS NULL
+         AND dead_at IS NULL
          AND (claimed_at IS NULL OR claimed_at < now() - ($2::text || ' milliseconds')::interval)
        ORDER BY created_at, id
        LIMIT $3
@@ -75,6 +86,7 @@ export async function claimPendingRows(db: RelayQueryable, options: ClaimPending
 
   const rows: OutboxRow[] = []
   const skipped: string[] = []
+  const retired: string[] = []
   for (const raw of claimed.rows) {
     const parsed = outboxRowSchema.safeParse(raw)
     if (parsed.success) {
@@ -84,13 +96,20 @@ export async function claimPendingRows(db: RelayQueryable, options: ClaimPending
     const issue = parsed.error.issues[0]
     const message = issue ? `${issue.path.join('.')}: ${issue.message}` : 'invalid outbox row'
     const { id } = outboxRowIdSchema.parse(raw)
-    skipped.push(id)
-    await db.query(
+    // The claim stamp is left in place on a retired row: it records which
+    // relay retired it, and `dead_at` is what keeps the claim off it.
+    const marked = await db.query(
       `UPDATE kyu_outbox
-       SET attempts = attempts + 1, last_error = $1
-       WHERE id = $2`,
-      [message, id],
+       SET attempts = attempts + 1,
+           last_error = $1,
+           dead_at = CASE WHEN attempts + 1 >= $2 THEN now() ELSE dead_at END
+       WHERE id = $3
+       RETURNING dead_at`,
+      [message, UNPARSEABLE_ATTEMPT_LIMIT, id],
     )
+    const outcome = retireResultSchema.safeParse(marked.rows[0])
+    if (outcome.success && outcome.data.dead_at !== null) retired.push(id)
+    else skipped.push(id)
   }
 
   // RETURNING does not inherit the subquery's ORDER BY; sort explicitly.
@@ -102,7 +121,7 @@ export async function claimPendingRows(db: RelayQueryable, options: ClaimPending
     if (a.id > b.id) return 1
     return 0
   })
-  return { rows, skipped }
+  return { rows, skipped, retired }
 }
 
 // A claim taken over by another worker still holds the original worker's
@@ -145,6 +164,19 @@ export interface PrunePublishedOptions {
 export async function prunePublished(db: Queryable, options: PrunePublishedOptions): Promise<number> {
   const deleted = await db.query('DELETE FROM kyu_outbox WHERE published_at IS NOT NULL AND published_at < $1', [
     options.publishedBefore,
+  ])
+  return deleted.rowCount ?? 0
+}
+
+export interface PruneRetiredOptions {
+  retiredBefore: Date
+}
+
+// Retired rows are the relay's own dead letter: an envelope that never
+// parsed, kept with its `attempts` and `last_error` for inspection.
+export async function pruneRetired(db: Queryable, options: PruneRetiredOptions): Promise<number> {
+  const deleted = await db.query('DELETE FROM kyu_outbox WHERE dead_at IS NOT NULL AND dead_at < $1', [
+    options.retiredBefore,
   ])
   return deleted.rowCount ?? 0
 }

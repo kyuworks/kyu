@@ -27,6 +27,9 @@ export interface TickResult {
   pushed: number
   failed: number
   skipped: readonly string[]
+  // Rows the claim will never return again: their envelope never parsed.
+  // Inspect with `dead_at IS NOT NULL`; delete with `pruneRetired`.
+  retired: readonly string[]
   failedIds: readonly string[]
 }
 
@@ -134,7 +137,14 @@ async function runTick(
     if (unsettledIds.length > 0) await releaseClaims(db, workerId, unsettledIds)
   }
 
-  const result: TickResult = { claimed: claimed.rows.length, pushed, failed, skipped: claimed.skipped, failedIds }
+  const result: TickResult = {
+    claimed: claimed.rows.length,
+    pushed,
+    failed,
+    skipped: claimed.skipped,
+    retired: claimed.retired,
+    failedIds,
+  }
   return { result, lastErrorMessage }
 }
 
@@ -206,8 +216,16 @@ export function startRelay(options: RelayOptions): Relay {
           }
           applyBackoff()
           const detail = lastTickFailureMessage ?? 'unknown error'
+          // onTick semantics are unchanged: this only widens the failure
+          // message so a tick that both fails a push and retires a row
+          // still surfaces the retirement, not only through the next
+          // successful onTick's `result.retired`.
+          const retiredSuffix =
+            result.retired.length > 0
+              ? `; retired ${result.retired.length} unparseable row(s): ${result.retired.join(', ')}`
+              : ''
           try {
-            options.onError?.(new Error(`${result.failed} envelope(s) failed to push: ${detail}`))
+            options.onError?.(new Error(`${result.failed} envelope(s) failed to push: ${detail}${retiredSuffix}`))
           } finally {
             scheduleNext(backoffMs)
           }

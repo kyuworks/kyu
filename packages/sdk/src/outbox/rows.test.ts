@@ -22,6 +22,7 @@ const baseRow = {
   claimed_at: null,
   claimed_by: null,
   published_at: null,
+  dead_at: null,
   attempts: 0,
   last_error: null,
 }

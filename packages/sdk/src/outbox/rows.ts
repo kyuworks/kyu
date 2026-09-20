@@ -12,6 +12,7 @@ export const outboxRowSchema = z.object({
   claimed_at: z.date().nullable(),
   claimed_by: z.string().nullable(),
   published_at: z.date().nullable(),
+  dead_at: z.date().nullable(),
   attempts: z.number().int(),
   last_error: z.string().nullable(),
 })

@@ -48,14 +48,14 @@ describe('claimPendingRows validation', () => {
   it('accepts a zero staleAfterMs', async () => {
     const db = recordingQueryable()
     const result = await claimPendingRows(db, { limit: 10, workerId: 'worker-1', staleAfterMs: 0 })
-    expect(result).toEqual({ rows: [], skipped: [] })
+    expect(result).toEqual({ rows: [], skipped: [], retired: [] })
     expect(db.calls).toBe(1)
   })
 
   it('accepts a fractional staleAfterMs', async () => {
     const db = recordingQueryable()
     const result = await claimPendingRows(db, { limit: 10, workerId: 'worker-1', staleAfterMs: 0.5 })
-    expect(result).toEqual({ rows: [], skipped: [] })
+    expect(result).toEqual({ rows: [], skipped: [], retired: [] })
     expect(db.calls).toBe(1)
   })
 
@@ -106,7 +106,7 @@ describe('claimPendingRows validation', () => {
   it('accepts a limit of 1', async () => {
     const db = recordingQueryable()
     const result = await claimPendingRows(db, { limit: 1, workerId: 'worker-1', staleAfterMs: 1000 })
-    expect(result).toEqual({ rows: [], skipped: [] })
+    expect(result).toEqual({ rows: [], skipped: [], retired: [] })
     expect(db.calls).toBe(1)
   })
 })
