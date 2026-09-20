@@ -31,7 +31,7 @@ export { MIGRATIONS_DIRECTORY } from './migrations.js'
 export { createKyu } from './createKyu.js'
 export type { CreateKyuOptions, Kyu, KyuRelayOptions } from './createKyu.js'
 
-export type { Queryable, QueryParam, QueryRows } from './db/queryable.js'
+export type { Queryable, QueryParam, QueryRows, RelayQueryable } from './db/queryable.js'
 
 export {
   claimPendingRows,
@@ -64,6 +64,7 @@ export {
   EnvelopeRejectedError,
   MessageDataError,
   MessageDefinitionError,
+  RelayConnectionLostError,
   KyuError,
   WorkerStoppingError,
 } from './errors.js'

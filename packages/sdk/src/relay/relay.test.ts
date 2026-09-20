@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import type { QueryParam, Queryable, QueryRows } from '../db/queryable.js'
+import { RelayConnectionLostError } from '../errors.js'
 import type { HatchetClient } from '../hatchet.js'
 import { outboxRowSchema } from '../outbox/rows.js'
 import type { OutboxRow } from '../outbox/rows.js'
@@ -237,6 +238,52 @@ describe('startRelay: callback safety', () => {
     expect(onError).not.toHaveBeenCalled()
 
     await relay.stop()
+  })
+})
+
+describe('startRelay: dead database handle', () => {
+  it('keeps polling through a transient database error, then stops itself when the handle is permanently dead', async () => {
+    vi.useFakeTimers()
+    let attempts = 0
+    const db: Queryable = {
+      async query(text): Promise<QueryRows> {
+        if (!text.includes('RETURNING *')) return { rows: [], rowCount: 0 }
+        attempts += 1
+        if (attempts === 1) throw new Error('driver down')
+        if (attempts === 2) return { rows: [], rowCount: 0 }
+        throw new Error('Client has encountered a connection error and is not queryable')
+      },
+    }
+    const { hatchet } = createFakeHatchet()
+    const onError = vi.fn()
+    const onTick = vi.fn()
+    const pollIntervalMs = 1000
+
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1', pollIntervalMs, onError, onTick })
+
+    // attempt 1: transient failure, backs off.
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onTick).toHaveBeenCalledTimes(0)
+
+    // attempt 2: succeeds (empty claim), resets backoff, schedules the next tick after pollIntervalMs.
+    await vi.advanceTimersByTimeAsync(pollIntervalMs * 4)
+    expect(onTick).toHaveBeenCalledTimes(1)
+
+    // attempt 3: the handle is permanently dead. The relay stops itself.
+    await vi.advanceTimersByTimeAsync(pollIntervalMs)
+    expect(attempts).toBe(3)
+    expect(onError).toHaveBeenCalledTimes(2)
+    const lastError = onError.mock.calls[1]?.[0] as Error
+    expect(lastError).toBeInstanceOf(RelayConnectionLostError)
+    expect(lastError.message).toContain('connection')
+
+    // No further claim attempts, however long the clock advances.
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000)
+    expect(attempts).toBe(3)
+
+    await expect(relay.closed).rejects.toBeInstanceOf(RelayConnectionLostError)
+    await expect(relay.tick()).rejects.toThrow('relay is stopped')
   })
 })
 

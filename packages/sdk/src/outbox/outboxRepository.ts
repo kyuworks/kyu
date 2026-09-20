@@ -1,6 +1,6 @@
 import type { Envelope, EnvelopeData, MessageDataShape } from '@kyuworks/schemas'
 import { z } from 'zod'
-import type { Queryable } from '../db/queryable.js'
+import type { Queryable, RelayQueryable } from '../db/queryable.js'
 import type { OutboxRow } from './rows.js'
 import { outboxRowSchema } from './rows.js'
 
@@ -53,7 +53,7 @@ export interface ClaimedRows {
 
 // A crash between the claim and the bad-row mark below leaves the row
 // claimed until it goes stale; workerId must be unique per running process.
-export async function claimPendingRows(db: Queryable, options: ClaimPendingRowsOptions): Promise<ClaimedRows> {
+export async function claimPendingRows(db: RelayQueryable, options: ClaimPendingRowsOptions): Promise<ClaimedRows> {
   assertValidLimit(options.limit)
   assertNonEmptyWorkerId(options.workerId)
   assertValidStaleAfterMs(options.staleAfterMs)
@@ -107,7 +107,7 @@ export async function claimPendingRows(db: Queryable, options: ClaimPendingRowsO
 
 // A claim taken over by another worker still holds the original worker's
 // ids; the claimed_by check keeps its follow-up write off the new owner's row.
-export async function markPublished(db: Queryable, workerId: string, ids: readonly string[]): Promise<void> {
+export async function markPublished(db: RelayQueryable, workerId: string, ids: readonly string[]): Promise<void> {
   assertNonEmptyWorkerId(workerId)
   await db.query('UPDATE kyu_outbox SET published_at = now() WHERE id = ANY($1::uuid[]) AND claimed_by = $2', [
     uuidArrayLiteral(ids),
@@ -116,7 +116,7 @@ export async function markPublished(db: Queryable, workerId: string, ids: readon
 }
 
 export async function recordPublishFailure(
-  db: Queryable,
+  db: RelayQueryable,
   workerId: string,
   ids: readonly string[],
   error: string,
@@ -130,7 +130,7 @@ export async function recordPublishFailure(
   )
 }
 
-export async function releaseClaims(db: Queryable, workerId: string, ids: readonly string[]): Promise<void> {
+export async function releaseClaims(db: RelayQueryable, workerId: string, ids: readonly string[]): Promise<void> {
   assertNonEmptyWorkerId(workerId)
   await db.query(
     'UPDATE kyu_outbox SET claimed_at = NULL, claimed_by = NULL WHERE id = ANY($1::uuid[]) AND claimed_by = $2',

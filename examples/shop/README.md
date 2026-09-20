@@ -22,10 +22,12 @@ A worker stopped while `watch-shipping`'s body is still executing fails that att
 engine retries it on the next worker to start. A worker stopped once the run is parked in its
 wait hands the wait to the next worker directly, with no failed attempt in between.
 
-The relay owns one dedicated `pg.Client`, not a pool (the SDK's `Queryable` rejects a pool by
-design). It has no reconnect: if that connection drops, the process logs the error and exits
-non-zero rather than stopping quietly. A real deployment runs it under a supervisor that
-restarts it — `pnpm --filter @kyuworks/shop relay` alone does not.
+The relay runs on a `pg.Pool` of one connection, not a bare `pg.Client`: the relay never opens a
+transaction, so a pool is safe, and pg replaces a dropped connection on the next poll by itself. A
+connection dropped while idle is logged (`db-connection-dropped`) rather than treated as fatal. If
+the relay's database handle ever becomes permanently unusable, `relay.closed` rejects with a
+`RelayConnectionLostError` and the process exits non-zero (`connection-lost`). A real deployment
+runs it under a supervisor that restarts it — `pnpm --filter @kyuworks/shop relay` alone does not.
 
 A relay stopped by SIGTERM releases its claimed rows before exiting. A relay killed without
 SIGTERM (a crash, a supervisor's SIGKILL) leaves its claims stale for 30 seconds before another

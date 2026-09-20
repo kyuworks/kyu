@@ -1,12 +1,15 @@
 import type { MessageName } from '@kyuworks/schemas'
-import type { Queryable } from '../db/queryable.js'
+import type { RelayQueryable } from '../db/queryable.js'
+import { RelayConnectionLostError } from '../errors.js'
 import type { HatchetClient } from '../hatchet.js'
 import { claimPendingRows, markPublished, recordPublishFailure, releaseClaims } from '../outbox/outboxRepository.js'
 import { groupEnvelopesForPush } from './toEvents.js'
 import type { PushItem } from './toEvents.js'
 
 export interface RelayOptions {
-  db: Queryable
+  // A pool is accepted and preferred: every relay statement stands alone, and
+  // a pool replaces a dropped connection where a single Client cannot.
+  db: RelayQueryable
   hatchet: HatchetClient
   // Unique per running process; two relays sharing one id can mark and release each other's rows.
   workerId: string
@@ -32,6 +35,10 @@ export interface Relay {
   // tick's promise, so the result may predate a `publish()` the caller just made.
   tick(): Promise<TickResult>
   stop(): Promise<void>
+  // Resolves when `stop()` finishes. Rejects with `RelayConnectionLostError`
+  // when the relay stopped itself because its database handle died; a
+  // supervised process should exit non-zero on that rejection.
+  readonly closed: Promise<void>
 }
 
 const DEFAULT_BATCH_SIZE = 100
@@ -53,6 +60,16 @@ function describeCause(cause: unknown): string {
   } catch {
     return String(cause)
   }
+}
+
+// pg's own words for a handle that can never serve another query: a Client
+// whose socket died (`client.js` sets `_queryable = false`), or a client or
+// pool the process ended. A pool that loses one connection never says this —
+// it drops that client and the next tick gets a fresh one.
+const DEAD_DB_HANDLE_MARKERS = ['is not queryable', 'Cannot use a pool after calling end on the pool'] as const
+
+function isDeadDbHandle(cause: unknown): boolean {
+  return cause instanceof Error && DEAD_DB_HANDLE_MARKERS.some((marker) => cause.message.includes(marker))
 }
 
 function truncateLastError(message: string): string {
@@ -79,7 +96,7 @@ interface TickOutcome {
 }
 
 async function runTick(
-  db: Queryable,
+  db: RelayQueryable,
   hatchet: HatchetClient,
   workerId: string,
   batchSize: number,
@@ -135,6 +152,17 @@ export function startRelay(options: RelayOptions): Relay {
   // promise has settled, so a later tick cannot overwrite it first.
   let lastTickFailureMessage: string | undefined
 
+  // `Promise.withResolvers` is ES2024; this package's lib is ES2022.
+  let resolveClosed: () => void = () => undefined
+  let rejectClosed: (error: Error) => void = () => undefined
+  const closed = new Promise<void>((resolve, reject) => {
+    resolveClosed = resolve
+    rejectClosed = reject
+  })
+  // No caller is obliged to await `closed`; this keeps a terminal rejection
+  // nobody watched off Node's unhandledRejection channel.
+  closed.catch(() => undefined)
+
   async function tick(): Promise<TickResult> {
     if (stopped) throw new Error('relay is stopped')
     if (inFlight !== undefined) return inFlight
@@ -184,10 +212,22 @@ export function startRelay(options: RelayOptions): Relay {
             scheduleNext(backoffMs)
           }
         },
-        (error) => {
+        (cause) => {
+          const error = cause instanceof Error ? cause : new Error(String(cause))
+          // A dead handle never recovers, so nothing is rescheduled: rejecting
+          // `closed` before `onError` keeps the terminal signal even if
+          // `onError` itself throws.
+          if (isDeadDbHandle(cause)) {
+            stopped = true
+            clearTimeout(timer)
+            const lost = new RelayConnectionLostError(error)
+            rejectClosed(lost)
+            options.onError?.(lost)
+            return
+          }
           applyBackoff()
           try {
-            options.onError?.(error instanceof Error ? error : new Error(String(error)))
+            options.onError?.(error)
           } finally {
             scheduleNext(backoffMs)
           }
@@ -200,10 +240,13 @@ export function startRelay(options: RelayOptions): Relay {
 
   return {
     tick,
+    closed,
     async stop(): Promise<void> {
       stopped = true
       clearTimeout(timer)
       if (inFlight !== undefined) await inFlight.catch(() => undefined)
+      // A no-op when the relay already stopped itself: that rejection stands.
+      resolveClosed()
     },
   }
 }

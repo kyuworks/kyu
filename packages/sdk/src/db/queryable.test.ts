@@ -1,11 +1,16 @@
 import { Client, Pool } from 'pg'
 import type { PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
-import type { Queryable } from './queryable.js'
+import type { Queryable, RelayQueryable } from './queryable.js'
 
 // Type-level proof: pg's Client and PoolClient satisfy Queryable with no cast.
 function acceptsQueryable(client: Queryable): Queryable {
   return client
+}
+
+// Type-level proof: a pool satisfies the relay's own seam with no cast.
+function acceptsRelayQueryable(db: RelayQueryable): RelayQueryable {
+  return db
 }
 
 describe('Queryable', () => {
@@ -23,5 +28,12 @@ describe('Queryable', () => {
     // @ts-expect-error Pool.totalCount is a number; Queryable requires it to be never.
     const q: Queryable = new Pool()
     expect(q).toBeDefined()
+  })
+})
+
+describe('RelayQueryable', () => {
+  it('is structurally satisfied by pg.Pool with no cast', () => {
+    const accept = (pool: Pool): RelayQueryable => acceptsRelayQueryable(pool)
+    expect(accept).toBeInstanceOf(Function)
   })
 })
