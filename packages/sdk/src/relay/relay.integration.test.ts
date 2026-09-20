@@ -387,9 +387,12 @@ describe('relay against the local engine: connection loss', () => {
 
         let published = false
         for (let attempt = 0; attempt < 10 && !published; attempt += 1) {
-          await relay.tick()
+          // Right after the kill, the pool may still dispatch this tick onto
+          // the doomed client before pg-pool evicts it; that rejection is
+          // expected here and the next loop iteration retries on a fresh one.
+          await relay.tick().catch(() => undefined)
           const row = await client.query('SELECT published_at FROM kyu_outbox WHERE id = $1', [b.id])
-          published = row.rows[0]?.['published_at'] !== null
+          published = (row.rows[0]?.['published_at'] ?? null) !== null
           if (!published) await new Promise<void>((resolve) => setTimeout(resolve, 100))
         }
         expect(published).toBe(true)
@@ -398,12 +401,56 @@ describe('relay against the local engine: connection loss', () => {
         // (claimed_by is set the moment a row is claimed, published or not)
         // is also published — nothing is stuck mid-flight.
         const orphaned = await client.query(
-          'SELECT id FROM kyu_outbox WHERE id = ANY($1) AND claimed_at IS NOT NULL AND published_at IS NULL',
+          'SELECT id FROM kyu_outbox WHERE id = ANY($1::uuid[]) AND claimed_at IS NOT NULL AND published_at IS NULL',
           [[a.id, b.id]],
         )
         expect(orphaned.rows).toHaveLength(0)
 
         await expect(relay.tick()).resolves.toBeDefined()
+      } finally {
+        await relay.stop()
+      }
+    } finally {
+      await pool.end()
+    }
+  })
+
+  it('a row claimed on a pool connection that dies before it is pushed is still re-shipped once the claim goes stale', async () => {
+    const pool = new Pool({ connectionString: process.env['KYU_TEST_DATABASE_URL'], max: 1 })
+    pool.on('error', () => undefined)
+
+    try {
+      const workerId = `worker-${randomUUID()}`
+      const envelope = await publisher.publish(client, orderPlaced, { n: 1 }, { tenantId: null })
+      // Claimed directly through the pool, not through a tick: this is the
+      // claim-in-flight state a pool can be left in when its connection dies
+      // between a claim and the push/mark that would settle it — distinct
+      // from the case above, where nothing had been claimed yet.
+      const claimed = await claimPendingRows(pool, { limit: 10, workerId, staleAfterMs: 300_000 })
+      expect(claimed.rows.map((row) => row.id)).toContain(envelope.id)
+
+      const pidResult = await pool.query('SELECT pg_backend_pid() AS pid')
+      const pid = pidResult.rows[0]?.['pid']
+      await client.query('SELECT pg_terminate_backend($1)', [pid])
+
+      // A short staleClaimMs: this claim was never settled by a tick's own
+      // finally block (it was made outside one), so only staleness frees it.
+      const relay = startRelay({ db: pool, hatchet, workerId, pollIntervalMs: 60_000, staleClaimMs: 500 })
+      try {
+        let published = false
+        for (let attempt = 0; attempt < 10 && !published; attempt += 1) {
+          await relay.tick().catch(() => undefined)
+          const row = await client.query('SELECT published_at FROM kyu_outbox WHERE id = $1', [envelope.id])
+          published = (row.rows[0]?.['published_at'] ?? null) !== null
+          if (!published) await new Promise<void>((resolve) => setTimeout(resolve, 100))
+        }
+        expect(published).toBe(true)
+
+        const orphaned = await client.query(
+          'SELECT id FROM kyu_outbox WHERE id = ANY($1::uuid[]) AND claimed_at IS NOT NULL AND published_at IS NULL',
+          [[envelope.id]],
+        )
+        expect(orphaned.rows).toHaveLength(0)
       } finally {
         await relay.stop()
       }

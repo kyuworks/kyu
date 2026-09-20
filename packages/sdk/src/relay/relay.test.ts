@@ -285,6 +285,17 @@ describe('startRelay: dead database handle', () => {
     await expect(relay.closed).rejects.toBeInstanceOf(RelayConnectionLostError)
     await expect(relay.tick()).rejects.toThrow('relay is stopped')
   })
+
+  it('also stops on the pool-closed marker', async () => {
+    const db: Queryable = {
+      async query(text): Promise<QueryRows> {
+        if (!text.includes('RETURNING *')) return { rows: [], rowCount: 0 }
+        throw new Error('Cannot use a pool after calling end on the pool')
+      },
+    }
+    const relay = startRelay({ db, hatchet: createFakeHatchet().hatchet, workerId: 'worker-1' })
+    await expect(relay.closed).rejects.toBeInstanceOf(RelayConnectionLostError)
+  })
 })
 
 describe('startRelay: poll loop backoff', () => {
