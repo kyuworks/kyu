@@ -1,4 +1,4 @@
-import type { Kyu } from '@kyuworks/sdk'
+import type { Publisher } from '@kyuworks/sdk'
 import { uuidv7 } from '@kyuworks/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { z } from 'zod'
@@ -58,7 +58,11 @@ async function insertLines(client: PoolClient, orderId: string, lines: readonly 
 
 // Interior: runs on a caller-supplied client without opening or closing a
 // transaction, so an integration test can drive it inside its own BEGIN/ROLLBACK.
-export async function placeOrderOn(client: PoolClient, kyu: Kyu, input: PlaceOrderInput): Promise<PlacedOrder> {
+export async function placeOrderOn(
+  client: PoolClient,
+  publisher: Publisher,
+  input: PlaceOrderInput,
+): Promise<PlacedOrder> {
   const orderId = uuidv7()
   const invoiceId = uuidv7()
 
@@ -76,13 +80,13 @@ export async function placeOrderOn(client: PoolClient, kyu: Kyu, input: PlaceOrd
   const lines = input.lines ?? []
   const totalCents = lines.length > 0 ? await insertLines(client, orderId, lines) : 0
 
-  const orderPlacedEnvelope = await kyu.publish(
+  const orderPlacedEnvelope = await publisher.publish(
     client,
     orderPlaced,
     { orderId, customerId: input.customerId },
     { tenantId: input.tenantId },
   )
-  const sendInvoiceEnvelope = await kyu.publish(
+  const sendInvoiceEnvelope = await publisher.publish(
     client,
     sendInvoice,
     { orderId, invoiceId },
@@ -98,6 +102,6 @@ export async function placeOrderOn(client: PoolClient, kyu: Kyu, input: PlaceOrd
 }
 
 /** One transaction: two INSERTs then two publishes, committed together. */
-export function placeOrder(pool: Pool, kyu: Kyu, input: PlaceOrderInput): Promise<PlacedOrder> {
-  return withTransaction(pool, (client) => placeOrderOn(client, kyu, input))
+export function placeOrder(pool: Pool, publisher: Publisher, input: PlaceOrderInput): Promise<PlacedOrder> {
+  return withTransaction(pool, (client) => placeOrderOn(client, publisher, input))
 }

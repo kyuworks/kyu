@@ -301,7 +301,7 @@ Durable handlers use `sleepFor` for delays and `waitFor(definition, { where, sco
 Working shape; names to be finalised in review.
 
 ```ts
-import { createKyu, defineEvent } from '@kyuworks/sdk';
+import { createKyu, createPublisher, defineEvent } from '@kyuworks/sdk';
 
 const orderPlaced = defineEvent({ name: 'shop.order.placed', version: 1, data: z.object({ orderId: z.string(), customerId: z.string() }) });
 const orderShipped = defineEvent({ name: 'shop.order.shipped', version: 1, data: z.object({ orderId: z.string() }) });
@@ -310,6 +310,10 @@ const kyu = createKyu({ hatchet: hatchetClient, source: 'shop.api' });
 
 // Producer, inside a transaction
 await kyu.publish(tx, orderPlaced, { orderId, customerId }, { tenantId, actorUserId });
+
+// A process that only publishes needs no engine client and no engine token
+const publisher = createPublisher({ source: 'shop.cli' });
+await publisher.publish(tx, orderPlaced, { orderId, customerId }, { tenantId });
 
 // Consumer
 export const sendInvoice = kyu.subscribe(orderPlaced, {

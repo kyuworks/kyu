@@ -3,11 +3,12 @@
 A small app that uses `@kyuworks/sdk` the way a real project would. It sells nothing real; the
 messages are named `shop.*` as a neutral stand-in.
 
-Three processes share one Postgres database and one Hatchet engine:
+Four processes share one Postgres database and one Hatchet engine:
 
 - **migrate** — applies the SDK's shipped migrations, then this app's own, through its own runner.
 - **relay** — ships the transactional outbox to the engine.
 - **worker** — runs the event and command handlers.
+- **ui** — the web app on `KYU_SHOP_UI_PORT`; serves the pages and the JSON routes, and reads run outcomes from the engine.
 
 `worker` runs `record-order` and `audit-order` (two subscribers on `shop.order.placed`),
 `send-invoice` (a FIFO-per-order command handler, `shop.invoice.send`), `watch-shipping`, a
@@ -46,6 +47,11 @@ Each command commits one transaction and prints the ids it created as one JSON l
 `--tenant` (or `--order` for `ship-order`) prints an error and exits 1; an unknown command does
 the same. The CLI's `--tenant` is unrelated to the demo tenant the web routes use (below); it
 lets a script exercise the bus under any tenant id.
+
+The CLI needs no engine credentials. It builds a publisher with `createShopPublisher()`
+(`src/kyu.ts`), which calls the SDK's `createPublisher({ source })`: publishing writes one
+`kyu_outbox` row inside the CLI's own transaction and stops there. Only `relay`, `worker` and `ui`
+build an engine client, and only they need `HATCHET_CLIENT_TOKEN`.
 
 ## The catalogue, orders and the demo tenant
 
@@ -164,8 +170,8 @@ Tracked across issue #81 (Tailwind v4, HeroUI v3, Heroicons), `pnpm --filter @ky
 | `KYU_SHOP_WATCH_TIMEOUT` | no | `3m` | `watch-shipping`'s correlated wait timeout; an h/m/s duration string. |
 | `KYU_SHOP_RELAY_BATCH_SIZE` | no | the SDK's default | Read only by `relay`; rows claimed per tick. |
 | `KYU_SHOP_UI_PORT` | no | `3333` | Read only by `ui`; the local port the web page binds to. |
-| `HATCHET_CLIENT_TOKEN` | yes | — | Read by the engine client directly, same as the SDK's own integration lane. |
-| `HATCHET_CLIENT_TLS_STRATEGY` | yes | — | Read by the engine client directly. |
+| `HATCHET_CLIENT_TOKEN` | for `relay`, `worker` and `ui` | — | Read by the engine client directly, same as the SDK's own integration lane. `migrate` and `publish-cli` never build one. |
+| `HATCHET_CLIENT_TLS_STRATEGY` | for `relay`, `worker` and `ui` | — | Read by the engine client directly. |
 
 The namespace is a prefix; the engine lowercases it and gives it a trailing underscore if one
 is missing.
@@ -190,8 +196,8 @@ pnpm --filter @kyuworks/shop worker
 pnpm --filter @kyuworks/shop publish-cli place-order --tenant <uuid>
 ```
 
-`HATCHET_CLIENT_TOKEN` and `HATCHET_CLIENT_TLS_STRATEGY` are needed by the relay, the worker and
-the CLI's producers, not by migrate.
+`HATCHET_CLIENT_TOKEN` and `HATCHET_CLIENT_TLS_STRATEGY` are needed by `relay`, `worker` and `ui`,
+not by `migrate` and not by `publish-cli`.
 
 ## Engine hygiene
 

@@ -1,7 +1,7 @@
 import nodeProcess from 'node:process'
 import { uuidv7 } from '@kyuworks/sdk'
 import { createPool } from '../db/pool.js'
-import { createShopKyu } from '../kyu.js'
+import { createShopPublisher } from '../kyu.js'
 import { readConfig } from '../config.js'
 import { log } from '../log.js'
 import { placeOrder } from '../producer/placeOrder.js'
@@ -12,10 +12,10 @@ async function main(): Promise<void> {
   const command = parseCommand(nodeProcess.argv.slice(2))
   const config = readConfig()
   const pool = createPool(config.databaseUrl)
-  const kyu = createShopKyu(config)
+  const publisher = createShopPublisher()
   try {
     if (command.kind === 'place-order') {
-      const placed = await placeOrder(pool, kyu, {
+      const placed = await placeOrder(pool, publisher, {
         tenantId: command.tenantId,
         customerId: command.customerId ?? uuidv7(),
       })
@@ -27,7 +27,7 @@ async function main(): Promise<void> {
       })
       return
     }
-    const envelopeId = await shipOrder(pool, kyu, {
+    const envelopeId = await shipOrder(pool, publisher, {
       tenantId: command.tenantId,
       orderId: command.orderId,
       carrier: command.carrier,
