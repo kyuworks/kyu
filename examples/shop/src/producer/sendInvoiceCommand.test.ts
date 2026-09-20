@@ -1,4 +1,4 @@
-import type { Kyu, Queryable, Unparsed } from '@kyuworks/sdk'
+import type { Publisher, Queryable, Unparsed } from '@kyuworks/sdk'
 import { createEnvelope } from '@kyuworks/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
@@ -41,14 +41,13 @@ function fakePool(client: PoolClient): Pool {
   return stub as Pool
 }
 
-function fakeKyu(events: string[]): Kyu {
-  const publish: Kyu['publish'] = (tx: Queryable, definition, data, options) => {
+function fakePublisher(events: string[]): Publisher {
+  const publish: Publisher['publish'] = (tx: Queryable, definition, data, options) => {
     const name: string = definition.name
     events.push(`publish ${name}`)
     return Promise.resolve(createEnvelope(definition, data, { tenantId: options.tenantId, source: 'test' }))
   }
-  const stub: Pick<Kyu, 'publish'> = { publish }
-  return stub as Kyu
+  return { publish }
 }
 
 const input = {
@@ -62,9 +61,9 @@ describe('sendInvoiceCommand', () => {
     const events: string[] = []
     const client = fakeClient(events)
     const pool = fakePool(client)
-    const kyu = fakeKyu(events)
+    const publisher = fakePublisher(events)
 
-    const sent = await sendInvoiceCommand(pool, kyu, input)
+    const sent = await sendInvoiceCommand(pool, publisher, input)
 
     expect(sent.invoiceId).toBe(input.invoiceId)
     expect(sent.envelopeId).toEqual(expect.any(String))
@@ -88,9 +87,9 @@ describe('sendInvoiceCommand', () => {
     const responses = new Map<string, FakeQueryResponse>([[ORDER_EXISTS_PREFIX, { rowCount: 0 }]])
     const client = fakeClient(events, responses)
     const pool = fakePool(client)
-    const kyu = fakeKyu(events)
+    const publisher = fakePublisher(events)
 
-    await expect(sendInvoiceCommand(pool, kyu, input)).rejects.toThrow(OrderNotFoundError)
+    await expect(sendInvoiceCommand(pool, publisher, input)).rejects.toThrow(OrderNotFoundError)
 
     expect(events).toEqual([
       'BEGIN',

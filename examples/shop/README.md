@@ -3,11 +3,12 @@
 A small app that uses `@kyuworks/sdk` the way a real project would. It sells nothing real; the
 messages are named `shop.*` as a neutral stand-in.
 
-Three processes share one Postgres database and one Hatchet engine:
+Four processes share one Postgres database and one Hatchet engine:
 
 - **migrate** — applies the SDK's shipped migrations, then this app's own, through its own runner.
 - **relay** — ships the transactional outbox to the engine.
 - **worker** — runs the event and command handlers.
+- **ui** — the web app on `KYU_SHOP_UI_PORT`; serves the pages and the JSON routes, and reads run outcomes from the engine.
 
 `worker` runs `record-order` and `audit-order` (two subscribers on `shop.order.placed`),
 `send-invoice` (a FIFO-per-order command handler, `shop.invoice.send`), `watch-shipping`, a

@@ -301,7 +301,7 @@ Durable handlers use `sleepFor` for delays and `waitFor(definition, { where, sco
 Working shape; names to be finalised in review.
 
 ```ts
-import { createKyu, defineEvent } from '@kyuworks/sdk';
+import { createKyu, createPublisher, defineEvent } from '@kyuworks/sdk';
 
 const orderPlaced = defineEvent({ name: 'shop.order.placed', version: 1, data: z.object({ orderId: z.string(), customerId: z.string() }) });
 const orderShipped = defineEvent({ name: 'shop.order.shipped', version: 1, data: z.object({ orderId: z.string() }) });

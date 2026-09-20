@@ -1,4 +1,4 @@
-import type { Kyu, Queryable, Unparsed } from '@kyuworks/sdk'
+import type { Publisher, Queryable, Unparsed } from '@kyuworks/sdk'
 import { createEnvelope } from '@kyuworks/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
@@ -42,11 +42,16 @@ interface RecordedPublish {
 }
 
 // A real generic method, not a cast: `createEnvelope` (already exported by
-// the SDK) builds a realistic envelope, so `Kyu['publish']`'s own generic
-// signature is satisfied without an unsafe cast on the return value.
-function fakeKyu(events: string[], publishes: RecordedPublish[], txs: Queryable[], failOnCall?: number): Kyu {
+// the SDK) builds a realistic envelope, so `Publisher['publish']`'s own
+// generic signature is satisfied without an unsafe cast on the return value.
+function fakePublisher(
+  events: string[],
+  publishes: RecordedPublish[],
+  txs: Queryable[],
+  failOnCall?: number,
+): Publisher {
   let calls = 0
-  const publish: Kyu['publish'] = async (tx, definition, data, options) => {
+  const publish: Publisher['publish'] = async (tx, definition, data, options) => {
     calls += 1
     txs.push(tx)
     // Assigned to a typed const: with the SDK unbuilt, `definition.name` is
@@ -57,8 +62,7 @@ function fakeKyu(events: string[], publishes: RecordedPublish[], txs: Queryable[
     if (failOnCall === calls) throw new Error('publish failed')
     return createEnvelope(definition, data, { tenantId: options.tenantId, source: 'test' })
   }
-  const stub: Pick<Kyu, 'publish'> = { publish }
-  return stub as Kyu
+  return { publish }
 }
 
 const input = { tenantId: '018f0000-0000-7000-8000-000000000001', customerId: '018f0000-0000-7000-8000-000000000002' }
@@ -78,9 +82,9 @@ describe('placeOrder', () => {
     const client = fakeClient(events)
     const pool = fakePool(client)
     const publishes: RecordedPublish[] = []
-    const kyu = fakeKyu(events, publishes, txs)
+    const publisher = fakePublisher(events, publishes, txs)
 
-    const placed = await placeOrder(pool, kyu, input)
+    const placed = await placeOrder(pool, publisher, input)
 
     expect(placed.orderId).toEqual(expect.any(String))
     expect(placed.invoiceId).toEqual(expect.any(String))
@@ -107,9 +111,9 @@ describe('placeOrder', () => {
     const pool = fakePool(client)
     const publishes: RecordedPublish[] = []
     // Fails on the first publish call.
-    const kyu = fakeKyu(events, publishes, txs, 1)
+    const publisher = fakePublisher(events, publishes, txs, 1)
 
-    await expect(placeOrder(pool, kyu, input)).rejects.toThrow('publish failed')
+    await expect(placeOrder(pool, publisher, input)).rejects.toThrow('publish failed')
 
     expect(events).toEqual([
       'BEGIN',
@@ -132,9 +136,11 @@ describe('placeOrder', () => {
     const client = fakeClient(events, responses)
     const pool = fakePool(client)
     const publishes: RecordedPublish[] = []
-    const kyu = fakeKyu(events, publishes, txs)
+    const publisher = fakePublisher(events, publishes, txs)
 
-    await expect(placeOrder(pool, kyu, { ...input, lines: [{ productId, quantity: 1 }] })).rejects.toThrow(/product/)
+    await expect(placeOrder(pool, publisher, { ...input, lines: [{ productId, quantity: 1 }] })).rejects.toThrow(
+      /product/,
+    )
 
     expect(publishes).toEqual([])
     expect(events).toEqual([
@@ -158,9 +164,9 @@ describe('placeOrder', () => {
     const client = fakeClient(events, responses)
     const pool = fakePool(client)
     const publishes: RecordedPublish[] = []
-    const kyu = fakeKyu(events, publishes, txs)
+    const publisher = fakePublisher(events, publishes, txs)
 
-    const placed = await placeOrder(pool, kyu, { ...input, lines: [{ productId, quantity: 1 }] })
+    const placed = await placeOrder(pool, publisher, { ...input, lines: [{ productId, quantity: 1 }] })
 
     expect(placed.totalCents).toBe(1400)
     expect(publishes).toEqual([
