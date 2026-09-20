@@ -47,6 +47,11 @@ Each command commits one transaction and prints the ids it created as one JSON l
 the same. The CLI's `--tenant` is unrelated to the demo tenant the web routes use (below); it
 lets a script exercise the bus under any tenant id.
 
+The CLI needs no engine credentials. It builds a publisher with `createShopPublisher()`
+(`src/kyu.ts`), which calls the SDK's `createPublisher({ source })`: publishing writes one
+`kyu_outbox` row inside the CLI's own transaction and stops there. Only `relay`, `worker` and `ui`
+build an engine client, and only they need `HATCHET_CLIENT_TOKEN`.
+
 ## The catalogue, orders and the demo tenant
 
 `migrations/0002_shop.sql` adds `shop_product` (a fixed six-row catalogue, seeded with literal
@@ -164,8 +169,8 @@ Tracked across issue #81 (Tailwind v4, HeroUI v3, Heroicons), `pnpm --filter @ky
 | `KYU_SHOP_WATCH_TIMEOUT` | no | `3m` | `watch-shipping`'s correlated wait timeout; an h/m/s duration string. |
 | `KYU_SHOP_RELAY_BATCH_SIZE` | no | the SDK's default | Read only by `relay`; rows claimed per tick. |
 | `KYU_SHOP_UI_PORT` | no | `3333` | Read only by `ui`; the local port the web page binds to. |
-| `HATCHET_CLIENT_TOKEN` | yes | — | Read by the engine client directly, same as the SDK's own integration lane. |
-| `HATCHET_CLIENT_TLS_STRATEGY` | yes | — | Read by the engine client directly. |
+| `HATCHET_CLIENT_TOKEN` | for `relay`, `worker` and `ui` | — | Read by the engine client directly, same as the SDK's own integration lane. `migrate` and `publish-cli` never build one. |
+| `HATCHET_CLIENT_TLS_STRATEGY` | for `relay`, `worker` and `ui` | — | Read by the engine client directly. |
 
 The namespace is a prefix; the engine lowercases it and gives it a trailing underscore if one
 is missing.
@@ -190,8 +195,8 @@ pnpm --filter @kyuworks/shop worker
 pnpm --filter @kyuworks/shop publish-cli place-order --tenant <uuid>
 ```
 
-`HATCHET_CLIENT_TOKEN` and `HATCHET_CLIENT_TLS_STRATEGY` are needed by the relay, the worker and
-the CLI's producers, not by migrate.
+`HATCHET_CLIENT_TOKEN` and `HATCHET_CLIENT_TLS_STRATEGY` are needed by `relay`, `worker` and `ui`,
+not by `migrate` and not by `publish-cli`.
 
 ## Engine hygiene
 

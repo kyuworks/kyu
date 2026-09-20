@@ -31,6 +31,13 @@ pnpm check
 | `@kyuworks/schemas` | The envelope contract, naming rules, schema adapters |
 | `@kyuworks/sdk` | Publish through a transactional outbox, subscribe with Hatchet, run durable handlers, read a run's outcome by envelope id |
 
+A process that only publishes needs no engine credentials. `createPublisher({ source })` returns
+just `publish`, writes the outbox row inside the caller's transaction and never builds an engine
+client, so a web API or a CLI needs only its own database. `createKyu({ hatchet, source })` is for
+a process that also subscribes, runs a worker, starts the relay or reads run outcomes; those need
+`HATCHET_CLIENT_TOKEN`, and `createHatchetClient()` throws "API token is required" the moment it is
+called without one.
+
 Run the relay on a small dedicated `pg.Pool` (the shop uses `max: 1`), not the application's pool and not a bare `pg.Client` (`kyu.startRelay({ db: pool, workerId })`). The relay never opens a transaction — a claim is held by the row's `claimed_by` stamp, not by the connection — so a pool is safe, and pg replaces a dropped connection on the next tick. `publish()` and `onceById()` still refuse a pool: their statements must land in the caller's transaction. Attach `pool.on('error', …)`, or a connection dropped while idle takes the process down.
 
 A relay handed a single `pg.Client` cannot recover: pg marks a client that lost its connection permanently unusable. The relay notices, stops polling, calls `onError` with a `RelayConnectionLostError` and rejects `relay.closed`. Exit non-zero on that rejection and let a supervisor restart the process. Rows the relay had claimed stay claimed until `staleClaimMs` passes, then another relay takes them over.

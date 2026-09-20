@@ -311,6 +311,10 @@ const kyu = createKyu({ hatchet: hatchetClient, source: 'shop.api' });
 // Producer, inside a transaction
 await kyu.publish(tx, orderPlaced, { orderId, customerId }, { tenantId, actorUserId });
 
+// A process that only publishes needs no engine client and no engine token
+const publisher = createPublisher({ source: 'shop.cli' });
+await publisher.publish(tx, orderPlaced, { orderId, customerId }, { tenantId });
+
 // Consumer
 export const sendInvoice = kyu.subscribe(orderPlaced, {
   name: 'shop.invoice.send',
