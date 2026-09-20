@@ -46,6 +46,7 @@ async function main(): Promise<void> {
       if (result.pushed > 0 || result.failed > 0 || result.skipped.length > 0) {
         log('relay', 'tick', { pushed: result.pushed, failed: result.failed, skipped: result.skipped.length })
       }
+      if (result.retired.length > 0) log('relay', 'retired', { ids: result.retired.join(',') })
     },
     onError: (error) => {
       log('relay', 'error', { message: error.message })

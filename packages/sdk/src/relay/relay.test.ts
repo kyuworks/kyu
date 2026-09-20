@@ -1,3 +1,4 @@
+import type { Unparsed } from '@kyuworks/schemas'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import type { QueryParam, Queryable, QueryRows } from '../db/queryable.js'
@@ -36,6 +37,7 @@ function makeRow(id: string, name: string): OutboxRow {
     claimed_at: new Date(),
     claimed_by: 'worker-1',
     published_at: null,
+    dead_at: null,
     attempts: 0,
     last_error: null,
   })
@@ -52,8 +54,9 @@ interface FakeDb {
 }
 
 // Mimics the shape of the real repository calls without a database: the
-// claim query is matched by its `RETURNING *`, everything else is a no-op.
-function createFakeDb(claimBatches: readonly OutboxRow[][]): FakeDb {
+// claim query is matched by its `RETURNING *`, the retire mark by its
+// `dead_at = CASE`, everything else is a no-op.
+function createFakeDb(claimBatches: ReadonlyArray<ReadonlyArray<Unparsed>>): FakeDb {
   const calls: RecordedQuery[] = []
   let claimIndex = 0
   const db: Queryable = {
@@ -63,6 +66,9 @@ function createFakeDb(claimBatches: readonly OutboxRow[][]): FakeDb {
         const rows = claimBatches[claimIndex] ?? []
         claimIndex += 1
         return { rows, rowCount: rows.length }
+      }
+      if (text.includes('dead_at = CASE')) {
+        return { rows: [{ dead_at: new Date() }], rowCount: 1 }
       }
       return { rows: [], rowCount: 0 }
     },
@@ -104,8 +110,39 @@ describe('startRelay: tick()', () => {
     await relay.stop()
 
     expect(bulkPush).toHaveBeenCalledTimes(2)
-    expect(result).toEqual({ claimed: 2, pushed: 2, failed: 0, skipped: [], failedIds: [] })
+    expect(result).toEqual({ claimed: 2, pushed: 2, failed: 0, skipped: [], retired: [], failedIds: [] })
     expect(calls.filter((call) => call.text.includes('SET published_at = now()'))).toHaveLength(2)
+  })
+
+  it('an unparseable row is reported as retired and never pushed', async () => {
+    const rowA = makeRow('018f0000-0000-7000-8000-00000000000a', 'shop.order.placed')
+    const badId = '018f0000-0000-7000-8000-00000000000b'
+    const { db } = createFakeDb([[rowA, { id: badId, not: 'an envelope' }]])
+    const { hatchet, bulkPush } = createFakeHatchet()
+
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1' })
+    const result = await relay.tick()
+    await relay.stop()
+
+    expect(result.retired).toEqual([badId])
+    expect(result.skipped).toEqual([])
+    expect(result.pushed).toBe(1)
+    expect(bulkPush).toHaveBeenCalledTimes(1)
+  })
+
+  it('a push failure is never retired', async () => {
+    const rowA = makeRow('018f0000-0000-7000-8000-00000000000a', 'shop.order.placed')
+    const { db } = createFakeDb([[rowA], [rowA], [rowA], [rowA]])
+    const bulkPush = vi.fn<BulkPushProcedure>().mockRejectedValue(new Error('engine unreachable'))
+    const hatchet = { events: fakeEvents(bulkPush) } as HatchetClient
+
+    const relay = startRelay({ db, hatchet, workerId: 'worker-1' })
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const result = await relay.tick()
+      expect(result.retired).toEqual([])
+      expect(result.failed).toBe(1)
+    }
+    await relay.stop()
   })
 
   it('records the failure for a rejecting bulkPush and still resolves the tick', async () => {
@@ -122,7 +159,7 @@ describe('startRelay: tick()', () => {
     const result = await relay.tick()
     await relay.stop()
 
-    expect(result).toEqual({ claimed: 2, pushed: 1, failed: 1, skipped: [], failedIds: [rowB.id] })
+    expect(result).toEqual({ claimed: 2, pushed: 1, failed: 1, skipped: [], retired: [], failedIds: [rowB.id] })
     expect(calls.some((call) => call.text.includes('attempts = attempts + 1'))).toBe(true)
   })
 

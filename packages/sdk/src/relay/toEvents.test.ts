@@ -24,6 +24,7 @@ function makeRow(overrides: { id: string; name: string; tenantId: string | null 
     claimed_at: new Date(),
     claimed_by: 'worker-1',
     published_at: null,
+    dead_at: null,
     attempts: 0,
     last_error: null,
   })

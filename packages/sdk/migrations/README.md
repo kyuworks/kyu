@@ -12,6 +12,7 @@ Naming: `<YYYYMMDDHHMMSS>_<slug>.sql`.
 | File | Purpose |
 |---|---|
 | `20260916233209_create_outbox.sql` | `kyu_outbox` (the producer-side outbox `publish()` writes to and the relay ships) and `kyu_processed` (the consumer-side processed-id table `onceById()` uses) |
+| `20260920232955_outbox_dead_at.sql` | `kyu_outbox.dead_at`: the relay retires a row whose envelope never parses, so it leaves the pending index and can be inspected and pruned. Recreates `kyu_outbox_pending_idx` with `dead_at IS NULL` in its predicate |
 
 ## Grants
 
@@ -20,6 +21,7 @@ Naming: `<YYYYMMDDHHMMSS>_<slug>.sql`.
 | `publish()` | `kyu_outbox` | INSERT |
 | relay | `kyu_outbox` | SELECT, UPDATE |
 | `prunePublished` | `kyu_outbox` | DELETE, SELECT |
+| `pruneRetired` | `kyu_outbox` | DELETE, SELECT |
 | `onceById` | `kyu_processed` | INSERT, SELECT |
 
 `kyu_outbox.tenant_id` is `uuid`: business tenant ids must be UUIDs,

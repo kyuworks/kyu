@@ -27,6 +27,9 @@ export interface TickResult {
   pushed: number
   failed: number
   skipped: readonly string[]
+  // Rows the claim will never return again: their envelope never parsed.
+  // Inspect with `dead_at IS NOT NULL`; delete with `pruneRetired`.
+  retired: readonly string[]
   failedIds: readonly string[]
 }
 
@@ -134,7 +137,14 @@ async function runTick(
     if (unsettledIds.length > 0) await releaseClaims(db, workerId, unsettledIds)
   }
 
-  const result: TickResult = { claimed: claimed.rows.length, pushed, failed, skipped: claimed.skipped, failedIds }
+  const result: TickResult = {
+    claimed: claimed.rows.length,
+    pushed,
+    failed,
+    skipped: claimed.skipped,
+    retired: claimed.retired,
+    failedIds,
+  }
   return { result, lastErrorMessage }
 }
 
