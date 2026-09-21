@@ -16,6 +16,7 @@ import type { BusCounts, SubscriptionRunCounts } from '../ui/busCounts.js'
 import { readBusCounts } from '../ui/busCounts.js'
 import type { BusTopology } from '../ui/busTopology.js'
 import { describeBusTopology } from '../ui/busTopology.js'
+import { handleUiRequest } from '../ui/handleRequest.js'
 import { spawnProcess, stopAllSpawnedProcesses } from './processes.js'
 import type { SpawnedProcess } from './processes.js'
 
@@ -65,6 +66,10 @@ const EMPTY_SUBSCRIPTION_COUNTS: Omit<SubscriptionRunCounts, 'name'> = {
   failed: 0,
   cancelled: 0,
 }
+
+// The label readProducerTotals coalesces a missing envelope source to, and the
+// heading BusDiagram then draws ("Producer: (unknown)").
+const UNKNOWN_SOURCE = '(unknown)'
 
 function subscriptionCounts(counts: BusCounts, name: string): SubscriptionRunCounts {
   return (
@@ -270,8 +275,7 @@ describe('readBusCounts: against the local engine', () => {
 
   // The relay only retires a row after three claims and a re-claim needs the
   // 300 s stale window, so this inserts the row already retired. The claim skips
-  // dead_at rows, so the running relay never touches it. `source` must stay a
-  // string: readProducerTotals groups by envelope->>'source' and parses z.string().
+  // dead_at rows, so the running relay never touches it.
   it('never counts a retired outbox row as waiting, and reports it under retired', async () => {
     const baseline = await readCounts()
     const retiredId = uuidv7()
@@ -289,6 +293,37 @@ describe('readBusCounts: against the local engine', () => {
       expect(afterRetire.outbox.published).toBe(
         afterRetire.outbox.waitingForRelay + afterRetire.outbox.shipped + afterRetire.outbox.retired,
       )
+    } finally {
+      await pool.query('DELETE FROM kyu_outbox WHERE id = $1', [retiredId])
+    }
+  }, 60_000)
+
+  // #120: the relay retires exactly the rows whose envelope failed the contract,
+  // and a missing `source` is the likeliest failure. This goes through the real
+  // route, because the 500 was produced by handleBusJson's catch, not by the query.
+  it('serves /bus.json with 200 and an (unknown) producer for a retired row whose envelope has only a name', async () => {
+    const baseline = await readCounts()
+    const baselineUnknown = baseline.producers.find((producer) => producer.source === UNKNOWN_SOURCE)?.published ?? 0
+    const retiredId = uuidv7()
+    try {
+      await pool.query(
+        `INSERT INTO kyu_outbox (id, name, tenant_id, envelope, published_at, dead_at, attempts, last_error)
+         VALUES ($1, 'shop.order.legacy', NULL, $2::jsonb, NULL, now(), 3, 'envelope: invalid')`,
+        [retiredId, JSON.stringify({ name: 'shop.order.legacy' })],
+      )
+
+      const response = await handleUiRequest(
+        { pool, kyu, dashboardUrl: 'http://localhost:8888', topology, readWeb: () => Promise.resolve(undefined) },
+        { method: 'GET', url: '/bus.json', contentType: '', body: '' },
+      )
+
+      expect(response.status).toBe(200)
+      const parsed: { counts: BusCounts } = JSON.parse(response.body)
+      expect(parsed.counts.producers.find((producer) => producer.source === UNKNOWN_SOURCE)?.published).toBe(
+        baselineUnknown + 1,
+      )
+      expect(parsed.counts.outbox.retired).toBe(baseline.outbox.retired + 1)
+      expect(parsed.counts.outbox.waitingForRelay).toBe(baseline.outbox.waitingForRelay)
     } finally {
       await pool.query('DELETE FROM kyu_outbox WHERE id = $1', [retiredId])
     }

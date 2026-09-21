@@ -348,4 +348,21 @@ describe('readBusCounts', () => {
 
     expect(counts.outbox).toEqual({ published: 5, waitingForRelay: 2, shipped: 0, retired: 0, scheduled: 3 })
   })
+
+  // Postgres returns NULL for envelope->>'source' when the envelope has no such
+  // key, and a retired row is exactly a row whose envelope failed the contract.
+  // The group key is folded in SQL, so producerTotalsRowSchema never sees null.
+  it('groups an outbox row with no envelope source under the (unknown) producer', async () => {
+    const { db, queries } = fakeDb([
+      [{ source: '(unknown)', published: 1, waiting: 0, retired: 1, scheduled: 0 }],
+      [],
+      [],
+    ])
+
+    const counts = await readBusCounts(db, fakeRuns({}), topologyWithDurable)
+
+    expect(counts.producers).toEqual([{ source: '(unknown)', published: 1 }])
+    expect(counts.outbox).toEqual({ published: 1, waitingForRelay: 0, shipped: 0, retired: 1, scheduled: 0 })
+    expect(queries.at(0)?.text).toContain("coalesce(envelope->>'source', '(unknown)')")
+  })
 })

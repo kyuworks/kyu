@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-pr-size.sh — net production additions vs merge base (#1978)
+# check-pr-size.sh — net production additions vs merge base
 #
 # Limit 400 (PR_SIZE_MAX). Metric: added − deleted on production paths.
 # A shrink (net ≤ 0) always passes.
@@ -18,6 +18,11 @@
 #        oversized-justified: <why this must land as one PR>
 #   CI reads both from $GITHUB_EVENT_PATH. If PR_SIZE_LABELS or
 #   PR_SIZE_BODY is set, the event is ignored so tests own labels/body.
+#
+# In a pull request (GITHUB_BASE_REF set) the base is the base branch as it is
+# now — origin/<base>, or the merge ref's first parent. Commits that landed on
+# the base branch after the pull request opened are not counted. --range is
+# ignored in that case.
 #
 # Usage:
 #   bash scripts/gates/check-pr-size.sh
@@ -56,8 +61,31 @@ if ! git -C "${ROOT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   exit 1
 fi
 
+# The base sha recorded in a pull request event goes stale the moment the base
+# branch moves, and three dots from it then count the base branch's own
+# commits. In a pull request, measure from the base branch as it is now.
+pr_base_commit() {
+  [ -n "${GITHUB_BASE_REF:-}" ] || return 1
+  if git -C "${ROOT_DIR}" rev-parse --verify --quiet "origin/${GITHUB_BASE_REF}^{commit}" >/dev/null 2>&1; then
+    echo "origin/${GITHUB_BASE_REF}"
+    return 0
+  fi
+  # CI checks out the merge ref, whose first parent is the base branch tip.
+  # Restrict to GitHub's own pull-request merge ref: a plain branch whose tip
+  # happens to be a merge commit (e.g. merging the base into the branch as a
+  # workaround) must not take this path.
+  if [[ "${GITHUB_REF:-}" == refs/pull/*/merge ]] \
+    && git -C "${ROOT_DIR}" rev-parse --verify --quiet "HEAD^2^{commit}" >/dev/null 2>&1; then
+    echo "HEAD^1"
+    return 0
+  fi
+  return 1
+}
+
 DIFF_SPEC=""
-if [[ "${RANGE}" == *...* ]]; then
+if pr_base="$(pr_base_commit)"; then
+  DIFF_SPEC="${pr_base}...HEAD"
+elif [[ "${RANGE}" == *...* ]]; then
   from="${RANGE%%...*}"
   to="${RANGE#*...}"
   DIFF_SPEC="${from}...${to:-HEAD}"
