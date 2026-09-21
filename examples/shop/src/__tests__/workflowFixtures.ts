@@ -102,6 +102,40 @@ export async function insertStepIdCollisionDefinition(
   return { definitionId, versionId }
 }
 
+// One long delay, one notify, one end: the smallest definition that must
+// hand its wait to a scheduled publish (#113).
+export async function insertLongDelayDefinition(
+  admin: Client,
+  tenantId: string,
+  delaySeconds: number,
+  notifyText = 'The long wait is over — chase the warehouse.',
+): Promise<InsertedDefinition> {
+  const definitionId = randomUUID()
+  const versionId = randomUUID()
+  const steps = {
+    schemaVersion: 1,
+    start: 'hold',
+    steps: [
+      { id: 'hold', kind: 'delay', input: { seconds: delaySeconds }, next: 'nudge' },
+      { id: 'nudge', kind: 'notify', input: { text: notifyText }, next: 'finish' },
+      { id: 'finish', kind: 'end' },
+    ],
+  }
+  await admin.query(
+    'INSERT INTO shop_workflow_definition (id, tenant_id, name, enabled, current_version_id) VALUES ($1, $2, $3, false, NULL)',
+    [definitionId, tenantId, 'long-delay'],
+  )
+  await admin.query(
+    'INSERT INTO shop_workflow_version (id, definition_id, tenant_id, version, steps) VALUES ($1, $2, $3, 1, $4)',
+    [versionId, definitionId, tenantId, JSON.stringify(steps)],
+  )
+  await admin.query('UPDATE shop_workflow_definition SET enabled = true, current_version_id = $2 WHERE id = $1', [
+    definitionId,
+    versionId,
+  ])
+  return { definitionId, versionId }
+}
+
 // A second saved version, repointed as current: proves a parked run keeps
 // walking the version it pinned at the start, not this one (version-pin-holds).
 export async function insertNewVersion(

@@ -100,19 +100,20 @@ id.
 `run-workflow`, a durable handler, subscribes to that one message and walks the pinned version's
 steps: `src/workflow/definition.ts`'s `parseWorkflowDefinition` is the trust edge, run every time a
 version is loaded, never cached, so a stored definition that has drifted from the schema is caught
-there. A delay step is `ctx.sleepFor`. A branch step reads whether the order has shipped — the one
-condition this interpreter knows — and writes the exit it chose to `shop_workflow_step_log` in the
-same transaction as the decision; a replay reads that exit back instead of asking the order again,
-because only `sleepFor` itself replays from the durable log, not an ordinary database read. A
+there. A delay under 60 seconds parks the run in `ctx.sleepFor`; a delay of 60 seconds or more writes
+the step's ledger row and republishes the trigger message with `publishAt` set to the wake time and
+`resumeStepId` set to the next step, in one transaction, and the run ends — the relay ships the row
+at its time and a new run resumes at that step. A branch step reads whether the order has shipped —
+the one condition this interpreter knows — and writes the exit it chose to `shop_workflow_step_log`
+in the same transaction as the decision; a replay reads that exit back instead of asking the order
+again, because only `sleepFor` itself replays from the durable log, not an ordinary database read. A
 notify step publishes `shop.staff.notify` (ids only) for `notify-staff` to pick up, which reads the
-wording out of the pinned version by step id and writes a `shop_handler_log` row. Every step's
-effect — the ledger row, and for a notify step the published command — runs inside
-`kyu.onceById`, keyed on the run id and the step id (a step id may itself be `"start"`; the run's
-own start guard uses a separate key so the two can never collide), so a step that runs a second
-time after a restart changes nothing. `run-workflow` fixes `executionTimeout` at one hour, and
-`workflow/definition.ts` rejects a definition whose delays sum past 50 minutes (#113), so a run can
-never be evicted mid-sleep. Pinning the version also keeps two workers' recorded sleeps identical,
-which the durable engine requires. See
+wording out of the pinned version by step id and writes a `shop_handler_log` row. Every step's effect
+— the ledger row, and for a notify step the published command — runs inside `kyu.onceById`, keyed on
+the run id and the step id (a step id may itself be `"start"`; the run's own start guard uses a
+separate key so the two can never collide), so a step that runs a second time after a restart changes
+nothing. `run-workflow` fixes `executionTimeout` at one hour. Pinning the version also keeps two
+workers' recorded sleeps identical, which the durable engine requires. See
 `docs/architecture/adr/20260920-workflow-definitions-run-through-one-interpreter.md` for the design
 this follows.
 

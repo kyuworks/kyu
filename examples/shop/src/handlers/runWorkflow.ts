@@ -15,6 +15,10 @@ export const RUN_WORKFLOW_NAME = 'run-workflow'
 // and silently skip that step's own onceById-guarded effect. Separate key spaces.
 const stepKey = (stepId: string): string => `${RUN_WORKFLOW_NAME}:step:${stepId}`
 const RUN_START_KEY = `${RUN_WORKFLOW_NAME}:run-start`
+// A delay below this parks the run in sleepFor; at or above it the run hands
+// the wait to a scheduled publish and ends (#113). MAX_WORKFLOW_STEPS times
+// this is the worst in-process sleep, and stays under the 1h timeout below.
+export const DELAY_HANDOFF_SECONDS = 60
 
 type TriggerContext = DurableHandlerContext<MessageData<typeof workflowTriggered>>
 
@@ -31,7 +35,7 @@ interface RunState {
 // recorded exit back from the ledger instead of evaluating the world twice.
 async function runWorkflow(pool: Pool, kyu: Kyu, ctx: TriggerContext): Promise<void> {
   const tenantId = requireTenant(RUN_WORKFLOW_NAME, ctx)
-  const { runId, definitionId, versionId, orderId } = ctx.envelope.data
+  const { runId, definitionId, versionId, orderId, resumeStepId } = ctx.envelope.data
 
   // Trust edge: the stored definition. Parsed once, here; every step below takes the typed value.
   const pinned = await loadPinnedVersion(pool, { tenantId, definitionId, versionId })
@@ -43,7 +47,8 @@ async function runWorkflow(pool: Pool, kyu: Kyu, ctx: TriggerContext): Promise<v
   )
 
   const run: RunState = { pinned, tenantId, runId, orderId }
-  let stepId: string | undefined = pinned.definition.start
+  // A continuation names the step to walk from; a first trigger starts at the definition's start.
+  let stepId: string | undefined = resumeStepId ?? pinned.definition.start
   // Bounded by the step count: workflow/definition.ts already rejects a
   // cycle at parse time, so a walk from `start` can never revisit a step.
   for (let hops = 0; hops <= pinned.definition.steps.length; hops += 1) {
@@ -74,6 +79,41 @@ async function walkStep(
 ): Promise<string | undefined> {
   switch (step.kind) {
     case 'delay': {
+      if (step.input.seconds >= DELAY_HANDOFF_SECONDS) {
+        // The ledger row, the continuation and the onceById marker commit
+        // together: a replay publishes no second continuation and records no
+        // step without one. The wake time is computed once, inside that guard.
+        await withTransaction(pool, (tx) =>
+          kyu.onceById(tx, run.runId, stepKey(step.id), async () => {
+            await kyu.publish(
+              tx,
+              workflowTriggered,
+              {
+                runId: run.runId,
+                definitionId: run.pinned.definitionId,
+                versionId: run.pinned.versionId,
+                orderId: run.orderId,
+                resumeStepId: step.next,
+              },
+              {
+                tenantId: run.tenantId,
+                correlationId: run.runId,
+                causationId: ctx.envelope.id,
+                publishAt: new Date(Date.now() + step.input.seconds * 1000),
+              },
+            )
+            await recordStep(tx, {
+              runId: run.runId,
+              stepId: step.id,
+              tenantId: run.tenantId,
+              kind: step.kind,
+              exitStepId: step.next,
+            })
+          }),
+        )
+        // This run ends here; the scheduled continuation starts the next one.
+        return undefined
+      }
       // sleepFor replays from the durable log; the duration comes from the
       // PINNED version, so two workers always record the same wait.
       await ctx.sleepFor(`${step.input.seconds}s`)
@@ -160,8 +200,8 @@ async function walkStep(
 export function runWorkflowSubscription(kyu: Kyu, pool: Pool): Subscription {
   return kyu.durable(workflowTriggered, {
     name: RUN_WORKFLOW_NAME,
-    // Fixed at 1h; workflow/definition.ts caps a definition's total delay at
-    // 3000s (50 minutes) so a run can never be evicted mid-sleep (#113).
+    // Fixed at 1h. A delay of DELAY_HANDOFF_SECONDS or more never sleeps in-process (#113),
+    // so a run's total sleep stays under it.
     executionTimeout: '1h',
     // Runs of one order are handled in publish order; two orders run at once.
     concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'fifo' },

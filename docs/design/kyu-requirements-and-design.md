@@ -433,7 +433,7 @@ A consumer's workflow engine moves onto durable handlers: each run becomes one d
 |---|---|
 | Trigger job from a service seam | Subscription on the trigger's event name with a CEL filter |
 | One job per step with a claim token | Steps inside one durable handler; Hatchet checkpoints them |
-| Duration wait and a due sweep | `sleepFor` |
+| Duration wait and a due sweep | `sleepFor` for a short wait; above the hand-off threshold, `publish()` with `publishAt` at the wake time and a fresh run |
 | Wait-for-completion and a resumption table | `waitForEvent` with a CEL filter on the awaited id |
 | Schedule and `next_run_at` | Cron handlers |
 | One active run per owner unique index | Concurrency key on owner id with `CANCEL_NEWEST` |

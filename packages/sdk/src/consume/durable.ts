@@ -176,6 +176,13 @@ async function runDurableHandler<S extends MessageSchema>(
  * `sleepFor`, `waitFor` and the engine's `now()` replay from the durable log.
  * Side effects before a wait must be idempotent — that is what `onceById()` is for.
  *
+ * A run cannot outlast `executionTimeout`, which defaults to 24 hours here:
+ * the engine cancels a run whose sleeps and waits pass it, mid-wait. For a
+ * wait longer than that, do not sleep. Record where the run got to and
+ * publish the handler's own trigger message again with `publishAt` set to
+ * the wake time and a field saying where to continue, in one transaction,
+ * then return. `examples/shop/src/handlers/runWorkflow.ts` does this.
+ *
  * A worker stopping mid-run is handled in two halves. A run already parked in
  * `sleepFor`/`waitFor` is evicted by the engine and continues on the next
  * worker. A body that reaches its first wait *after* its worker began stopping
