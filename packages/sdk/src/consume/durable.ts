@@ -87,11 +87,8 @@ export function buildWaitForConditions(
   const lookback = options.lookback ?? '5m'
   const scope = options.scope ?? eventScope(handlerEnvelope)
   const considerEventsSince = new Date(now.getTime() - durationToMs(lookback)).toISOString()
-  // Pinned to the awaited definition's version: a same-name event on another
-  // version would otherwise match here and fail decoding non-retryably.
-  // Envelope ids are uuid v7, so a lexicographic CEL `>` is publish order: a re-park skips the
-  // message that woke the handler without moving the lookback window, which would lose the
-  // messages that landed while the handler was checking its own state.
+  // Pinned to the awaited definition's version, so a same-name event on another version does
+  // not match here and fail decoding. Envelope ids are uuid v7, so CEL `>` is publish order.
   const keyMatch = celEquals(options.where.field, options.where.equals)
   const afterClause =
     options.afterMessage === undefined ? '' : ` && input.id > ${JSON.stringify(options.afterMessage.id)}`
@@ -208,7 +205,10 @@ async function runDurableHandler<S extends MessageSchema>(
  *       const waitOptions: WaitForOptions = { where: { field: 'data.leadId', equals: leadId }, timeout: '1h' }
  *       if (afterMessage !== undefined) waitOptions.afterMessage = afterMessage
  *       const result = await ctx.waitFor(leadChanged, waitOptions)
- *       if (result.kind === 'timeout') break
+ *       if (result.kind === 'timeout') {
+ *         await readyInOurOwnDatabase(leadId)
+ *         break
+ *       }
  *       afterMessage = result.envelope
  *       if (await readyInOurOwnDatabase(leadId)) break
  *     }

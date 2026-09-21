@@ -209,7 +209,10 @@ describe('durable: waking again after a wake', () => {
 
   async function handleWakeCheckPark(ctx: DurableHandlerContext<TriggerData>): Promise<void> {
     wakes.set(ctx.envelope.id, [])
-    ledger.set(ctx.envelope.id, [])
+    // Created once per envelope id, not reset on replay: a restart re-runs
+    // this body from the top, and the dedup below must see what a prior
+    // worker already recorded to prove at-most-once effect per message.
+    if (!ledger.has(ctx.envelope.id)) ledger.set(ctx.envelope.id, [])
     // Widened on purpose: `afterMessage` reads the envelope's id only.
     let afterMessage: Envelope<MessageDataShape> | undefined
     for (let round = 0; round < ctx.envelope.data.rounds; round += 1) {
