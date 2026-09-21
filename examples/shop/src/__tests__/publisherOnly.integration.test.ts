@@ -21,6 +21,28 @@ afterAll(async () => {
   await admin.end()
 })
 
+interface TableCounts {
+  outbox: number
+  processed: number
+  orders: number
+  runs: number
+}
+
+// vitest.integration.clearTables.ts empties these before every file. This is
+// the smallest integration file, so vitest's size-descending order runs it
+// last: whatever an earlier file left behind, this file still starts clean.
+describe('the shop integration harness', () => {
+  it('starts every file with empty bus and shop tables', async () => {
+    const result = await admin.query<TableCounts>(
+      `SELECT (SELECT count(*)::int FROM kyu_outbox) AS outbox,
+              (SELECT count(*)::int FROM kyu_processed) AS processed,
+              (SELECT count(*)::int FROM shop_order) AS orders,
+              (SELECT count(*)::int FROM shop_workflow_run) AS runs`,
+    )
+    expect(result.rows[0]).toEqual({ outbox: 0, processed: 0, orders: 0, runs: 0 })
+  })
+})
+
 interface CliResult {
   code: number
   stdout: string
