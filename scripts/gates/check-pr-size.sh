@@ -19,6 +19,10 @@
 #   CI reads both from $GITHUB_EVENT_PATH. If PR_SIZE_LABELS or
 #   PR_SIZE_BODY is set, the event is ignored so tests own labels/body.
 #
+# In a pull request (GITHUB_BASE_REF set) the base is the base branch as it is
+# now — origin/<base>, or the merge ref's first parent. Commits that landed on
+# the base branch after the pull request opened are not counted.
+#
 # Usage:
 #   bash scripts/gates/check-pr-size.sh
 #   bash scripts/gates/check-pr-size.sh --range origin/develop...HEAD
@@ -56,8 +60,27 @@ if ! git -C "${ROOT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   exit 1
 fi
 
+# The base sha recorded in a pull request event goes stale the moment the base
+# branch moves, and three dots from it then count the base branch's own
+# commits. In a pull request, measure from the base branch as it is now.
+pr_base_commit() {
+  [ -n "${GITHUB_BASE_REF:-}" ] || return 1
+  if git -C "${ROOT_DIR}" rev-parse --verify --quiet "origin/${GITHUB_BASE_REF}^{commit}" >/dev/null 2>&1; then
+    echo "origin/${GITHUB_BASE_REF}"
+    return 0
+  fi
+  # CI checks out the merge ref, whose first parent is the base branch tip.
+  if git -C "${ROOT_DIR}" rev-parse --verify --quiet "HEAD^2^{commit}" >/dev/null 2>&1; then
+    echo "HEAD^1"
+    return 0
+  fi
+  return 1
+}
+
 DIFF_SPEC=""
-if [[ "${RANGE}" == *...* ]]; then
+if pr_base="$(pr_base_commit)"; then
+  DIFF_SPEC="${pr_base}...HEAD"
+elif [[ "${RANGE}" == *...* ]]; then
   from="${RANGE%%...*}"
   to="${RANGE#*...}"
   DIFF_SPEC="${from}...${to:-HEAD}"
