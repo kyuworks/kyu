@@ -1,6 +1,7 @@
 import { envelopeSchema } from '@kyuworks/schemas'
 import { KyuError } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
+import type { RunProgress } from './runProgress.js'
 
 // A durable run parked in `sleepFor`/`waitFor` reads as `running`: the
 // engine exposes no separate parked state.
@@ -36,11 +37,13 @@ export interface RunLookup {
   /** A uuid v7: both `id` and `correlationId` on the envelope are uuid v7. */
   id: string
   /** The public method's name, so a thrown KyuError names what the caller called. */
-  caller: 'runs.forEnvelope' | 'runs.cancelForEnvelope' | 'runs.cancelForCorrelation'
+  caller: 'runs.forEnvelope' | 'runs.forCorrelation' | 'runs.cancelForEnvelope' | 'runs.cancelForCorrelation'
 }
 
 export interface KyuRuns {
   forEnvelope(envelopeId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
+  /** Every run that shares this correlation id — a durable run and the command runs it published — oldest first, with what a parked run is waiting for. An unknown id returns an empty array. */
+  forCorrelation(correlationId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunProgress[]>
   /** Cancels every run the engine holds for this envelope id and returns them as they read just before the cancel. An unknown id returns an empty array. */
   cancelForEnvelope(envelopeId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
   /** Cancels every run that shares this correlation id — a durable run and the command runs it published — and returns them as they read just before the cancel. An unknown id returns an empty array. */
@@ -80,7 +83,6 @@ const RUN_PAGE_MAX_PAGES = 10
 // for its envelopes vanish, indistinguishable from an unknown envelope id.
 const SINCE_MARGIN_MS = 5 * 60_000
 
-// #100's forCorrelation is this same lookup with key 'correlationId'.
 const LOOKUP_SCHEMA = {
   envelopeId: envelopeSchema.shape.id,
   correlationId: envelopeSchema.shape.correlationId,

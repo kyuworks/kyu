@@ -15,6 +15,7 @@ import { decodeAndCheckMetadata, decodeIncomingEnvelope } from './subscribe.js'
 import type { Subscription } from './subscribe.js'
 import { buildHandlerContext } from './handlerContext.js'
 import type { HandlerContext } from './handlerContext.js'
+import { toWaitLabel } from './runWaits.js'
 import { applySharedTaskOptions, assertSubscriptionName } from './taskOptions.js'
 import type { SharedTaskOptions } from './taskOptions.js'
 
@@ -119,7 +120,9 @@ export async function waitForMessage<S extends MessageSchema>(
   const now = await hatchetContext.now()
   const { userEvent, sleep } = buildWaitForConditions(handlerEnvelope, definition, options, now)
 
-  const raw: WaitForRawResult = await hatchetContext.waitFor(Or(userEvent, sleep))
+  // The label is the only way `where` reaches a reader: the engine's durable
+  // log carries the event key but not the CEL expression this builds.
+  const raw: WaitForRawResult = await hatchetContext.waitFor(Or(userEvent, sleep), toWaitLabel(options.where))
   // Engines before durable eviction return the CREATE map unwrapped.
   const created: WaitForMatches = raw.CREATE ?? raw
 
@@ -219,6 +222,10 @@ async function runDurableHandler<S extends MessageSchema>(
  *       afterMessage = result.envelope
  *       if (await readyInOurOwnDatabase(leadId)) break
  *     }
+ *
+ * A parked run's wait is readable through `kyu.runs.forCorrelation`: a sleep
+ * reports its wake time, a `waitFor` reports the message name and the field
+ * match it is holding out for.
  *
  * A run cancelled through `kyu.runs.cancelForEnvelope`/`cancelForCorrelation`
  * ends `cancelled` by itself: the engine aborts a parked `sleepFor`/`waitFor`,
