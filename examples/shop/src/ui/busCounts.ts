@@ -11,6 +11,8 @@ export interface OutboxCounts {
   published: number
   waitingForRelay: number
   shipped: number
+  /** Rows the relay gave up on (`dead_at` set); never waiting, never shipped. */
+  retired: number
 }
 
 export interface DoneOutcomeCount {
@@ -73,6 +75,7 @@ const producerTotalsRowSchema = z.object({
   source: z.string(),
   published: z.coerce.number().int(),
   waiting: z.coerce.number().int(),
+  retired: z.coerce.number().int(),
 })
 const windowRowSchema = z.object({ id: z.string(), name: z.string() })
 const handlerLogRowSchema = z.object({ envelope_id: z.string(), handler: z.string() })
@@ -91,7 +94,8 @@ async function readProducerTotals(db: CountsSource): Promise<ProducerTotalsRow[]
   const result = await db.query(
     `SELECT envelope->>'source' AS source,
             count(*)::int AS published,
-            count(*) FILTER (WHERE published_at IS NULL)::int AS waiting
+            count(*) FILTER (WHERE published_at IS NULL AND dead_at IS NULL)::int AS waiting,
+            count(*) FILTER (WHERE dead_at IS NOT NULL)::int AS retired
      FROM kyu_outbox
      GROUP BY 1
      ORDER BY 1`,
@@ -208,7 +212,10 @@ function foldBusCounts(
   const producers: ProducerCounts[] = producerRows.map((row) => ({ source: row.source, published: row.published }))
   const published = producerRows.reduce((sum, row) => sum + row.published, 0)
   const waitingForRelay = producerRows.reduce((sum, row) => sum + row.waiting, 0)
-  const outbox: OutboxCounts = { published, waitingForRelay, shipped: published - waitingForRelay }
+  // Retirement only ever lands on a row the claim selected, which is published_at IS NULL
+  // (packages/sdk outboxRepository.ts), so the three buckets never overlap.
+  const retired = producerRows.reduce((sum, row) => sum + row.retired, 0)
+  const outbox: OutboxCounts = { published, waitingForRelay, retired, shipped: published - waitingForRelay - retired }
 
   const logByEnvelope = new Map<string, Set<string>>()
   const envelopesByHandler = new Map<string, Set<string>>()

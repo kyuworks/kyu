@@ -25,7 +25,7 @@ const topology: BusTopology = {
 
 const counts: BusCounts = {
   producers: [{ source: 'shop', published: 5 }],
-  outbox: { published: 5, waitingForRelay: 1, shipped: 4 },
+  outbox: { published: 5, waitingForRelay: 1, shipped: 4, retired: 0 },
   subscriptions: [
     { name: 'record-order', queued: 0, running: 0, completed: 5, failed: 0, cancelled: 0 },
     {
@@ -68,5 +68,12 @@ describe('parseBusDocument', () => {
     const outcome = parseBusDocument(JSON.stringify({ topology, counts: { ...counts, subscriptions: [] } }))
 
     expect(outcome.ok).toBe(true)
+  })
+
+  it('refuses an outbox block with no retired count', () => {
+    const { retired: _retired, ...outboxWithoutRetired } = counts.outbox
+    const outcome = parseBusDocument(JSON.stringify({ topology, counts: { ...counts, outbox: outboxWithoutRetired } }))
+
+    expect(outcome.ok).toBe(false)
   })
 })

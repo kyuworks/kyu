@@ -7,7 +7,7 @@ const document: BusDocument = {
   topology: { producer: { source: 'shop' }, subscriptions: [] },
   counts: {
     producers: [{ source: 'shop', published: 1 }],
-    outbox: { published: 1, waitingForRelay: 0, shipped: 1 },
+    outbox: { published: 1, waitingForRelay: 0, shipped: 1, retired: 0 },
     subscriptions: [],
     window: { limit: 200, envelopes: 1, engineCalls: 1 },
   },
@@ -15,7 +15,7 @@ const document: BusDocument = {
 
 const otherDocument: BusDocument = {
   ...document,
-  counts: { ...document.counts, outbox: { published: 2, waitingForRelay: 1, shipped: 1 } },
+  counts: { ...document.counts, outbox: { published: 2, waitingForRelay: 1, shipped: 1, retired: 0 } },
 }
 
 function okOutcome(body: BusDocument): JsonFetchOutcome {

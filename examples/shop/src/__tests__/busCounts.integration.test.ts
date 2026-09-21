@@ -267,4 +267,30 @@ describe('readBusCounts: against the local engine', () => {
       subscriptionCounts(baseline, 'send-invoice').completed,
     )
   }, 90_000)
+
+  // The relay only retires a row after three claims and a re-claim needs the
+  // 300 s stale window, so this inserts the row already retired. The claim skips
+  // dead_at rows, so the running relay never touches it. `source` must stay a
+  // string: readProducerTotals groups by envelope->>'source' and parses z.string().
+  it('never counts a retired outbox row as waiting, and reports it under retired', async () => {
+    const baseline = await readCounts()
+    const retiredId = uuidv7()
+    try {
+      await pool.query(
+        `INSERT INTO kyu_outbox (id, name, tenant_id, envelope, published_at, dead_at, attempts, last_error)
+         VALUES ($1, 'shop.order.legacy', NULL, $2::jsonb, NULL, now(), 3, 'envelope: invalid')`,
+        [retiredId, JSON.stringify({ name: 'shop.order.legacy', source: 'shop' })],
+      )
+      const afterRetire = await readCounts()
+      expect(afterRetire.outbox.waitingForRelay).toBe(baseline.outbox.waitingForRelay)
+      expect(afterRetire.outbox.retired).toBe(baseline.outbox.retired + 1)
+      expect(afterRetire.outbox.published).toBe(baseline.outbox.published + 1)
+      expect(afterRetire.outbox.shipped).toBe(baseline.outbox.shipped)
+      expect(afterRetire.outbox.published).toBe(
+        afterRetire.outbox.waitingForRelay + afterRetire.outbox.shipped + afterRetire.outbox.retired,
+      )
+    } finally {
+      await pool.query('DELETE FROM kyu_outbox WHERE id = $1', [retiredId])
+    }
+  }, 60_000)
 })

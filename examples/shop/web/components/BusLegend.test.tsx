@@ -6,6 +6,7 @@ const TERMS = [
   'Producer',
   'publish()',
   'Outbox',
+  'Retired',
   'Relay',
   'Engine',
   'Run',
@@ -31,7 +32,7 @@ function escapeReactText(text: string): string {
 }
 
 describe('BusLegend', () => {
-  it('holds all fourteen legend entries', () => {
+  it('holds all fifteen legend entries', () => {
     const markup = renderToStaticMarkup(<BusLegend engineWindowLimit={200} />)
 
     for (const term of TERMS) {
@@ -45,6 +46,16 @@ describe('BusLegend', () => {
     expect(markup).toContain(
       escapeReactText(
         'The outbox is a table in the shop\'s own database, kyu_outbox. "Waiting for relay" counts rows the relay has not sent yet. "Shipped" counts the rest. Stop the relay and place an order: waiting for relay goes up and nothing below this box moves.',
+      ),
+    )
+  })
+
+  it('states the Retired entry verbatim', () => {
+    const markup = renderToStaticMarkup(<BusLegend engineWindowLimit={200} />)
+
+    expect(markup).toContain(
+      escapeReactText(
+        'A row the relay could not read. Its envelope does not match the message contract, so after three tries the relay gave up and set the row\'s dead_at column. The row will never be sent, and it is not counted under "waiting for relay" any more, so that number can come back down to zero instead of alerting for ever. Retired rows stay in kyu_outbox until something deletes them.',
       ),
     )
   })

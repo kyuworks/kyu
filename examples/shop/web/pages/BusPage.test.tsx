@@ -13,7 +13,7 @@ const oneFailedFixture: BusDocument = {
   },
   counts: {
     producers: [],
-    outbox: { published: 0, waitingForRelay: 0, shipped: 0 },
+    outbox: { published: 0, waitingForRelay: 0, shipped: 0, retired: 0 },
     subscriptions: [{ name: 'record-order', queued: 0, running: 0, completed: 0, failed: 1, cancelled: 0 }],
     window: { limit: 200, envelopes: 0, engineCalls: 0 },
   },
