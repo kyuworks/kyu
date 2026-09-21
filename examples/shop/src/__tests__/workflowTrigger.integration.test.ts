@@ -19,10 +19,9 @@ let pool: Pool
 let kyu: Kyu
 let admin: Client
 
-// Every order this file commits, so afterAll can remove them: this suite's
-// kyu_outbox rows are never claimed by a relay, and left unpublished they
-// would inflate producer.integration.test.ts's own relay.tick() count when
-// both files run in the same (fileParallelism: false) vitest invocation.
+// Every order this file commits, so afterAll can remove them. The per-file
+// clean in vitest.integration.clearTables.ts is the guarantee; this delete
+// is belt and braces so this file leaves nothing behind either.
 const placedOrders: PlacedOrder[] = []
 
 beforeAll(async () => {
@@ -53,7 +52,7 @@ afterAll(async () => {
 // Inserts one enabled definition + version for a fresh random tenant, the
 // smallest fixture that makes triggerWorkflowOn find something to trigger.
 // shop_workflow_definition and shop_workflow_version are never cleaned
-// (vitest.integration.setup.ts), so this grows both tables by one row per run.
+// (vitest.integration.clearTables.ts), so this grows both tables by one row per run.
 async function insertEnabledDefinition(tenantId: string): Promise<{ definitionId: string; versionId: string }> {
   const definitionId = randomUUID()
   const versionId = randomUUID()

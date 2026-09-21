@@ -3,23 +3,6 @@ import { Client } from 'pg'
 import { MissingConfigError, readConfig } from './src/config.js'
 import { APP_MIGRATIONS_DIRECTORY, applyPending, ensureDatabase } from './src/db/migrate.js'
 
-// shop_order_line references shop_order, so it must truncate in the same
-// statement (0002_shop.sql); shop_product is seed data and is never cleaned.
-// shop_workflow_definition and shop_workflow_version are seed/config data
-// too (0005_shop.sql's demo definition) and are never cleaned; tests also
-// insert their own rows directly for random tenants, so both tables grow by
-// one per test tenant across runs.
-const CLEAN_TABLES = [
-  'shop_order_line',
-  'shop_order',
-  'shop_invoice',
-  'shop_handler_log',
-  'shop_workflow_step_log',
-  'shop_workflow_run',
-  'kyu_outbox',
-  'kyu_processed',
-]
-
 // Global setup for the integration suite. A missing database is a failure,
 // not a skip: a suite that silently skips reports green for code it never ran.
 export default async function setup(): Promise<void> {
@@ -45,7 +28,6 @@ export default async function setup(): Promise<void> {
   await db.connect()
   try {
     await applyPending(db, [MIGRATIONS_DIRECTORY, APP_MIGRATIONS_DIRECTORY])
-    await db.query(`TRUNCATE TABLE ${CLEAN_TABLES.join(', ')}`)
   } finally {
     await db.end()
   }

@@ -43,7 +43,7 @@ export interface InsertedDefinition {
 // The smallest fixture that makes run-workflow find something to walk: one
 // enabled definition, one version, for a fresh random tenant.
 // shop_workflow_definition and shop_workflow_version are never truncated
-// (vitest.integration.setup.ts), so this grows both tables by one row per test.
+// (vitest.integration.clearTables.ts), so this grows both tables by one row per test.
 export async function insertWorkflowDefinition(
   admin: Client,
   tenantId: string,
