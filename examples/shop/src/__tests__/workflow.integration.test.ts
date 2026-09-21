@@ -10,7 +10,7 @@ import { createPool, withTransaction } from '../db/pool.js'
 import { createShopKyu } from '../kyu.js'
 import { placeOrder } from '../producer/placeOrder.js'
 import { triggerWorkflowOn } from '../producer/triggerWorkflow.js'
-import { insertNewVersion, insertWorkflowDefinition } from './workflowFixtures.js'
+import { insertNewVersion, insertStepIdCollisionDefinition, insertWorkflowDefinition } from './workflowFixtures.js'
 import type { InsertedDefinition } from './workflowFixtures.js'
 import { spawnProcess, stopAllSpawnedProcesses } from './processes.js'
 import type { SpawnedProcess } from './processes.js'
@@ -18,10 +18,11 @@ import type { SpawnedProcess } from './processes.js'
 // Drives run-workflow as a real worker process, the same restart harness
 // restart.integration.test.ts uses for watch-shipping: every test gets its
 // own namespace, relay and worker(s) so a worker one test leaves running can
-// never pick up a run from a different test. Every startShop call below
-// passes '8s': watch-shipping also fires on order placed and would hold a
-// durable slot for minutes on its 3-minute default, and a mixed value across
-// two workers of one parked run is the non-determinism trap (durable.ts).
+// never pick up a run from a different test. startShop below fixes
+// KYU_SHOP_WATCH_TIMEOUT at '8s' for every worker it spawns: watch-shipping
+// also fires on order placed and would hold a durable slot for minutes on
+// its 3-minute default, and a mixed value across two workers of one parked
+// run is the non-determinism trap (durable.ts).
 const RELAY_SCRIPT = path.resolve(import.meta.dirname, '../../dist/relay.js')
 const WORKER_SCRIPT = path.resolve(import.meta.dirname, '../../dist/worker.js')
 
@@ -138,7 +139,15 @@ afterAll(async () => {
 }, 30_000)
 
 describe('run-workflow: walking a stored definition', () => {
-  it('a run stopped while its body executes finishes on the next worker', async () => {
+  // The run row commits and the very next statement is sleepFor, so by the
+  // time this test can observe the run row and stop worker A, the run is
+  // already parked in wait-a-bit, not executing. The other half — a worker
+  // stopping while the handler body is still running, which fails that
+  // attempt with WorkerStoppingError and retries onto the next worker — is
+  // proven once, at the SDK level, by durable.integration.test.ts's "stops
+  // worker A without hanging and completes on worker B with no retries set
+  // by the caller"; this file does not repeat it.
+  it('a run parked in its first delay finishes on the next worker', async () => {
     const tenantId = randomUUID()
     await insertWorkflowDefinition(admin, tenantId)
     const shop = await startShop()
@@ -233,7 +242,7 @@ describe('run-workflow: walking a stored definition', () => {
     const definition: InsertedDefinition = await insertWorkflowDefinition(admin, tenantId)
     const shop = await startShop()
     try {
-      await shop.spawnWorker()
+      const workerA = await shop.spawnWorker()
 
       const placed = await placeOrder(pool, kyu, { tenantId, customerId: randomUUID() })
 
@@ -249,6 +258,12 @@ describe('run-workflow: walking a stored definition', () => {
         settleSeconds: 5,
         notifyText: 'version 2 text: should never be sent',
       })
+
+      // Force an actual replay: without this, loadPinnedVersion only ever
+      // runs once, before version 2 exists, and the test would pass even if
+      // the interpreter re-read shop_workflow_definition.current_version_id.
+      await workerA.stop()
+      await shop.spawnWorker()
 
       const finished = await waitUntil(async () => (await runRow(runId))?.finished_at != null, 90_000)
       expect(finished, 'run never finished').toBe(true)
@@ -325,6 +340,36 @@ describe('run-workflow: walking a stored definition', () => {
       expect(secondFirstStep, "second run's wait-a-bit row never appeared").toBeDefined()
       if (firstRun?.finished_at == null || secondFirstStep === undefined) throw new Error('unreachable')
       expect(firstRun.finished_at.getTime()).toBeLessThan(secondFirstStep.at.getTime())
+    } finally {
+      await shop.stopAll()
+    }
+  }, 180_000)
+
+  // stepIdSchema allows a step literally named "start"; a run-start guard
+  // keyed the same way as a step guard would collide with it and silently
+  // skip that step's own effect (here, the notify never publishes).
+  it('a step literally named "start" still gets its own guard, not the run-start one', async () => {
+    const tenantId = randomUUID()
+    await insertStepIdCollisionDefinition(admin, tenantId)
+    const shop = await startShop()
+    try {
+      await shop.spawnWorker()
+
+      const placed = await placeOrder(pool, kyu, { tenantId, customerId: randomUUID() })
+
+      const appeared = await waitUntil(() => findRunId(tenantId, placed.orderId).then((id) => id !== null), 60_000)
+      expect(appeared, 'run row never appeared').toBe(true)
+      const runId = await findRunId(tenantId, placed.orderId)
+      if (runId === null) throw new Error('run row disappeared')
+
+      const finished = await waitUntil(async () => (await runRow(runId))?.finished_at != null, 60_000)
+      expect(finished, 'run never finished').toBe(true)
+
+      const rows = await stepLogRows(runId)
+      expect(rows.map((row) => row.step_id)).toEqual(['start', 'finish'])
+
+      const notified = await waitUntil(async () => (await notifyLogRows(placed.orderId)).length > 0, 60_000)
+      expect(notified, 'notify-staff log row never appeared for a step named "start"').toBe(true)
     } finally {
       await shop.stopAll()
     }

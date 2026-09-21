@@ -10,7 +10,11 @@ import type { PinnedVersion } from '../workflow/store.js'
 import { requireTenant } from './tenant.js'
 
 export const RUN_WORKFLOW_NAME = 'run-workflow'
-const stepKey = (stepId: string): string => `${RUN_WORKFLOW_NAME}:${stepId}`
+// stepIdSchema allows a step literally named "start"; a plain
+// `${name}:${stepId}` key would then collide with the run-start guard below
+// and silently skip that step's own onceById-guarded effect. Separate key spaces.
+const stepKey = (stepId: string): string => `${RUN_WORKFLOW_NAME}:step:${stepId}`
+const RUN_START_KEY = `${RUN_WORKFLOW_NAME}:run-start`
 
 type TriggerContext = DurableHandlerContext<MessageData<typeof workflowTriggered>>
 
@@ -33,7 +37,7 @@ async function runWorkflow(pool: Pool, kyu: Kyu, ctx: TriggerContext): Promise<v
   const pinned = await loadPinnedVersion(pool, { tenantId, definitionId, versionId })
 
   await withTransaction(pool, (tx) =>
-    kyu.onceById(tx, runId, stepKey('start'), () =>
+    kyu.onceById(tx, runId, RUN_START_KEY, () =>
       insertRun(tx, { runId, tenantId, definitionId, versionId, orderId, triggerEnvelopeId: ctx.envelope.id }),
     ),
   )
@@ -47,6 +51,17 @@ async function runWorkflow(pool: Pool, kyu: Kyu, ctx: TriggerContext): Promise<v
     stepId = await walkStep(pool, kyu, ctx, run, stepById(pinned.definition, stepId))
   }
   throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: run ${runId} did not reach an end step`)
+}
+
+// A branch's exit is never null by construction (workflow/definition.ts's
+// whenTrue/whenFalse always name a step); only an `end` step's ledger row
+// legitimately carries a null exit. A null here would otherwise read as
+// "the run is finished" one level up and end it silently.
+function branchExitStepId(runId: string, stepId: string, exitStepId: string | null): string {
+  if (exitStepId === null) {
+    throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: branch ${stepId} of run ${runId} recorded a null exit`)
+  }
+  return exitStepId
 }
 
 // Returns the next step id, or undefined when the run is finished.
@@ -79,7 +94,7 @@ async function walkStep(
       // The ledger first. A replay must reuse the exit this run already took,
       // even when the world has changed underneath it (ADR decision 7).
       const recorded = await readStepExit(pool, run.runId, step.id)
-      if (recorded.found) return recorded.exitStepId ?? undefined
+      if (recorded.found) return branchExitStepId(run.runId, step.id, recorded.exitStepId)
 
       await withTransaction(pool, (tx) =>
         kyu.onceById(tx, run.runId, stepKey(step.id), async () => {
@@ -99,7 +114,7 @@ async function walkStep(
       if (!settled.found) {
         throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: branch ${step.id} of run ${run.runId} recorded no exit`)
       }
-      return settled.exitStepId ?? undefined
+      return branchExitStepId(run.runId, step.id, settled.exitStepId)
     }
     case 'notify': {
       // The outbox row, the ledger row and the onceById marker commit
@@ -150,9 +165,6 @@ export function runWorkflowSubscription(kyu: Kyu, pool: Pool): Subscription {
     executionTimeout: '1h',
     // Runs of one order are handled in publish order; two orders run at once.
     concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'fifo' },
-    // A worker stopped while the body executes fails that attempt; retrying
-    // is safe because every step effect goes through onceById.
-    retries: 3,
     handler: (ctx) => runWorkflow(pool, kyu, ctx),
   })
 }

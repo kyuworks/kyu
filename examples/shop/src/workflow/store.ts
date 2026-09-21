@@ -1,17 +1,8 @@
-import type { QueryParam, Queryable, QueryRows, Unparsed } from '@kyuworks/sdk'
+import type { Queryable, RelayQueryable, Unparsed } from '@kyuworks/sdk'
 import { NonRetryableError } from '@kyuworks/sdk'
 import { z } from 'zod'
 import { parseWorkflowDefinition, stepById } from './definition.js'
 import type { WorkflowDefinition, WorkflowStep } from './definition.js'
-
-// A raw pg Pool or a single connection/transaction, whichever the caller
-// has: @kyuworks/sdk's Queryable specifically excludes a Pool (its
-// `totalCount` trick), reserved for publish()/onceById()'s transaction
-// boundary. Reads below run on the pool directly, outside a transaction
-// (ui/busCounts.ts's CountsSource is the same idiom for the same reason).
-export interface StoreSource {
-  query(text: string, params: readonly QueryParam[]): Promise<QueryRows>
-}
 
 export interface EnabledDefinition {
   definitionId: string
@@ -57,7 +48,7 @@ export interface LoadPinnedVersionInput {
 // Loaded fresh on every run, never cached: the interpreter never reads
 // shop_workflow_definition.current_version_id, only the version a run pinned
 // at its start (ADR decision 4).
-export async function loadPinnedVersion(client: StoreSource, input: LoadPinnedVersionInput): Promise<PinnedVersion> {
+export async function loadPinnedVersion(client: RelayQueryable, input: LoadPinnedVersionInput): Promise<PinnedVersion> {
   const result = await client.query(
     'SELECT steps FROM shop_workflow_version WHERE id = $1 AND definition_id = $2 AND tenant_id = $3',
     [input.versionId, input.definitionId, input.tenantId],
@@ -122,7 +113,7 @@ const stepExitRowSchema = z.object({ exit_step_id: z.string().nullable() })
 
 // A branch reads its own recorded exit here before deciding again, so a
 // replay reuses the exit the run already took (ADR decision 7).
-export async function readStepExit(client: StoreSource, runId: string, stepId: string): Promise<StepExit> {
+export async function readStepExit(client: RelayQueryable, runId: string, stepId: string): Promise<StepExit> {
   const result = await client.query(
     'SELECT exit_step_id FROM shop_workflow_step_log WHERE run_id = $1 AND step_id = $2',
     [runId, stepId],
@@ -136,7 +127,7 @@ const shippedRowSchema = z.object({ shipped_at: z.date().nullable() })
 
 // The one branch condition this interpreter knows (workflow/definition.ts's
 // `order-shipped` literal): a condition is interpreter code, not a definition edit.
-export async function isOrderShipped(client: StoreSource, tenantId: string, orderId: string): Promise<boolean> {
+export async function isOrderShipped(client: RelayQueryable, tenantId: string, orderId: string): Promise<boolean> {
   const result = await client.query('SELECT shipped_at FROM shop_order WHERE id = $1 AND tenant_id = $2', [
     orderId,
     tenantId,
@@ -156,7 +147,7 @@ export interface ReadNotifyTextInput {
 
 // notify-staff only carries the version id and the step id (no definition
 // id), so this loads the version directly rather than through loadPinnedVersion.
-export async function readNotifyText(client: StoreSource, input: ReadNotifyTextInput): Promise<string> {
+export async function readNotifyText(client: RelayQueryable, input: ReadNotifyTextInput): Promise<string> {
   const result = await client.query('SELECT steps FROM shop_workflow_version WHERE id = $1 AND tenant_id = $2', [
     input.versionId,
     input.tenantId,

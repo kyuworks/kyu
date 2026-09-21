@@ -25,11 +25,17 @@ const DEFINITION_WITH_NOTIFY = {
   ],
 }
 
-// Same fake-a-table idiom as sendInvoice.test.ts.
-function fakeClient(events: string[], versionResponse: FakeQueryResponse): PoolClient {
+interface FakeCall {
+  text: string
+  params: readonly unknown[]
+}
+
+// Same fake-a-table idiom as sendInvoice.test.ts, extended to record params:
+// text alone cannot show what note (or tenant id) actually reached the INSERT.
+function fakeClient(calls: FakeCall[], versionResponse: FakeQueryResponse): PoolClient {
   const stub: Pick<PoolClient, 'query' | 'release'> = {
     query: ((text: string, params?: readonly unknown[]) => {
-      events.push(text)
+      calls.push({ text, params: params ?? [] })
       if (text.startsWith('INSERT INTO kyu_processed')) {
         return Promise.resolve({ rows: [{ envelope_id: params?.[0] }], rowCount: 1 })
       }
@@ -39,7 +45,7 @@ function fakeClient(events: string[], versionResponse: FakeQueryResponse): PoolC
       return Promise.resolve({ rows: [], rowCount: 0 })
     }) as PoolClient['query'],
     release: () => {
-      events.push('RELEASE')
+      calls.push({ text: 'RELEASE', params: [] })
     },
   }
   return stub as PoolClient
@@ -87,38 +93,42 @@ async function buildContext(
 }
 
 describe('handleNotifyStaff', () => {
-  it("writes the pinned version's text as the log row note", async () => {
+  it("writes the pinned version's text and the tenant id in the log row", async () => {
     const orderId = randomUUID()
     const versionId = randomUUID()
     const tenantId = randomUUID()
-    const events: string[] = []
-    const pool = fakePool(fakeClient(events, { rows: [{ steps: DEFINITION_WITH_NOTIFY }], rowCount: 1 }))
+    const calls: FakeCall[] = []
+    const pool = fakePool(fakeClient(calls, { rows: [{ steps: DEFINITION_WITH_NOTIFY }], rowCount: 1 }))
     const ctx = await buildContext(orderId, versionId, 'nudge', tenantId)
 
     await handleNotifyStaff(pool, fakeKyu(), ctx)
 
-    expect(events).toContain(LOG_INSERT)
+    const logInsert = calls.find((call) => call.text === LOG_INSERT)
+    expect(logInsert, 'no INSERT INTO shop_handler_log call').toBeDefined()
+    // (handler, envelope_id, order_id, tenant_id, pid, note)
+    expect(logInsert?.params[3]).toBe(tenantId)
+    expect(logInsert?.params[5]).toBe('Order has not shipped yet.')
   })
 
   it('throws NonRetryableError when the pinned version has no such step', async () => {
     const orderId = randomUUID()
     const versionId = randomUUID()
     const tenantId = randomUUID()
-    const events: string[] = []
-    const pool = fakePool(fakeClient(events, { rows: [{ steps: DEFINITION_WITH_NOTIFY }], rowCount: 1 }))
+    const calls: FakeCall[] = []
+    const pool = fakePool(fakeClient(calls, { rows: [{ steps: DEFINITION_WITH_NOTIFY }], rowCount: 1 }))
     const ctx = await buildContext(orderId, versionId, 'missing', tenantId)
 
     const rejection = handleNotifyStaff(pool, fakeKyu(), ctx)
     await expect(rejection).rejects.toBeInstanceOf(NonRetryableError)
-    expect(events).not.toContain(LOG_INSERT)
+    expect(calls.some((call) => call.text === LOG_INSERT)).toBe(false)
   })
 
   it('throws NonRetryableError when no shop_workflow_version row matches', async () => {
     const orderId = randomUUID()
     const versionId = randomUUID()
     const tenantId = randomUUID()
-    const events: string[] = []
-    const pool = fakePool(fakeClient(events, { rows: [], rowCount: 0 }))
+    const calls: FakeCall[] = []
+    const pool = fakePool(fakeClient(calls, { rows: [], rowCount: 0 }))
     const ctx = await buildContext(orderId, versionId, 'nudge', tenantId)
 
     await expect(handleNotifyStaff(pool, fakeKyu(), ctx)).rejects.toBeInstanceOf(NonRetryableError)

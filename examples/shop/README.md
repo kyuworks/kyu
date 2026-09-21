@@ -107,8 +107,9 @@ because only `sleepFor` itself replays from the durable log, not an ordinary dat
 notify step publishes `shop.staff.notify` (ids only) for `notify-staff` to pick up, which reads the
 wording out of the pinned version by step id and writes a `shop_handler_log` row. Every step's
 effect — the ledger row, and for a notify step the published command — runs inside
-`kyu.onceById`, keyed on the run id and the step id, so a step that runs a second time after a
-restart changes nothing. `run-workflow` fixes `executionTimeout` at one hour, and
+`kyu.onceById`, keyed on the run id and the step id (a step id may itself be `"start"`; the run's
+own start guard uses a separate key so the two can never collide), so a step that runs a second
+time after a restart changes nothing. `run-workflow` fixes `executionTimeout` at one hour, and
 `workflow/definition.ts` rejects a definition whose delays sum past 50 minutes (#113), so a run can
 never be evicted mid-sleep. Pinning the version also keeps two workers' recorded sleeps identical,
 which the durable engine requires. See

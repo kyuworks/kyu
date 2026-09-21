@@ -66,6 +66,42 @@ export async function insertWorkflowDefinition(
   return { definitionId, versionId }
 }
 
+// stepIdSchema allows a step literally named "start" (workflow/definition.ts).
+// This definition's one step is a notify named "start", to prove run-workflow's
+// run-start guard and that step's own onceById guard use different keys.
+function buildStepIdCollisionDefinition(notifyText: string) {
+  return {
+    schemaVersion: 1,
+    start: 'start',
+    steps: [
+      { id: 'start', kind: 'notify', input: { text: notifyText }, next: 'finish' },
+      { id: 'finish', kind: 'end' },
+    ],
+  }
+}
+
+export async function insertStepIdCollisionDefinition(
+  admin: Client,
+  tenantId: string,
+  notifyText = 'Order has not shipped yet — please chase the warehouse.',
+): Promise<InsertedDefinition> {
+  const definitionId = randomUUID()
+  const versionId = randomUUID()
+  await admin.query(
+    'INSERT INTO shop_workflow_definition (id, tenant_id, name, enabled, current_version_id) VALUES ($1, $2, $3, false, NULL)',
+    [definitionId, tenantId, 'step-id-collision'],
+  )
+  await admin.query(
+    'INSERT INTO shop_workflow_version (id, definition_id, tenant_id, version, steps) VALUES ($1, $2, $3, 1, $4)',
+    [versionId, definitionId, tenantId, JSON.stringify(buildStepIdCollisionDefinition(notifyText))],
+  )
+  await admin.query('UPDATE shop_workflow_definition SET enabled = true, current_version_id = $2 WHERE id = $1', [
+    definitionId,
+    versionId,
+  ])
+  return { definitionId, versionId }
+}
+
 // A second saved version, repointed as current: proves a parked run keeps
 // walking the version it pinned at the start, not this one (version-pin-holds).
 export async function insertNewVersion(
