@@ -6,7 +6,9 @@ import { BusDiagram } from './BusDiagram'
 // Every number below is distinct across the whole fixture, so a swapped pair
 // of fields (e.g. queued and running, or waitingForRelay and shipped) fails
 // a test tying that exact label to that exact value, not just "12 appears
-// somewhere".
+// somewhere". The outbox block is deliberately not self-consistent (published
+// does not equal waitingForRelay + shipped + retired here) — distinct numbers
+// matter more than the arithmetic for this fixture.
 const fixture: BusDocument = {
   topology: {
     producer: { source: 'shop' },

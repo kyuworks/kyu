@@ -232,7 +232,8 @@ VALUES (gen_random_uuid(), 'shop.order.legacy', '{"name":"shop.order.legacy","so
 ```
 
 Reload `/bus`: **retired** goes up by one and **waiting for relay** does not move. Delete the row
-when you are done, or leave it for `pruneRetired`.
+when you are done. Nothing in the shop deletes retired rows; the SDK's `pruneRetired` does, when
+a consumer schedules it.
 
 ## Engine hygiene
 

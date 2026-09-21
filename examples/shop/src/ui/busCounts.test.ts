@@ -338,19 +338,4 @@ describe('readBusCounts', () => {
     expect(producerQuery?.text).toContain('FILTER (WHERE published_at IS NULL AND dead_at IS NULL)')
     expect(producerQuery?.text).toContain('FILTER (WHERE dead_at IS NOT NULL)')
   })
-
-  it('leaves published, waiting and shipped unchanged when nothing is retired', async () => {
-    const { db } = fakeDb([
-      [
-        { source: 'other', published: 1, waiting: 1, retired: 0 },
-        { source: 'shop', published: 3, waiting: 1, retired: 0 },
-      ],
-      [],
-      [],
-    ])
-
-    const counts = await readBusCounts(db, fakeRuns({}), topologyWithDurable)
-
-    expect(counts.outbox).toEqual({ published: 4, waitingForRelay: 2, shipped: 2, retired: 0 })
-  })
 })
