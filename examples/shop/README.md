@@ -163,8 +163,10 @@ newest first, from `GET /orders.json`: each card shows the order's short id, its
 quantities, unit prices and line amounts, its total, a "yours" badge when the order's customer id
 matches this browser's, and a three-step timeline — placed, invoice sent, shipped — with "timed
 out" replacing the last step's label when `watch-shipping`'s correlated wait ran out instead of
-hearing back. The page refreshes every 5 seconds, the same in-flight guard and status-line rule as
-`/bus`. Each order also carries **Resend invoice (simulated fault)**: it posts to `POST /invoices`
+hearing back. The page refreshes every 5 seconds through `web/lib/usePolledJson.ts`, the one
+polling hook `/bus` and `/warehouse` also use: one request in flight at a time, and a failed
+refresh leaves the last good list on screen under the status line. Each order also carries
+**Resend invoice (simulated fault)**: it posts to `POST /invoices`
 with no invoice id, so the server sends the command for one with no matching `shop_invoice` row.
 `handleSendInvoice` cannot find it, throws, and the run becomes a dead letter — the same failure
 the `/bus` page's `send-invoice` column is there to show.

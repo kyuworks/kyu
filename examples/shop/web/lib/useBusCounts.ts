@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
 import { parseBusDocument } from './busDocument'
 import type { BusDocument } from './busDocument'
 import { describeFetchFailure } from './fetchJson'
 import type { JsonFetchOutcome } from './fetchJson'
+import { REFRESH_INTERVAL_MS, usePolledJson } from './usePolledJson'
 
 export interface BusCountsState {
   busDocument: BusDocument | undefined
@@ -14,7 +14,6 @@ interface BusState {
   error: string | undefined
 }
 
-const REFRESH_INTERVAL_MS = 5000
 const EMPTY_STATE: BusState = { document: undefined, error: undefined }
 
 // A good body clears any previous error; a bad one keeps the last good
@@ -31,47 +30,8 @@ export function nextBusState(previous: BusState, outcome: JsonFetchOutcome): Bus
   return { document: previous.document, error: `bus.json failed: ${parsed.error}` }
 }
 
-// Each mount resets the in-flight flag and owns its own AbortController —
-// otherwise a StrictMode remount finds the flag stuck from the aborted first mount.
+/** The newest bus.json counts on the shared tick; a failed refresh leaves the last good document on screen. */
 export function useBusCounts(): BusCountsState {
-  const [state, setState] = useState<BusState>(EMPTY_STATE)
-  const fetching = useRef(false)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    fetching.current = false
-
-    function refresh(): void {
-      if (fetching.current) return
-      fetching.current = true
-      fetch('/bus.json', { signal: controller.signal })
-        .then((response) =>
-          response
-            .text()
-            .then((bodyText): JsonFetchOutcome => ({ ok: response.ok, status: response.status, bodyText })),
-        )
-        .then((outcome) => {
-          setState((previous) => nextBusState(previous, outcome))
-        })
-        .catch((error) => {
-          if (controller.signal.aborted) return
-          const message = error instanceof Error ? error.message : String(error)
-          setState((previous) => ({ document: previous.document, error: `bus.json failed: ${message}` }))
-        })
-        .finally(() => {
-          fetching.current = false
-        })
-    }
-
-    refresh()
-    const interval = setInterval(refresh, REFRESH_INTERVAL_MS)
-
-    return () => {
-      controller.abort()
-      fetching.current = false
-      clearInterval(interval)
-    }
-  }, [])
-
+  const state = usePolledJson('/bus.json', REFRESH_INTERVAL_MS, EMPTY_STATE, nextBusState)
   return { busDocument: state.document, statusMessage: state.error ?? '' }
 }
