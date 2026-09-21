@@ -1,8 +1,8 @@
 # User-defined workflows run through one interpreter, not one Hatchet workflow per definition
 
-**Status:** proposed
+**Status:** accepted
 **Date:** 2026-09-20
-**Parent:** none. An issue opens when this record is accepted.
+**Parent:** [#111](https://github.com/Camba-nz/kyu/issues/111)
 **This is not** a decision about worker pools or engine-side rate limits for third-party API calls; that is its own record.
 
 A consuming project runs every user-defined workflow definition through one durable handler that reads the definition as data and walks its steps. It does not compile a definition into a Hatchet workflow of its own.
