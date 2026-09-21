@@ -7,7 +7,7 @@ export interface ConcurrencyOption {
   strategy?: 'fifo' | 'round-robin' | 'cancel_in_progress' | 'cancel_newest'
 }
 
-/** CEL path to the business tenant id: the relay pushes the whole envelope as the event payload, so `tenantId` is a top-level field of `input`. */
+/** CEL path to the business tenant id: the relay pushes the whole envelope as the event payload, so `tenantId` is a top-level field of `input`. Every message on a subscription that uses this key must carry a tenant id: an envelope with `tenantId: null` fails its run at the engine (`failed to parse step expression (input.tenantId)`), and a replay fails the same way, so use a different key or a constant for subscriptions that carry tenant-less messages. */
 export const TENANT_CONCURRENCY_KEY = 'input.tenantId'
 
 // The engine has one queueing strategy: FIFO inside a key group, round robin
