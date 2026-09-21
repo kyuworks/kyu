@@ -5,11 +5,16 @@ import { APP_MIGRATIONS_DIRECTORY, applyPending, ensureDatabase } from './src/db
 
 // shop_order_line references shop_order, so it must truncate in the same
 // statement (0002_shop.sql); shop_product is seed data and is never cleaned.
+// shop_workflow_step_log references shop_workflow_run, so it truncates
+// first; shop_workflow_definition and shop_workflow_version are seed/config
+// (0004_shop.sql) and are never cleaned, the same as shop_product.
 const CLEAN_TABLES = [
   'shop_order_line',
   'shop_order',
   'shop_invoice',
   'shop_handler_log',
+  'shop_workflow_step_log',
+  'shop_workflow_run',
   'kyu_outbox',
   'kyu_processed',
 ]

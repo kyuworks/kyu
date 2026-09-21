@@ -8,13 +8,18 @@ import { readConfig } from '../config.js'
 import { APP_MIGRATIONS_DIRECTORY, applyPending } from '../db/migrate.js'
 
 // shop_order_line and shop_product are 0002_shop.sql's; shop_order_line
-// references shop_order, so both must drop in the same statement.
+// references shop_order, so both must drop in the same statement. The four
+// shop_workflow_* tables are 0004_shop.sql's, in their own FK chain.
 const TABLES = [
   'shop_order_line',
   'shop_product',
   'shop_order',
   'shop_invoice',
   'shop_handler_log',
+  'shop_workflow_step_log',
+  'shop_workflow_run',
+  'shop_workflow_version',
+  'shop_workflow_definition',
   'kyu_outbox',
   'kyu_processed',
 ]
@@ -45,13 +50,14 @@ describe('applyPending', () => {
       '0001_shop.sql',
       '0002_shop.sql',
       '0003_shop.sql',
+      '0004_shop.sql',
     ])
 
     const second = await applyPending(client, [MIGRATIONS_DIRECTORY, APP_MIGRATIONS_DIRECTORY])
     expect(second).toEqual([])
 
     const ledger = await client.query('SELECT name FROM shop_migrations')
-    expect(ledger.rows).toHaveLength(5)
+    expect(ledger.rows).toHaveLength(6)
 
     for (const table of TABLES) {
       const exists = await client.query('SELECT 1 FROM information_schema.tables WHERE table_name = $1', [table])

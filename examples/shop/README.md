@@ -73,6 +73,22 @@ nothing and publishes nothing — the whole transaction rolls back. `POST /invoi
 `{ orderId, invoiceId? }`; a missing `invoiceId` sends the command for a fresh id with no
 matching `shop_invoice` row, the simulated fault that gives the Bus page a dead letter to show.
 
+## The workflow tables
+
+`migrations/0004_shop.sql` adds four tables that hold a user-defined workflow as data, following
+`docs/architecture/adr/20260920-workflow-definitions-run-through-one-interpreter.md`:
+`shop_workflow_definition` (one row per definition, at most one `enabled` per tenant),
+`shop_workflow_version` (one row per saved version, its steps stored as JSON and checked against a
+schema every time they are read), `shop_workflow_run` (one row per run, pinned to the version it
+started with) and `shop_workflow_step_log` (one row per step a run has finished).
+
+When an order is placed, `placeOrder` looks for the one workflow enabled for that tenant. If there
+is one, it publishes `shop.workflow.triggered` in the same transaction as the order, carrying a new
+run id, the definition id, the pinned version id and the order id — ids only, never a step's
+authored text. The run id is a uuid v7 minted at that point and is also the message's correlation
+id. Nothing consumes this message yet: `run-workflow`, the durable handler that reads the pinned
+version and walks its steps, is the next pull request.
+
 ## Web page
 
 A Vite + React app under `web/`, built to `dist/web/` by `pnpm --filter @kyuworks/shop build`

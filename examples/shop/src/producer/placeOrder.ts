@@ -4,6 +4,7 @@ import type { Pool, PoolClient } from 'pg'
 import { z } from 'zod'
 import { withTransaction } from '../db/pool.js'
 import { orderPlaced, sendInvoice } from '../messages.js'
+import { triggerWorkflowOn } from './triggerWorkflow.js'
 
 export interface PlaceOrderLine {
   productId: string
@@ -21,6 +22,7 @@ export interface PlaceOrderInput {
 export interface PlacedOrderEnvelopeIds {
   orderPlaced: string
   sendInvoice: string
+  workflowTriggered?: string
 }
 
 export interface PlacedOrder {
@@ -93,12 +95,15 @@ export async function placeOrderOn(
     { tenantId: input.tenantId },
   )
 
-  return {
-    orderId,
-    invoiceId,
-    totalCents,
-    envelopeIds: { orderPlaced: orderPlacedEnvelope.id, sendInvoice: sendInvoiceEnvelope.id },
+  const triggered = await triggerWorkflowOn(client, publisher, { orderId, tenantId: input.tenantId })
+
+  const envelopeIds: PlacedOrderEnvelopeIds = {
+    orderPlaced: orderPlacedEnvelope.id,
+    sendInvoice: sendInvoiceEnvelope.id,
   }
+  if (triggered !== null) envelopeIds.workflowTriggered = triggered.envelopeId
+
+  return { orderId, invoiceId, totalCents, envelopeIds }
 }
 
 /** One transaction: two INSERTs then two publishes, committed together. */

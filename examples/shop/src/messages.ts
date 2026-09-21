@@ -18,3 +18,20 @@ export const sendInvoice = defineCommand({
   version: 1,
   data: z.object({ orderId: z.uuid(), invoiceId: z.uuid() }),
 })
+
+// The shop's own seam publishes this when an order is placed, for the one
+// definition enabled for the tenant. Ids only: the run id and the pinned
+// version id, never a step's authored text.
+export const workflowTriggered = defineEvent({
+  name: 'shop.workflow.triggered',
+  version: 1,
+  data: z.object({ runId: z.uuidv7(), definitionId: z.uuid(), versionId: z.uuid(), orderId: z.uuid() }),
+})
+
+// Published by one notify step (next PR). The text lives in the pinned
+// version; this carries the ids that find it.
+export const notifyStaff = defineCommand({
+  name: 'shop.staff.notify',
+  version: 1,
+  data: z.object({ runId: z.uuidv7(), versionId: z.uuid(), stepId: z.string().min(1).max(40), orderId: z.uuid() }),
+})
