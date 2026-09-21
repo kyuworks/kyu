@@ -82,6 +82,7 @@ export type { EnvelopeOptionIssue, MessageDataIssue } from './errors.js'
 export { groupEnvelopesForPush, startRelay } from './relay/index.js'
 export type { PushItem, Relay, RelayOptions, TickResult } from './relay/index.js'
 
+export { TENANT_CONCURRENCY_KEY } from './consume/concurrency.js'
 export type { ConcurrencyOption } from './consume/concurrency.js'
 
 export type { HandlerContext, HandlerLogger } from './consume/handlerContext.js'

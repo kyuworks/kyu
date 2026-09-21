@@ -317,7 +317,9 @@ Declared per subscription, evaluated by Hatchet on the engine using CEL against 
 | FIFO per order | `concurrency: { expression: 'input.data.orderId', maxRuns: 1, limitStrategy: GROUP_ROUND_ROBIN }` |
 | Only the newest matters (debounced push) | `limitStrategy: CANCEL_IN_PROGRESS` on the same key |
 | One active run per owner, drop extras | `limitStrategy: CANCEL_NEWEST` |
-| Per-business-tenant fairness | second concurrency key on `additional_metadata.tenantId` |
+| Per-business-tenant fairness | `concurrency: { key: 'input.tenantId', maxRuns: 1, strategy: 'round-robin' }` — one run per tenant at a time, tenants taking turns |
+
+`'fifo'` and `'round-robin'` both map to `GROUP_ROUND_ROBIN`, the engine's only queueing strategy: FIFO inside a key group, round robin across groups. Fairness comes from choosing a key that groups a whole business tenant, not from a different strategy. A concurrency expression may read `additional_metadata.tenantId` as well as `input.tenantId`; both are proven against the local engine.
 
 ### 9.3 Retries and failure
 
