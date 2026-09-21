@@ -80,6 +80,29 @@ function fakeRunsCanceller(namespace: string, rows: EngineRunRow[], cancelError?
   return { canceller, listCalls: () => listCalls, cancelCalls: () => cancelCalls }
 }
 
+// One call's rows per page, in call order; `pagination.num_pages` is fixed
+// at the page count, mirroring runOutcomes.test.ts's own fakePagedRunsReader.
+function fakePagedRunsCanceller(namespace: string, pages: EngineRunRow[][]): FakeRunsCancellerCalls {
+  const listCalls: Array<Parameters<HatchetClient['runs']['list']>[0]> = []
+  const cancelCalls: Array<Parameters<HatchetClient['runs']['cancel']>[0]> = []
+  const cancel: CancelProcedure = (opts) => {
+    cancelCalls.push(opts)
+    return Promise.resolve({ data: { ids: opts.ids } } as Awaited<ReturnType<HatchetClient['runs']['cancel']>>)
+  }
+  const canceller: RunsCanceller = {
+    config: { namespace },
+    runs: {
+      list: async (opts) => {
+        const rows = pages[listCalls.length] ?? []
+        listCalls.push(opts)
+        return { pagination: { num_pages: pages.length }, rows }
+      },
+      cancel,
+    },
+  }
+  return { canceller, listCalls: () => listCalls, cancelCalls: () => cancelCalls }
+}
+
 describe('cancelRunsFor', () => {
   it('sends every run id in this namespace to the engine’s cancel, and nothing else', async () => {
     const envelopeId = uuidv7()
@@ -152,6 +175,39 @@ describe('cancelRunsFor', () => {
       expect(error).toBeInstanceOf(KyuError)
       expect(error).toHaveProperty('cause', cause)
     }
+  })
+
+  it('cancelForCorrelation sends every run id from every page to cancel, in one call', async () => {
+    const correlationId = uuidv7()
+    const rowsPage1 = [fixtureRow({ workflowName: 'ns_first', taskExternalId: '018f0000-0000-7000-8000-000000000011' })]
+    const rowsPage2 = [
+      fixtureRow({ workflowName: 'ns_second', taskExternalId: '018f0000-0000-7000-8000-000000000012' }),
+    ]
+    const { canceller, cancelCalls } = fakePagedRunsCanceller('ns_', [rowsPage1, rowsPage2])
+
+    const cancelled = await cancelRunsFor(canceller, {
+      key: 'correlationId',
+      id: correlationId,
+      caller: 'runs.cancelForCorrelation',
+    })
+
+    expect(cancelCalls()).toEqual([
+      { ids: ['018f0000-0000-7000-8000-000000000011', '018f0000-0000-7000-8000-000000000012'] },
+    ])
+    expect(cancelled.map((outcome) => outcome.subscription)).toEqual(['first', 'second'])
+  })
+
+  it('throws KyuError and never calls cancel when the correlation id covers more pages than the ceiling', async () => {
+    const correlationId = uuidv7()
+    const { canceller, cancelCalls } = fakePagedRunsCanceller(
+      'ns_',
+      Array.from({ length: 11 }, () => []),
+    )
+
+    await expect(
+      cancelRunsFor(canceller, { key: 'correlationId', id: correlationId, caller: 'runs.cancelForCorrelation' }),
+    ).rejects.toThrow(KyuError)
+    expect(cancelCalls()).toHaveLength(0)
   })
 
   it('returns the outcomes unchanged when every run is already cancelled', async () => {

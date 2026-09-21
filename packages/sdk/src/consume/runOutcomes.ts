@@ -36,7 +36,7 @@ export interface RunLookup {
   /** A uuid v7: both `id` and `correlationId` on the envelope are uuid v7. */
   id: string
   /** The public method's name, so a thrown KyuError names what the caller called. */
-  caller: string
+  caller: 'runs.forEnvelope' | 'runs.cancelForEnvelope' | 'runs.cancelForCorrelation'
 }
 
 export interface KyuRuns {
@@ -64,9 +64,16 @@ const RUN_STATUS = {
   FAILED: 'failed',
 } satisfies Record<EngineStatus, RunStatus>
 
-// One envelope has one run per subscription times redeliveries; 100 cannot be
-// reached without something being badly wrong.
+// One envelope has one run per subscription times redeliveries, but
+// `readRunOutcomesFor` also serves a correlation id: the durable run plus
+// every command it published, times redeliveries, for a whole workflow run.
+// 100 is reachable, so callers page instead of assuming one page is enough.
 const RUN_PAGE_LIMIT = 100
+
+// Hard ceiling on pages fetched for one lookup: RUN_PAGE_LIMIT * this many
+// runs. Beyond it, the lookup id genuinely covers too much and the window
+// needs narrowing with options.since rather than paging further.
+const RUN_PAGE_MAX_PAGES = 10
 
 // Clock skew between the producer and the engine. Wider than a typical clock
 // drift: a producer more than a minute ahead would otherwise make every run
@@ -143,31 +150,39 @@ export async function readRunOutcomesFor(
   const additionalMetadata: Record<string, string> = {}
   additionalMetadata[lookup.key] = lookup.id
 
-  let result: Awaited<ReturnType<RunsReader['runs']['list']>>
-  try {
-    // `onlyTasks` is left unset (defaults false): every Kyu subscription
-    // is a single-task workflow, so the broader default returns the same rows.
-    result = await hatchet.runs.list({
-      additionalMetadata,
-      since,
-      limit: RUN_PAGE_LIMIT,
-      includePayloads: false,
-    })
-  } catch (cause) {
-    throw new KyuError(`${lookup.caller}: could not read runs for ${lookup.key} ${lookup.id}`, {
-      cause: cause instanceof Error ? cause : new Error(String(cause)),
-    })
-  }
+  const rows: EngineRunRow[] = []
+  for (let page = 0; ; page += 1) {
+    let result: Awaited<ReturnType<RunsReader['runs']['list']>>
+    try {
+      // `onlyTasks` is left unset (defaults false): every Kyu subscription
+      // is a single-task workflow, so the broader default returns the same rows.
+      result = await hatchet.runs.list({
+        additionalMetadata,
+        since,
+        limit: RUN_PAGE_LIMIT,
+        offset: page * RUN_PAGE_LIMIT,
+        includePayloads: false,
+      })
+    } catch (cause) {
+      throw new KyuError(`${lookup.caller}: could not read runs for ${lookup.key} ${lookup.id}`, {
+        cause: cause instanceof Error ? cause : new Error(String(cause)),
+      })
+    }
 
-  if ((result.pagination.num_pages ?? 1) > 1) {
-    throw new KyuError(
-      `${lookup.caller}: ${lookup.key} ${lookup.id} has more than ${RUN_PAGE_LIMIT} runs; narrow the window with options.since`,
-    )
+    const numPages = result.pagination.num_pages ?? 1
+    if (numPages > RUN_PAGE_MAX_PAGES) {
+      throw new KyuError(
+        `${lookup.caller}: ${lookup.key} ${lookup.id} covers more than ${RUN_PAGE_MAX_PAGES * RUN_PAGE_LIMIT} runs; narrow the window with options.since`,
+      )
+    }
+
+    rows.push(...result.rows)
+    if (page + 1 >= numPages) break
   }
 
   const namespace = hatchet.config.namespace ?? ''
   const outcomes: RunOutcome[] = []
-  for (const row of result.rows) {
+  for (const row of rows) {
     const outcome = toRunOutcome(row, namespace)
     if (outcome !== undefined) outcomes.push(outcome)
   }
