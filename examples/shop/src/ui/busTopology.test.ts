@@ -104,6 +104,8 @@ describe('describeBusTopology', () => {
       'send-invoice',
       'watch-shipping',
       'record-shipment',
+      'run-workflow',
+      'notify-staff',
     ])
   })
 
