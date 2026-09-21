@@ -8,8 +8,9 @@ import { handleNotifyStaff } from './notifyStaff.js'
 
 type NotifyStaffContext = HandlerContext<MessageData<typeof notifyStaff>>
 
-const LOG_INSERT =
-  'INSERT INTO shop_handler_log (handler, envelope_id, order_id, tenant_id, pid, note) VALUES ($1, $2, $3, $4, $5, $6)'
+// The statement text is pinned once in handlerLog.test.ts; this file only
+// checks that its own handler writes the row with its own values.
+const isLogInsert = (text: string): boolean => text.startsWith('INSERT INTO shop_handler_log')
 
 interface FakeQueryResponse {
   rows: readonly Unparsed[]
@@ -103,11 +104,16 @@ describe('handleNotifyStaff', () => {
 
     await handleNotifyStaff(pool, fakeKyu(), ctx)
 
-    const logInsert = calls.find((call) => call.text === LOG_INSERT)
+    const logInsert = calls.find((call) => isLogInsert(call.text))
     expect(logInsert, 'no INSERT INTO shop_handler_log call').toBeDefined()
-    // (handler, envelope_id, order_id, tenant_id, pid, note)
-    expect(logInsert?.params[3]).toBe(tenantId)
-    expect(logInsert?.params[5]).toBe('Order has not shipped yet.')
+    expect(logInsert?.params).toEqual([
+      'notify-staff',
+      ctx.envelope.id,
+      orderId,
+      tenantId,
+      process.pid,
+      'Order has not shipped yet.',
+    ])
   })
 
   it('throws NonRetryableError when the pinned version has no such step', async () => {
@@ -120,7 +126,7 @@ describe('handleNotifyStaff', () => {
 
     const rejection = handleNotifyStaff(pool, fakeKyu(), ctx)
     await expect(rejection).rejects.toBeInstanceOf(NonRetryableError)
-    expect(calls.some((call) => call.text === LOG_INSERT)).toBe(false)
+    expect(calls.some((call) => isLogInsert(call.text))).toBe(false)
   })
 
   it('throws NonRetryableError when no shop_workflow_version row matches', async () => {

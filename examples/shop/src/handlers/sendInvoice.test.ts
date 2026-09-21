@@ -8,20 +8,24 @@ import { handleSendInvoice } from './sendInvoice.js'
 
 type SendInvoiceContext = HandlerContext<MessageData<typeof sendInvoice>>
 
-const LOG_INSERT =
-  'INSERT INTO shop_handler_log (handler, envelope_id, order_id, tenant_id, pid, note) VALUES ($1, $2, $3, $4, $5, $6)'
+// The statement text is pinned once in handlerLog.test.ts; this file only
+// checks that its own handler writes the row with its own values.
+const isLogInsert = (text: string): boolean => text.startsWith('INSERT INTO shop_handler_log')
 
 // Branches on the statement text, the same fake-a-table idiom
 // packages/sdk/src/outbox/onceById.test.ts uses for its Queryable.
-function fakeClient(events: string[], invoiceExists: boolean): PoolClient {
+function fakeClient(events: string[], params: unknown[][], invoiceExists: boolean): PoolClient {
   const stub: Pick<PoolClient, 'query' | 'release'> = {
-    query: ((text: string, params?: readonly unknown[]) => {
+    query: ((text: string, queryParams?: readonly unknown[]) => {
       events.push(text)
+      params.push(queryParams !== undefined ? [...queryParams] : [])
       if (text.startsWith('INSERT INTO kyu_processed')) {
-        return Promise.resolve({ rows: [{ envelope_id: params?.[0] }], rowCount: 1 })
+        return Promise.resolve({ rows: [{ envelope_id: queryParams?.[0] }], rowCount: 1 })
       }
       if (text.startsWith('UPDATE shop_invoice')) {
-        return Promise.resolve(invoiceExists ? { rows: [{ id: params?.[0] }], rowCount: 1 } : { rows: [], rowCount: 0 })
+        return Promise.resolve(
+          invoiceExists ? { rows: [{ id: queryParams?.[0] }], rowCount: 1 } : { rows: [], rowCount: 0 },
+        )
       }
       return Promise.resolve({ rows: [], rowCount: 0 })
     }) as PoolClient['query'],
@@ -68,24 +72,29 @@ describe('handleSendInvoice', () => {
     const orderId = randomUUID()
     const invoiceId = randomUUID()
     const events: string[] = []
-    const pool = fakePool(fakeClient(events, false))
+    const params: unknown[][] = []
+    const pool = fakePool(fakeClient(events, params, false))
     const ctx = await buildContext(orderId, invoiceId, randomUUID())
 
     const rejection = handleSendInvoice(pool, fakeKyu(), ctx)
     await expect(rejection).rejects.toThrow(new RegExp(invoiceId))
     await expect(rejection).rejects.toBeInstanceOf(NonRetryableError)
-    expect(events).not.toContain(LOG_INSERT)
+    expect(events.some(isLogInsert)).toBe(false)
   })
 
   it('writes the log row, carrying the invoice id, when the invoice is found', async () => {
     const orderId = randomUUID()
     const invoiceId = randomUUID()
+    const tenantId = randomUUID()
     const events: string[] = []
-    const pool = fakePool(fakeClient(events, true))
-    const ctx = await buildContext(orderId, invoiceId, randomUUID())
+    const params: unknown[][] = []
+    const pool = fakePool(fakeClient(events, params, true))
+    const ctx = await buildContext(orderId, invoiceId, tenantId)
 
     await handleSendInvoice(pool, fakeKyu(), ctx)
 
-    expect(events).toContain(LOG_INSERT)
+    const logIndex = events.findIndex(isLogInsert)
+    expect(logIndex).toBeGreaterThanOrEqual(0)
+    expect(params[logIndex]).toEqual(['send-invoice', ctx.envelope.id, orderId, tenantId, process.pid, invoiceId])
   })
 })

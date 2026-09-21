@@ -3,6 +3,7 @@ import { NonRetryableError } from '@kyuworks/sdk'
 import type { Pool } from 'pg'
 import { withTransaction } from '../db/pool.js'
 import { sendInvoice } from '../messages.js'
+import { writeHandlerLogRow } from './handlerLog.js'
 import { requireTenant } from './tenant.js'
 
 type SendInvoiceContext = HandlerContext<MessageData<typeof sendInvoice>>
@@ -11,10 +12,11 @@ type SendInvoiceContext = HandlerContext<MessageData<typeof sendInvoice>>
 // without reaching into the opaque Hatchet workflow subscribe() builds.
 export async function handleSendInvoice(pool: Pool, kyu: Kyu, ctx: SendInvoiceContext): Promise<void> {
   const tenantId = requireTenant('send-invoice', ctx)
+  const envelopeId = ctx.envelope.id
   const { orderId, invoiceId } = ctx.envelope.data
 
   await withTransaction(pool, (tx) =>
-    kyu.onceById(tx, ctx.envelope.id, 'send-invoice', async () => {
+    kyu.onceById(tx, envelopeId, 'send-invoice', async () => {
       const updated = await tx.query(
         'UPDATE shop_invoice SET sent_at = now() WHERE id = $1 AND order_id = $2 RETURNING id',
         [invoiceId, orderId],
@@ -24,10 +26,7 @@ export async function handleSendInvoice(pool: Pool, kyu: Kyu, ctx: SendInvoiceCo
       if (updated.rows.length === 0) {
         throw new NonRetryableError(`send-invoice: no shop_invoice row for invoice ${invoiceId} on order ${orderId}`)
       }
-      await tx.query(
-        'INSERT INTO shop_handler_log (handler, envelope_id, order_id, tenant_id, pid, note) VALUES ($1, $2, $3, $4, $5, $6)',
-        ['send-invoice', ctx.envelope.id, orderId, tenantId, process.pid, invoiceId],
-      )
+      await writeHandlerLogRow(tx, { handler: 'send-invoice', envelopeId, orderId, tenantId, note: invoiceId })
     }),
   )
 }
