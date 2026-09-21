@@ -137,6 +137,21 @@ describe('createWorker', () => {
 
     await expect(createWorker(client, 'worker-b', { subscriptions: [subscription] })).resolves.toBeDefined()
   })
+
+  it('releases claimed durable subscriptions when hatchet.worker() rejects, so a retry succeeds', async () => {
+    let calls = 0
+    const { client } = fakeHatchetClient(() => {
+      calls += 1
+      return calls === 1 ? Promise.reject(new Error('engine unreachable')) : Promise.resolve(fakeWorker({}))
+    })
+    const subscription = stubSubscription('watch-shipping', 'event', 'shop.order.placed', () => undefined)
+
+    await expect(createWorker(client, 'worker-a', { subscriptions: [subscription] })).rejects.toThrow(
+      'engine unreachable',
+    )
+
+    await expect(createWorker(client, 'worker-a', { subscriptions: [subscription] })).resolves.toBeDefined()
+  })
 })
 
 describe('KyuWorker.waitUntilReady', () => {

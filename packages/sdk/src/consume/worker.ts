@@ -1,5 +1,5 @@
 import { CommandHasTwoSubscribersError, SubscriptionAlreadyBoundError } from '../errors.js'
-import type { CreateWorkerOpts, HatchetClient } from '../hatchet.js'
+import type { CreateWorkerOpts, HatchetClient, Worker } from '../hatchet.js'
 import type { Subscription } from './subscribe.js'
 
 export interface KyuWorker {
@@ -74,6 +74,14 @@ function bindDurableSubscriptionsOnce(subscriptions: readonly Subscription[], wo
   }
 }
 
+// hatchet.worker() rejecting leaves nothing built; a caller retrying startup
+// with the same objects should see the real cause, not a stale claim.
+function releaseDurableSubscriptions(subscriptions: readonly Subscription[]): void {
+  for (const subscription of subscriptions) {
+    if (subscription.stopDurableWaits !== undefined) boundDurableSubscriptions.delete(subscription)
+  }
+}
+
 // The engine SDK's graceful exit evicts each parked durable run and waits a
 // fixed 30s per run for the ack (EVICTION_ACK_TIMEOUT_MS in its
 // durable-listener-client); it exposes no way to shorten that, so the bound
@@ -111,7 +119,13 @@ export async function createWorker(
   if (options.slots !== undefined) workerOptions.slots = options.slots
   if (options.durableSlots !== undefined) workerOptions.durableSlots = options.durableSlots
 
-  const worker = await hatchet.worker(name, workerOptions)
+  let worker: Worker
+  try {
+    worker = await hatchet.worker(name, workerOptions)
+  } catch (cause) {
+    releaseDurableSubscriptions(options.subscriptions)
+    throw cause
+  }
 
   // Rejects the moment start() fails, in either call order: waitUntilReady()
   // may be awaited before start() and must not hang on a dead probe.
