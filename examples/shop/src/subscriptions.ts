@@ -2,8 +2,10 @@ import type { Kyu, Subscription } from '@kyuworks/sdk'
 import type { Pool } from 'pg'
 import type { ShopConfig } from './config.js'
 import { auditOrderSubscription } from './handlers/auditOrder.js'
+import { notifyStaffSubscription } from './handlers/notifyStaff.js'
 import { recordOrderSubscription } from './handlers/recordOrder.js'
 import { recordShipmentSubscription } from './handlers/recordShipment.js'
+import { runWorkflowSubscription } from './handlers/runWorkflow.js'
 import { sendInvoiceSubscription } from './handlers/sendInvoice.js'
 import { watchShippingSubscription } from './handlers/watchShipping.js'
 
@@ -15,5 +17,7 @@ export function buildSubscriptions(kyu: Kyu, pool: Pool, config: ShopConfig): Su
     sendInvoiceSubscription(kyu, pool),
     watchShippingSubscription(kyu, pool, config),
     recordShipmentSubscription(kyu, pool),
+    runWorkflowSubscription(kyu, pool),
+    notifyStaffSubscription(kyu, pool),
   ]
 }

@@ -29,7 +29,7 @@ export const workflowTriggered = defineEvent({
   data: z.object({ runId: z.uuidv7(), definitionId: z.uuid(), versionId: z.uuid(), orderId: z.uuid() }),
 })
 
-// Published by one notify step (next PR). The text lives in the pinned
+// Published by one notify step. The text lives in the pinned
 // version; this carries the ids that find it.
 export const notifyStaff = defineCommand({
   name: 'shop.staff.notify',
