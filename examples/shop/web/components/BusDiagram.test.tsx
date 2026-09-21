@@ -30,7 +30,7 @@ const fixture: BusDocument = {
   },
   counts: {
     producers: [{ source: 'shop', published: 101 }],
-    outbox: { published: 205, waitingForRelay: 102, shipped: 103, retired: 105 },
+    outbox: { published: 205, waitingForRelay: 102, shipped: 103, retired: 105, scheduled: 106 },
     subscriptions: [
       { name: 'record-order', queued: 1, running: 2, completed: 3, failed: 4, cancelled: 5 },
       { name: 'audit-order', queued: 6, running: 7, completed: 8, failed: 9, cancelled: 10 },

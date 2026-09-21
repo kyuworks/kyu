@@ -9,6 +9,7 @@ export const outboxRowSchema = z.object({
   tenant_id: z.uuid().nullable(),
   envelope: envelopeSchema,
   created_at: z.date(),
+  publish_at: z.date(),
   claimed_at: z.date().nullable(),
   claimed_by: z.string().nullable(),
   published_at: z.date().nullable(),

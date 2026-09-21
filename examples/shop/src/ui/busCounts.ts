@@ -13,6 +13,8 @@ export interface OutboxCounts {
   shipped: number
   /** Rows the relay gave up on (`dead_at` set); never waiting, never shipped. */
   retired: number
+  /** Rows whose `publish_at` has not arrived yet; waiting on purpose, never late. */
+  scheduled: number
 }
 
 export interface DoneOutcomeCount {
@@ -76,6 +78,7 @@ const producerTotalsRowSchema = z.object({
   published: z.coerce.number().int(),
   waiting: z.coerce.number().int(),
   retired: z.coerce.number().int(),
+  scheduled: z.coerce.number().int(),
 })
 const windowRowSchema = z.object({ id: z.string(), name: z.string() })
 const handlerLogRowSchema = z.object({ envelope_id: z.string(), handler: z.string() })
@@ -94,8 +97,9 @@ async function readProducerTotals(db: CountsSource): Promise<ProducerTotalsRow[]
   const result = await db.query(
     `SELECT envelope->>'source' AS source,
             count(*)::int AS published,
-            count(*) FILTER (WHERE published_at IS NULL AND dead_at IS NULL)::int AS waiting,
-            count(*) FILTER (WHERE dead_at IS NOT NULL)::int AS retired
+            count(*) FILTER (WHERE published_at IS NULL AND dead_at IS NULL AND publish_at <= now())::int AS waiting,
+            count(*) FILTER (WHERE dead_at IS NOT NULL)::int AS retired,
+            count(*) FILTER (WHERE published_at IS NULL AND dead_at IS NULL AND publish_at > now())::int AS scheduled
      FROM kyu_outbox
      GROUP BY 1
      ORDER BY 1`,
@@ -213,9 +217,16 @@ function foldBusCounts(
   const published = producerRows.reduce((sum, row) => sum + row.published, 0)
   const waitingForRelay = producerRows.reduce((sum, row) => sum + row.waiting, 0)
   // Retirement only ever lands on a row the claim selected, which is published_at IS NULL
-  // (packages/sdk outboxRepository.ts), so the three buckets never overlap.
+  // (packages/sdk outboxRepository.ts), so the four buckets never overlap.
   const retired = producerRows.reduce((sum, row) => sum + row.retired, 0)
-  const outbox: OutboxCounts = { published, waitingForRelay, retired, shipped: published - waitingForRelay - retired }
+  const scheduled = producerRows.reduce((sum, row) => sum + row.scheduled, 0)
+  const outbox: OutboxCounts = {
+    published,
+    waitingForRelay,
+    retired,
+    scheduled,
+    shipped: published - waitingForRelay - retired - scheduled,
+  }
 
   const logByEnvelope = new Map<string, Set<string>>()
   const envelopesByHandler = new Map<string, Set<string>>()

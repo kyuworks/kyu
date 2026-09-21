@@ -6,6 +6,7 @@ const TERMS = [
   'Producer',
   'publish()',
   'Outbox',
+  'Scheduled',
   'Retired',
   'Relay',
   'Engine',
@@ -32,7 +33,7 @@ function escapeReactText(text: string): string {
 }
 
 describe('BusLegend', () => {
-  it('holds all fifteen legend entries', () => {
+  it('holds all sixteen legend entries', () => {
     const markup = renderToStaticMarkup(<BusLegend engineWindowLimit={200} />)
 
     for (const term of TERMS) {

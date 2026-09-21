@@ -25,7 +25,7 @@ const topology: BusTopology = {
 
 const counts: BusCounts = {
   producers: [{ source: 'shop', published: 5 }],
-  outbox: { published: 5, waitingForRelay: 1, shipped: 4, retired: 0 },
+  outbox: { published: 5, waitingForRelay: 1, shipped: 4, retired: 0, scheduled: 0 },
   subscriptions: [
     { name: 'record-order', queued: 0, running: 0, completed: 5, failed: 0, cancelled: 0 },
     {

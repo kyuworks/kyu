@@ -29,6 +29,11 @@ function legendEntries(engineWindowLimit: number): readonly LegendEntry[] {
         'The outbox is a table in the shop\'s own database, kyu_outbox. "Waiting for relay" counts rows the relay has not sent yet. "Shipped" counts the rest. Stop the relay and place an order: waiting for relay goes up and nothing below this box moves.',
     },
     {
+      term: 'Scheduled',
+      description:
+        'A row published with a future publishAt. It is not counted under "waiting for relay": the relay is not late for it, it is holding it on purpose until its time arrives.',
+    },
+    {
       term: 'Retired',
       description:
         'A row the relay could not read. Its envelope does not match the message contract, so after three tries the relay gave up and set the row\'s dead_at column. The row will never be sent, and it is not counted under "waiting for relay" any more, so that number can come back down to zero instead of alerting for ever. Retired rows stay in kyu_outbox until something deletes them.',
@@ -82,7 +87,7 @@ function legendEntries(engineWindowLimit: number): readonly LegendEntry[] {
   ]
 }
 
-/** The fifteen sentences that explain every term the diagram draws. */
+/** The sixteen sentences that explain every term the diagram draws. */
 export function BusLegend({ engineWindowLimit }: BusLegendProps) {
   return (
     <dl className="mt-6 [&_dt]:mt-3 [&_dt]:font-semibold [&_dd]:mt-0.5 [&_dd]:text-muted">

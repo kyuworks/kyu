@@ -34,6 +34,7 @@ function makeRow(id: string, name: string): OutboxRow {
       data: {},
     },
     created_at: new Date(),
+    publish_at: new Date(),
     claimed_at: new Date(),
     claimed_by: 'worker-1',
     published_at: null,
