@@ -1,4 +1,5 @@
 import type { MessageData, MessageDefinition, MessageSchema } from '@kyuworks/schemas'
+import { cancelRunsFor } from './consume/cancelRuns.js'
 import { durable } from './consume/durable.js'
 import type { DurableOptions } from './consume/durable.js'
 import { readRunOutcomes } from './consume/runOutcomes.js'
@@ -51,7 +52,17 @@ export function createKyu(options: CreateKyuOptions): Kyu {
     onceById,
     subscribe: (definition, subscribeOptions) => subscribe(hatchet, definition, subscribeOptions),
     durable: (definition, durableOptions) => durable(hatchet, definition, durableOptions),
-    runs: { forEnvelope: (envelopeId, runOptions) => readRunOutcomes(hatchet, envelopeId, runOptions) },
+    runs: {
+      forEnvelope: (envelopeId, runOptions) => readRunOutcomes(hatchet, envelopeId, runOptions),
+      cancelForEnvelope: (envelopeId, runOptions) =>
+        cancelRunsFor(hatchet, { key: 'envelopeId', id: envelopeId, caller: 'runs.cancelForEnvelope' }, runOptions),
+      cancelForCorrelation: (correlationId, runOptions) =>
+        cancelRunsFor(
+          hatchet,
+          { key: 'correlationId', id: correlationId, caller: 'runs.cancelForCorrelation' },
+          runOptions,
+        ),
+    },
     worker: (name, workerOptions) => createWorker(hatchet, name, workerOptions),
     startRelay: (relayOptions) => startRelay({ ...relayOptions, hatchet }),
   }

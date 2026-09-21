@@ -2,7 +2,7 @@ import { uuidv7 } from '@kyuworks/schemas'
 import { describe, expect, it } from 'vitest'
 import { KyuError } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
-import { readRunOutcomes, toRunOutcome } from './runOutcomes.js'
+import { readRunOutcomes, readRunOutcomesFor, toRunOutcome } from './runOutcomes.js'
 import type { RunsReader } from './runOutcomes.js'
 
 type EngineRunRow = Awaited<ReturnType<HatchetClient['runs']['list']>>['rows'][number]
@@ -310,6 +310,15 @@ describe('readRunOutcomes', () => {
       expect(error).toBeInstanceOf(KyuError)
       expect(error).toHaveProperty('cause', cause)
     }
+  })
+
+  it('defaults since to 5 minutes before the correlation id’s own uuid v7 timestamp', async () => {
+    const correlationId = '018cc251-f400-7000-8000-000000000000'
+    const { reader, listCalls } = fakeRunsReader('ns_', [])
+    await readRunOutcomesFor(reader, { key: 'correlationId', id: correlationId, caller: 'runs.forCorrelation' })
+
+    expect(listCalls()[0]?.additionalMetadata).toEqual({ correlationId })
+    expect(listCalls()[0]?.since?.getTime()).toBe(Date.UTC(2024, 0, 1, 0, 0, 0, 0) - 5 * 60_000)
   })
 
   it('keeps only rows from this namespace, in the engine’s own order', async () => {

@@ -331,6 +331,12 @@ Priority is 1 to 3, default 1, and only orders runs within one workflow. Lanes t
 
 Durable handlers use `sleepFor` for delays and `waitFor(definition, { where, scope, lookback, timeout })` to park until a correlated event arrives, with a lookback window so an event that lands just before the wait is registered is not missed. Cron handlers replace tick-style sweeps.
 
+### 9.6 Cancelling a run
+
+A run is cancelled through the SDK, never through the engine client: `kyu.runs.cancelForEnvelope(envelopeId)` for one message, `kyu.runs.cancelForCorrelation(correlationId)` for a whole workflow run — the durable run and the command runs it published. Both look the runs up by the engine's own metadata and cancel them by run id, so they never reach a run in another namespace or under another correlation id. Both return the runs they cancelled, and both are safe to call twice: the engine ignores a cancel for a run that has already finished.
+
+A cancelled run ends as `cancelled`, not `failed`, and is not retried, so it never joins the dead-letter set. A durable run parked in `sleepFor` or `waitFor` has that wait rejected as soon as the cancel reaches its worker; a handler between two steps is not interrupted and finishes the step it is in, which is what keeps a cancel from landing inside an `onceById` transaction. The engine drops that late result.
+
 ## 10. SDK surface
 
 Working shape; names to be finalised in review.
@@ -380,6 +386,7 @@ const relay = kyu.startRelay({ db: pool, workerId: 'shop-api-1' });
 // Alerting: a run's outcome by envelope id, without the engine client
 const outcomes = await kyu.runs.forEnvelope(envelope.id);
 const deadLetters = outcomes.filter((o) => o.status === 'failed');
+await kyu.runs.cancelForCorrelation(envelope.correlationId); // stop a workflow run and everything it started
 ```
 
 Durable handlers set `executionTimeout` above the total of their sleeps and waits; the SDK defaults it to 24 hours.

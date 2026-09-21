@@ -29,7 +29,7 @@ pnpm check
 | Package | Purpose |
 | --- | --- |
 | `@kyuworks/schemas` | The envelope contract, naming rules, schema adapters |
-| `@kyuworks/sdk` | Publish through a transactional outbox, subscribe with Hatchet, run durable handlers, read a run's outcome by envelope id |
+| `@kyuworks/sdk` | Publish through a transactional outbox, subscribe with Hatchet, run durable handlers, read a run's outcome by envelope id, cancel a run by envelope id or correlation id |
 
 A process that only publishes needs no engine credentials. `createPublisher({ source })` returns
 just `publish`, writes the outbox row inside the caller's transaction and never builds an engine
@@ -51,6 +51,10 @@ A row whose `envelope` column does not parse can never be shipped: the column is
 `publish(tx, definition, data, { tenantId, publishAt })` holds a message back until `publishAt`. The row is written in the caller's transaction like any other, so a rollback cancels it; the relay simply does not claim it until its time. The envelope id and `correlationId` are minted when `publish()` runs, not when the row ships, so a redelivered scheduled message carries the id the caller already has. A past `publishAt` is due at once, and an invalid `Date` throws. A scheduled message has no publish-order guarantee against messages published after it: it arrives at its own time. Consumers must apply migration `20260922022251_outbox_publish_at.sql` before deploying an SDK version that carries this feature.
 
 A durable run parked in `sleepFor`/`waitFor` reads as `running` in that outcome — the engine exposes no separate parked state. A run reads `completed` only once the engine has recorded both `startedAt` and `finishedAt`, and `failed` only once it has recorded `finishedAt`; a run caught in the gap between the terminal status and those timestamps reads `running` instead. A failed run may have no `startedAt` at all, because it can end before any worker starts it.
+
+`kyu.runs.cancelForEnvelope(envelopeId)` cancels every run the engine holds for one envelope id. `kyu.runs.cancelForCorrelation(correlationId)` cancels every run that shares one correlation id — a durable run and the command runs it published. Both return the runs they asked the engine to cancel, as those runs read the moment before. An id the engine has no run for returns an empty array and makes no cancel call, and an id that is not a uuid v7 throws before the engine is called at all. Both match on the engine's own run metadata, so a run in another namespace, or under another correlation id, is never touched. Cancelling a run that has already finished does nothing and raises nothing, so calling either twice is safe.
+
+A cancelled run ends as `cancelled`, not `failed`, and the engine does not retry it. A run parked in `sleepFor`/`waitFor` sees that wait reject as soon as the cancel reaches its worker — about 0.3 seconds on the local stack. Let the rejection propagate. A handler that is between two steps when the cancel arrives is not interrupted: JavaScript cannot stop a running body, so the handler finishes the step it is in and the engine drops the result. That is what keeps a cancel out of the middle of an `onceById` transaction. Do not try to tell a cancellation from an eviction inside a handler — the engine SDK aborts the same controller and raises the same `AbortError` for both, and an evicted run is one that will carry on somewhere else.
 
 `worker.stop()` first refuses any new durable wait on that worker, then pauses the worker, evicts every parked durable run and waits for the bodies still running. A handler that reaches its first `sleepFor`/`waitFor` during the stop fails that attempt straight away and the engine retries it on whichever worker is available; `durable()` sets `retries` to 3 for this reason, and an explicit value still wins. The flag is one-way, so `createWorker` refuses a durable subscription object another worker already bound: build one subscription per worker.
 

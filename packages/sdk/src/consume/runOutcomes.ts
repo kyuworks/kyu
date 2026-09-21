@@ -24,12 +24,27 @@ export interface RunOutcome {
 }
 
 export interface ReadRunOutcomesOptions {
-  /** Ignore runs created before this. Default: 5 minutes before the envelope id's own uuid v7 timestamp. */
+  /** Ignore runs created before this. Default: 5 minutes before the id's own uuid v7 timestamp. */
   since?: Date
+}
+
+/** The envelope field the engine's run metadata is matched on. */
+export type RunLookupKey = 'envelopeId' | 'correlationId'
+
+export interface RunLookup {
+  key: RunLookupKey
+  /** A uuid v7: both `id` and `correlationId` on the envelope are uuid v7. */
+  id: string
+  /** The public method's name, so a thrown KyuError names what the caller called. */
+  caller: string
 }
 
 export interface KyuRuns {
   forEnvelope(envelopeId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
+  /** Cancels every run the engine holds for this envelope id and returns them as they read just before the cancel. An unknown id returns an empty array. */
+  cancelForEnvelope(envelopeId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
+  /** Cancels every run that shares this correlation id — a durable run and the command runs it published — and returns them as they read just before the cancel. An unknown id returns an empty array. */
+  cancelForCorrelation(correlationId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
 }
 
 type EngineRunRow = Awaited<ReturnType<HatchetClient['runs']['list']>>['rows'][number]
@@ -57,6 +72,12 @@ const RUN_PAGE_LIMIT = 100
 // drift: a producer more than a minute ahead would otherwise make every run
 // for its envelopes vanish, indistinguishable from an unknown envelope id.
 const SINCE_MARGIN_MS = 5 * 60_000
+
+// #100's forCorrelation is this same lookup with key 'correlationId'.
+const LOOKUP_SCHEMA = {
+  envelopeId: envelopeSchema.shape.id,
+  correlationId: envelopeSchema.shape.correlationId,
+}
 
 /** A row outside this client's namespace belongs to another namespace in the same Hatchet tenant. */
 export function toRunOutcome(row: EngineRunRow, namespace: string): RunOutcome | undefined {
@@ -94,50 +115,53 @@ export function toRunOutcome(row: EngineRunRow, namespace: string): RunOutcome |
   return outcome
 }
 
-// A run cannot predate its envelope: the uuid v7's own 48-bit timestamp is a
-// cheap, always-available `since` default, computed only after the id is
-// already known to be a well-formed uuid v7.
-function envelopeIdTimestamp(envelopeId: string): Date {
-  const hex = envelopeId.replaceAll('-', '').slice(0, 12)
+// A run cannot predate the id it is looked up by: a uuid v7's own 48-bit
+// timestamp is a cheap, always-available `since` default, computed only
+// after the id is already known to be a well-formed uuid v7.
+function uuidv7Timestamp(id: string): Date {
+  const hex = id.replaceAll('-', '').slice(0, 12)
   return new Date(Number.parseInt(hex, 16))
 }
 
 /**
- * Every run the engine has recorded for one envelope id, newest first. An
- * unknown envelope id returns an empty array. Delivery is at-least-once, so
- * one subscription can appear more than once.
+ * Every run the engine has recorded for one lookup id, newest first. An
+ * unknown id returns an empty array. Delivery is at-least-once, so one
+ * subscription can appear more than once.
  */
-export async function readRunOutcomes(
+export async function readRunOutcomesFor(
   hatchet: RunsReader,
-  envelopeId: string,
+  lookup: RunLookup,
   options?: ReadRunOutcomesOptions,
 ): Promise<readonly RunOutcome[]> {
-  const id = envelopeSchema.shape.id.safeParse(envelopeId)
+  const id = LOOKUP_SCHEMA[lookup.key].safeParse(lookup.id)
   if (!id.success) {
-    throw new KyuError(`runs.forEnvelope: "${envelopeId}" is not a uuid v7 envelope id`)
+    throw new KyuError(`${lookup.caller}: "${lookup.id}" is not a uuid v7 ${lookup.key}`)
   }
 
-  const since = options?.since ?? new Date(envelopeIdTimestamp(envelopeId).getTime() - SINCE_MARGIN_MS)
+  const since = options?.since ?? new Date(uuidv7Timestamp(lookup.id).getTime() - SINCE_MARGIN_MS)
+
+  const additionalMetadata: Record<string, string> = {}
+  additionalMetadata[lookup.key] = lookup.id
 
   let result: Awaited<ReturnType<RunsReader['runs']['list']>>
   try {
     // `onlyTasks` is left unset (defaults false): every Kyu subscription
     // is a single-task workflow, so the broader default returns the same rows.
     result = await hatchet.runs.list({
-      additionalMetadata: { envelopeId },
+      additionalMetadata,
       since,
       limit: RUN_PAGE_LIMIT,
       includePayloads: false,
     })
   } catch (cause) {
-    throw new KyuError(`runs.forEnvelope: could not read runs for envelope ${envelopeId}`, {
+    throw new KyuError(`${lookup.caller}: could not read runs for ${lookup.key} ${lookup.id}`, {
       cause: cause instanceof Error ? cause : new Error(String(cause)),
     })
   }
 
   if ((result.pagination.num_pages ?? 1) > 1) {
     throw new KyuError(
-      `runs.forEnvelope: envelope ${envelopeId} has more than ${RUN_PAGE_LIMIT} runs; narrow the window with options.since`,
+      `${lookup.caller}: ${lookup.key} ${lookup.id} has more than ${RUN_PAGE_LIMIT} runs; narrow the window with options.since`,
     )
   }
 
@@ -148,4 +172,17 @@ export async function readRunOutcomes(
     if (outcome !== undefined) outcomes.push(outcome)
   }
   return outcomes
+}
+
+/**
+ * Every run the engine has recorded for one envelope id, newest first. An
+ * unknown envelope id returns an empty array. Delivery is at-least-once, so
+ * one subscription can appear more than once.
+ */
+export function readRunOutcomes(
+  hatchet: RunsReader,
+  envelopeId: string,
+  options?: ReadRunOutcomesOptions,
+): Promise<readonly RunOutcome[]> {
+  return readRunOutcomesFor(hatchet, { key: 'envelopeId', id: envelopeId, caller: 'runs.forEnvelope' }, options)
 }
