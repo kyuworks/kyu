@@ -26,6 +26,12 @@ export interface WaitForOptions {
     /** Compared to `where.field` as a string literal. */
     equals: string
   }
+  /**
+   * The envelope a previous wake returned. The wait then matches only messages published after
+   * it, so a handler can wake, re-read its own state and park again without the message that
+   * woke it waking it for ever.
+   */
+  afterMessage?: Envelope<MessageDataShape>
   /** Defaults to the handler envelope's tenant, or `'global'` for a null tenant; an explicit value disables the tenant cross-check on the match. */
   scope?: string
   /** Defaults to `'5m'`. */
@@ -82,9 +88,12 @@ export function buildWaitForConditions(
   const lookback = options.lookback ?? '5m'
   const scope = options.scope ?? eventScope(handlerEnvelope)
   const considerEventsSince = new Date(now.getTime() - durationToMs(lookback)).toISOString()
-  // Pinned to the awaited definition's version: a same-name event on another
-  // version would otherwise match here and fail decoding non-retryably.
-  const expression = `${celEquals(options.where.field, options.where.equals)} && input.version == ${definition.version}`
+  // Pinned to the awaited definition's version, so a same-name event on another version does
+  // not match here and fail decoding. Envelope ids are uuid v7, so CEL `>` is publish order.
+  const keyMatch = celEquals(options.where.field, options.where.equals)
+  const afterClause =
+    options.afterMessage === undefined ? '' : ` && input.id > ${JSON.stringify(options.afterMessage.id)}`
+  const expression = `${keyMatch} && input.version == ${definition.version}${afterClause}`
   return {
     userEvent: new UserEventCondition(definition.name, expression, 'message', undefined, scope, considerEventsSince),
     sleep: new SleepCondition(options.timeout, 'timeout'),
@@ -195,6 +204,24 @@ async function runDurableHandler<S extends MessageSchema>(
  * carries the run to the next worker. Replay is safe by design: side effects
  * before a wait go through `onceById()`. Pass `retries: 0` to opt out and
  * dead-letter instead.
+ *
+ * Wake, check, park: to re-check a condition over the consumer's own data on every message for a
+ * subject, loop `waitFor` with the same `where` and pass the envelope the last wake returned as
+ * `afterMessage`. Each park is its own durable wait, counted by position, so a restart replays
+ * the sequence. The SDK evaluates no business predicate: the check belongs in the handler.
+ *
+ *     let afterMessage
+ *     for (;;) {
+ *       const waitOptions: WaitForOptions = { where: { field: 'data.leadId', equals: leadId }, timeout: '1h' }
+ *       if (afterMessage !== undefined) waitOptions.afterMessage = afterMessage
+ *       const result = await ctx.waitFor(leadChanged, waitOptions)
+ *       if (result.kind === 'timeout') {
+ *         await readyInOurOwnDatabase(leadId)
+ *         break
+ *       }
+ *       afterMessage = result.envelope
+ *       if (await readyInOurOwnDatabase(leadId)) break
+ *     }
  *
  * A parked run's wait is readable through `kyu.runs.forCorrelation`: a sleep
  * reports its wake time, a `waitFor` reports the message name and the field
