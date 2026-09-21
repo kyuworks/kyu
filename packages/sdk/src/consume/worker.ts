@@ -58,7 +58,7 @@ export function assertSingleCommandSubscriber(subscriptions: readonly Subscripti
 
 // A name that matches nothing is a deployment typo, and a worker that quietly
 // serves less than the deployer asked for takes no work and raises nothing.
-export function selectServedSubscriptions(
+function selectServedSubscriptions(
   subscriptions: readonly Subscription[],
   serves: readonly string[] | undefined,
   workerName: string,

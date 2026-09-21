@@ -62,9 +62,10 @@ export function toHatchetRateLimit(option: RateLimitOption): HatchetRateLimitInp
   if (option.key.trim() === '') {
     throw new KyuError(`rate limit key is empty: give a CEL expression, for example "'marketplace'"`)
   }
-  // The engine reads a missing or negative limit as -1, which means "look the
-  // key up in this tenant's registered static rate limits"; the SDK registers
-  // none, so that limits nothing.
+  // The engine reads a missing limit as -1, which means "look the key up in
+  // this tenant's registered static rate limits"; the SDK registers none, so
+  // the engine holds every run queued for ever. (A negative limit never
+  // reaches the engine: the check below refuses it first.)
   if (!Number.isInteger(option.limit) || option.limit < 1) {
     throw new KyuError(`rate limit ${option.key} needs a whole number of runs above zero, got ${option.limit}`)
   }

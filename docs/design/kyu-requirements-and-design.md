@@ -416,7 +416,7 @@ Commands use the same `publish` and `subscribe` calls with `kind: 'command'`; th
 | Monitoring | Hatchet failure alerts to Slack; scrape engine metrics if exposed; outbox-lag alert from each producer |
 | Scaling path | Compose or Helm topology with separate engine replicas and RabbitMQ when N4 is exceeded; no code change |
 
-**Worker pools.** One bus tenant per project per environment, and separate worker pools by subscription name inside it. A consumer builds its whole subscription list once and starts one process per pool, each with `kyu.worker(name, { subscriptions, serves: [...] })` naming the subscriptions that pool serves. A pool whose subscriptions call a slow third party runs on its own machine with its own rate limit, so it cannot hold up the pool that runs durable workflow handlers. How the pools are laid out for a real integration is a second ADR, deferred until a marketplace integration is scheduled.
+**Worker pools.** One bus tenant per project per environment, and separate worker pools by subscription name inside it. A consumer builds its whole subscription list once and starts one process per pool, each with `kyu.worker(name, { subscriptions, serves: [...] })` naming the subscriptions that pool serves. A pool whose subscriptions call a slow third party runs on its own machine with its own rate limit, so it cannot hold up the pool that runs durable workflow handlers. A subscription no running worker serves gets no run at all: the engine does not back-fill when a worker starts later and picks it up, so every subscription must be served by some pool that is actually running. How the pools are laid out for a real integration is a second ADR, deferred until a marketplace integration is scheduled.
 
 ## 13. Adoption plan
 
