@@ -192,6 +192,16 @@ async function runDurableHandler<S extends MessageSchema>(
  * carries the run to the next worker. Replay is safe by design: side effects
  * before a wait go through `onceById()`. Pass `retries: 0` to opt out and
  * dead-letter instead.
+ *
+ * A run cancelled through `kyu.runs.cancelForEnvelope`/`cancelForCorrelation`
+ * ends `cancelled` by itself: the engine aborts a parked `sleepFor`/`waitFor`,
+ * and the rejection should be left to propagate rather than caught. A body
+ * between two steps is not interrupted — it finishes the step it is in and
+ * the engine drops the result — which is what keeps a cancel out of the
+ * middle of an `onceById()` transaction. Do not use `ctx.signal` to detect a
+ * cancellation: the engine SDK aborts the same controller, with the same
+ * generic `AbortError`, when it evicts a run to move it to another worker,
+ * and an evicted run is not a cancelled one.
  */
 export function durable<S extends MessageSchema>(
   hatchet: HatchetClient,
