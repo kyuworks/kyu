@@ -72,6 +72,8 @@ export {
   MessageDefinitionError,
   RelayConnectionLostError,
   KyuError,
+  ScheduleAlreadyExistsError,
+  ScheduleMessageUnknownError,
   SubscriptionAlreadyBoundError,
   WorkerStoppingError,
 } from './errors.js'
@@ -98,3 +100,12 @@ export type { KyuRuns, ReadRunOutcomesOptions, RunOutcome, RunStatus } from './c
 
 export { createWorker } from './consume/worker.js'
 export type { CreateWorkerOptions, KyuWorker } from './consume/worker.js'
+
+export { SCHEDULE_WORKFLOW_NAME } from './schedule/scheduleTrigger.js'
+export type { ScheduleTrigger } from './schedule/scheduleTrigger.js'
+
+export { createScheduleRunner } from './schedule/scheduleRunner.js'
+export type { ScheduleRunnerOptions } from './schedule/scheduleRunner.js'
+
+export { createSchedules } from './schedule/schedules.js'
+export type { CreateScheduleOptions, KyuSchedules, Schedule, SchedulesEngine } from './schedule/schedules.js'
