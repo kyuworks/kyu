@@ -27,9 +27,8 @@ export interface SharedTaskOptions {
   priority?: 'low' | 'medium' | 'high'
 }
 
-// The engine registers a workflow as the namespace plus this name, lowercased
-// (Hatchet SDK v1 workflow-proto.ts, normalizeWorkflowDefinition). Anything it
-// would change reads back from runs.forEnvelope() as a name the caller never chose.
+// The engine registers a workflow as the namespace plus this name, lowercased (Hatchet SDK's
+// normalizeWorkflowDefinition); anything it would change reads back as a name the caller never chose.
 const SUBSCRIPTION_NAME_PATTERN = /^[a-z][a-z0-9_-]*$/
 
 export function assertSubscriptionName(name: string): void {

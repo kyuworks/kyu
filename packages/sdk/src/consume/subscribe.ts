@@ -17,7 +17,7 @@ import { applySharedTaskOptions, assertSubscriptionName } from './taskOptions.js
 import type { SharedTaskOptions } from './taskOptions.js'
 
 export interface SubscribeOptions<TData extends MessageDataShape> extends SharedTaskOptions {
-  /** Lowercase letters, digits, `-` or `_`, starting with a letter: the engine lowercases anything else. */
+  /** Lowercase letters, digits, `-` or `_`, starting with a letter: the engine lowercases the registered name, and this rule stays narrower than that on purpose. */
   name: string
   handler: (ctx: HandlerContext<TData>) => Promise<void> | void
 }

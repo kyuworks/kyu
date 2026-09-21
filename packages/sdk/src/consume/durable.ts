@@ -44,7 +44,7 @@ export interface DurableHandlerContext<TData extends MessageDataShape> extends H
 }
 
 export interface DurableOptions<TData extends MessageDataShape> extends SharedTaskOptions {
-  /** Lowercase letters, digits, `-` or `_`, starting with a letter: the engine lowercases anything else. */
+  /** Lowercase letters, digits, `-` or `_`, starting with a letter: the engine lowercases the registered name, and this rule stays narrower than that on purpose. */
   name: string
   handler: (ctx: DurableHandlerContext<TData>) => Promise<void> | void
 }

@@ -345,7 +345,7 @@ await publisher.publish(tx, orderPlaced, { orderId, customerId }, { tenantId });
 
 // Consumer
 export const sendInvoice = kyu.subscribe(orderPlaced, {
-  name: 'shop.invoice.send',
+  name: 'send-invoice',
   concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'cancel_in_progress' },
   retries: 5,
   backoff: { factor: 2, maxSeconds: 600 },
@@ -354,7 +354,7 @@ export const sendInvoice = kyu.subscribe(orderPlaced, {
 
 // Durable consumer
 export const followUpOrder = kyu.durable(orderPlaced, {
-  name: 'shop.order.follow_up',
+  name: 'follow-up-order',
   concurrency: { key: 'input.data.customerId', maxRuns: 1, strategy: 'cancel_newest' },
   executionTimeout: '240h',
   handler: async (ctx) => {

@@ -225,6 +225,7 @@ describe('subscribe: name validation', () => {
   it.each([
     ['an uppercase letter', 'RecordOrder'],
     ['a space', 'record order'],
+    ['a dot', 'shop.invoice.send'],
     ['an empty string', ''],
     ['a leading digit', '1record'],
     ['a leading dash', '-record'],
@@ -232,6 +233,7 @@ describe('subscribe: name validation', () => {
     const { client, capturedOptions } = fakeHatchetClient()
 
     expect(() => subscribe(client, orderPlaced, { name, handler: () => undefined })).toThrow(KyuError)
+    expect(() => subscribe(client, orderPlaced, { name, handler: () => undefined })).toThrow(/lowercase letters/)
     expect(capturedOptions()).toBeUndefined()
   })
 
