@@ -177,8 +177,7 @@ describe('runProgress: durable run and the command it publishes', () => {
     expect(parked.at(0)?.waiting).toEqual({
       kind: 'message',
       name: 'kyu.progress.shipped',
-      field: 'data.orderId',
-      equals: orderId,
+      match: { field: 'data.orderId', equals: orderId },
     })
 
     await push(shipped, { orderId })

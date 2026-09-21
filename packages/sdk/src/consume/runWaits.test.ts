@@ -4,14 +4,22 @@ import { readRunWait, toWaitLabel } from './runWaits.js'
 import type { DurableLogReader } from './runWaits.js'
 
 type Entry = Awaited<ReturnType<DurableLogReader['api']['v1DurableTaskEventLogList']>>['data'][number]
+type LogQuery = Parameters<DurableLogReader['api']['v1DurableTaskEventLogList']>[2]
 
-function fakeReader(entries: Entry[], error?: Error): DurableLogReader {
+// Slices `allEntries` by the `offset`/`limit` the production code sends, the
+// same way the real engine paginates, so a fixture with more than one page's
+// worth of entries exercises the paging loop without a bespoke mock per test.
+function fakeReader(allEntries: Entry[], error?: Error): DurableLogReader {
   return {
     tenantId: 'tenant-1',
     api: {
-      v1DurableTaskEventLogList: async () => {
+      v1DurableTaskEventLogList: async (_tenantId: string, _runId: string, query?: LogQuery) => {
         if (error !== undefined) throw error
-        return { data: entries } as Awaited<ReturnType<DurableLogReader['api']['v1DurableTaskEventLogList']>>
+        const offset = query?.offset ?? 0
+        const limit = query?.limit ?? allEntries.length
+        return { data: allEntries.slice(offset, offset + limit) } as Awaited<
+          ReturnType<DurableLogReader['api']['v1DurableTaskEventLogList']>
+        >
       },
     },
   }
@@ -51,7 +59,7 @@ function entry(overrides: EntryOverrides): Entry {
 }
 
 describe('readRunWait', () => {
-  it('a parked waitFor reports the message name, field and value from its label', async () => {
+  it('a parked waitFor reports the message name and the field match from its label', async () => {
     const reader = fakeReader([
       entry({
         userMessage: toWaitLabel({ field: 'data.orderId', equals: 'ord-1' }),
@@ -68,8 +76,7 @@ describe('readRunWait', () => {
     await expect(readRunWait(reader, 'run-1', 'ns_', 'runs.forCorrelation')).resolves.toEqual({
       kind: 'message',
       name: 'shop.order.shipped',
-      field: 'data.orderId',
-      equals: 'ord-1',
+      match: { field: 'data.orderId', equals: 'ord-1' },
     })
   })
 
@@ -81,7 +88,7 @@ describe('readRunWait', () => {
     })
   })
 
-  it('takes the last unsatisfied WAIT_FOR entry and ignores satisfied ones and MEMO entries', async () => {
+  it('takes the unsatisfied WAIT_FOR entry with the greatest nodeId and ignores satisfied ones and MEMO entries', async () => {
     const reader = fakeReader([
       entry({
         nodeId: 1,
@@ -113,19 +120,25 @@ describe('readRunWait', () => {
     await expect(readRunWait(reader, 'run-1', 'ns_', 'runs.forCorrelation')).resolves.toBeUndefined()
   })
 
-  it('throws KyuError when a message wait carries no label', async () => {
+  it('an unlabelled USER_EVENT wait — parked by a worker on an older SDK — reports the name with no match', async () => {
     const reader = fakeReader([entry({ waitData: [{ kind: 'USER_EVENT', eventKey: 'ns_shop.order.shipped' }] })])
-    await expect(readRunWait(reader, 'run-1', 'ns_', 'runs.forCorrelation')).rejects.toBeInstanceOf(KyuError)
+    await expect(readRunWait(reader, 'run-1', 'ns_', 'runs.forCorrelation')).resolves.toEqual({
+      kind: 'message',
+      name: 'shop.order.shipped',
+    })
   })
 
-  it('throws KyuError when a message wait carries a label this SDK did not write', async () => {
+  it('a USER_EVENT wait carrying a label this SDK did not write reports the name with no match', async () => {
     const reader = fakeReader([
       entry({
         userMessage: 'something else',
         waitData: [{ kind: 'USER_EVENT', eventKey: 'ns_shop.order.shipped' }],
       }),
     ])
-    await expect(readRunWait(reader, 'run-1', 'ns_', 'runs.forCorrelation')).rejects.toBeInstanceOf(KyuError)
+    await expect(readRunWait(reader, 'run-1', 'ns_', 'runs.forCorrelation')).resolves.toEqual({
+      kind: 'message',
+      name: 'shop.order.shipped',
+    })
   })
 
   it('wraps a rejected engine call in KyuError with the original error as cause', async () => {
@@ -140,8 +153,26 @@ describe('readRunWait', () => {
     }
   })
 
-  it('throws KyuError when the log fills a whole page', async () => {
+  it('a log that exactly fills one page but has no more entries does not throw', async () => {
     const entries = Array.from({ length: 500 }, (_, i) => entry({ nodeId: i + 1, isSatisfied: true }))
+    const reader = fakeReader(entries)
+    await expect(readRunWait(reader, 'run-1', 'ns_', 'runs.forCorrelation')).resolves.toBeUndefined()
+  })
+
+  it('reads a second page when the first comes back full, and finds the wait it holds', async () => {
+    const firstPage = Array.from({ length: 500 }, (_, i) => entry({ nodeId: i + 1, isSatisfied: true }))
+    const secondPage = [
+      entry({ nodeId: 501, isSatisfied: false, waitData: [{ kind: 'SLEEP', sleepDurationMs: 60_000 }] }),
+    ]
+    const reader = fakeReader([...firstPage, ...secondPage])
+    await expect(readRunWait(reader, 'run-1', 'ns_', 'runs.forCorrelation')).resolves.toEqual({
+      kind: 'sleep',
+      until: new Date('2026-01-01T00:01:00.000Z'),
+    })
+  })
+
+  it('throws KyuError once the durable log would need an 11th page (beyond the 5000-entry ceiling)', async () => {
+    const entries = Array.from({ length: 5000 }, (_, i) => entry({ nodeId: i + 1, isSatisfied: true }))
     const reader = fakeReader(entries)
     await expect(readRunWait(reader, 'run-1', 'ns_', 'runs.forCorrelation')).rejects.toBeInstanceOf(KyuError)
   })

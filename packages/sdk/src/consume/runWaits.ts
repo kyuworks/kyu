@@ -3,7 +3,9 @@ import { KyuError } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
 import type { RunLookup } from './runOutcomes.js'
 
-export type RunWait = { kind: 'sleep'; until: Date } | { kind: 'message'; name: string; field: string; equals: string }
+export type RunWait =
+  | { kind: 'sleep'; until: Date }
+  | { kind: 'message'; name: string; match?: { field: string; equals: string } }
 
 // Narrowed to what this file actually needs, the same way RunsReader
 // (runOutcomes.ts) is, so the unit test's fake is a plain object.
@@ -38,8 +40,13 @@ function parseWaitLabel(label: string | undefined): { field: string; equals: str
 
 // One page of the durable log; the log has no pagination metadata like
 // runs.list does, so a page that came back full is the only signal that more
-// might follow.
+// might follow, and a page that came back short is the only signal that it
+// was the last one.
 const DURABLE_LOG_PAGE_LIMIT = 500
+
+// Hard ceiling on pages fetched for one run's log: DURABLE_LOG_PAGE_LIMIT *
+// this many entries, the same shape as RUN_PAGE_MAX_PAGES in runOutcomes.ts.
+const DURABLE_LOG_MAX_PAGES = 10
 
 // data-contracts.d.ts:715-731: a WAIT_FOR entry's waitData is a list of
 // conditions, each optionally wrapping an `or` of more conditions. The kind
@@ -55,28 +62,21 @@ function flattenConditions(entry: DurableLogEntry): DurableLogCondition[] {
   return flat
 }
 
-// Neither a USER_EVENT nor a SLEEP condition is a wait kind Kyu's own
-// waitFor()/sleepFor() never register (e.g. a bare CHILD_WORKFLOW); reported
-// as no wait rather than invented or thrown.
-function toRunWait(
-  entry: DurableLogEntry,
-  namespace: string,
-  runId: string,
-  caller: RunLookup['caller'],
-): RunWait | undefined {
+// A wait kind Kyu never registers (e.g. a bare CHILD_WORKFLOW) reports no
+// wait, rather than invented or thrown.
+function toRunWait(entry: DurableLogEntry, namespace: string): RunWait | undefined {
   const conditions = flattenConditions(entry)
 
   const userEvent = conditions.find((condition) => condition.kind === 'USER_EVENT')
   if (userEvent !== undefined) {
-    const label = parseWaitLabel(entry.userMessage)
-    if (label === undefined) {
-      throw new KyuError(
-        `${caller}: run ${runId} is waiting on ${userEvent.eventKey ?? '(unknown event)'} but its wait carries no Kyu label`,
-      )
-    }
     const eventKey = userEvent.eventKey ?? ''
     const name = eventKey.startsWith(namespace) ? eventKey.slice(namespace.length) : eventKey
-    return { kind: 'message', name, field: label.field, equals: label.equals }
+    // A run parked by a worker on an older SDK, or one whose label a future
+    // SDK cannot decode, carries no match rather than failing the whole read.
+    const label = parseWaitLabel(entry.userMessage)
+    return label === undefined
+      ? { kind: 'message', name }
+      : { kind: 'message', name, match: { field: label.field, equals: label.equals } }
   }
 
   const sleep = conditions.find((condition) => condition.kind === 'SLEEP' && condition.sleepDurationMs !== undefined)
@@ -89,9 +89,12 @@ function toRunWait(
 
 /**
  * The current wait for one durable run, or `undefined` when it is not
- * parked. The engine's durable log is oldest-first, so the whole page is
- * read; an entry stays unsatisfied for ever after a cancel, so callers only
- * ask this while the run's own status is `running`.
+ * parked. Pages the engine's durable log in `DURABLE_LOG_PAGE_LIMIT`-entry
+ * batches, up to `DURABLE_LOG_MAX_PAGES`, and picks the unsatisfied
+ * `WAIT_FOR` entry with the greatest `nodeId` — the current wait — so the
+ * read does not depend on the endpoint's own ordering. An entry stays
+ * unsatisfied for ever after a cancel, so callers only ask this while the
+ * run's own status is `running`.
  */
 export async function readRunWait(
   reader: DurableLogReader,
@@ -99,27 +102,37 @@ export async function readRunWait(
   namespace: string,
   caller: RunLookup['caller'],
 ): Promise<RunWait | undefined> {
-  let entries: DurableLogEntry[]
-  try {
-    const response = await reader.api.v1DurableTaskEventLogList(reader.tenantId, runId, {
-      limit: DURABLE_LOG_PAGE_LIMIT,
-    })
-    entries = response.data
-  } catch (cause) {
-    throw new KyuError(`${caller}: could not read the durable log for run ${runId}`, {
-      cause: cause instanceof Error ? cause : new Error(String(cause)),
-    })
-  }
+  const entries: DurableLogEntry[] = []
+  for (let page = 0; ; page += 1) {
+    let response: Awaited<ReturnType<DurableLogReader['api']['v1DurableTaskEventLogList']>>
+    try {
+      response = await reader.api.v1DurableTaskEventLogList(reader.tenantId, runId, {
+        limit: DURABLE_LOG_PAGE_LIMIT,
+        offset: page * DURABLE_LOG_PAGE_LIMIT,
+      })
+    } catch (cause) {
+      throw new KyuError(`${caller}: could not read the durable log for run ${runId}`, {
+        cause: cause instanceof Error ? cause : new Error(String(cause)),
+      })
+    }
 
-  if (entries.length >= DURABLE_LOG_PAGE_LIMIT) {
-    throw new KyuError(`${caller}: run ${runId} has more than ${DURABLE_LOG_PAGE_LIMIT} durable log entries`)
-  }
-
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index]
-    if (entry !== undefined && entry.kind === 'WAIT_FOR' && !entry.isSatisfied) {
-      return toRunWait(entry, namespace, runId, caller)
+    entries.push(...response.data)
+    // A short page is the only signal the log has no more entries; a full
+    // page must be followed up, since a log of exactly one page's worth
+    // would otherwise be mistaken for an overflow (the off-by-one this
+    // replaces).
+    if (response.data.length < DURABLE_LOG_PAGE_LIMIT) break
+    if (page + 1 >= DURABLE_LOG_MAX_PAGES) {
+      throw new KyuError(
+        `${caller}: run ${runId} has more than ${DURABLE_LOG_MAX_PAGES * DURABLE_LOG_PAGE_LIMIT} durable log entries`,
+      )
     }
   }
-  return undefined
+
+  let current: DurableLogEntry | undefined
+  for (const entry of entries) {
+    if (entry.kind !== 'WAIT_FOR' || entry.isSatisfied) continue
+    if (current === undefined || entry.nodeId > current.nodeId) current = entry
+  }
+  return current === undefined ? undefined : toRunWait(current, namespace)
 }
