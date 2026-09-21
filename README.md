@@ -54,6 +54,8 @@ A durable run parked in `sleepFor`/`waitFor` reads as `running` in that outcome 
 
 `worker.stop()` first refuses any new durable wait on that worker, then pauses the worker, evicts every parked durable run and waits for the bodies still running. A handler that reaches its first `sleepFor`/`waitFor` during the stop fails that attempt straight away and the engine retries it on whichever worker is available; `durable()` sets `retries` to 3 for this reason, and an explicit value still wins. The flag is one-way, so `createWorker` refuses a durable subscription object another worker already bound: build one subscription per worker.
 
+A durable handler that must re-check a condition over its own data parks again after every wake: `waitFor` with the same `where`, and `afterMessage` set to the envelope the last wake returned. Envelope ids are uuid v7, so the wait matches only messages published after that one and the message that woke the handler never wakes it again. A message that lands while the handler is between the wake and the next park is still matched, because the lookback window covers it. A message published before the last wake but delivered to the engine after it is not matched; the wait's `timeout` is the backstop, and the handler re-reads its own state on a timeout too. Each park is one durable wait, counted by its position in the run, so a restart replays the same sequence and re-runs no completed step.
+
 Eviction of an already-parked run is the slow part: the engine SDK waits up to 30 seconds per run for the engine to acknowledge it, so size a supervisor's SIGTERM grace period above that — or pass `stopTimeoutMs` to `createWorker` to cap the whole stop.
 
 ## Examples

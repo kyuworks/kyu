@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto'
 import { createEnvelope, defineEvent, toEnvelopeMetadata } from '@kyuworks/schemas'
-import type { Envelope } from '@kyuworks/schemas'
+import type { Envelope, MessageDataShape } from '@kyuworks/schemas'
 import { z } from 'zod'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { eventScope } from '../eventScope.js'
 import { createHatchetClient } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
-import type { DurableHandlerContext, WaitForResult } from './durable.js'
+import type { DurableHandlerContext, WaitForOptions, WaitForResult } from './durable.js'
 import { durable } from './durable.js'
 import { createWorker } from './worker.js'
 import type { KyuWorker } from './worker.js'
@@ -183,6 +183,142 @@ describe('durable: correlated waitFor', () => {
     await waitUntil(() => results.has(trigerEnvelope.id), 90_000)
     expect(results.get(trigerEnvelope.id)).toEqual({ kind: 'timeout' })
   }, 120_000)
+})
+
+describe('durable: waking again after a wake', () => {
+  const trigger = defineEvent({
+    name: 'kyu.durable.recheck_trigger',
+    version: 1,
+    data: z.object({ orderId: z.string(), rounds: z.number() }),
+  })
+  // A distinct event from `trigger`, not just a distinct workflow name: two
+  // workflows listening on the same event both fire on one push, so the
+  // still-running shared worker below would otherwise also run the restart
+  // test's trigger and write into the same `wakes`/`ledger` entry.
+  const restartTrigger = defineEvent({
+    name: 'kyu.durable.recheck_restart_trigger',
+    version: 1,
+    data: z.object({ orderId: z.string(), rounds: z.number() }),
+  })
+  type TriggerData = { orderId: string; rounds: number }
+
+  // Stands in for the consumer's own state: one row per handled message.
+  const ledger = new Map<string, string[]>()
+  const wakes = new Map<string, string[]>()
+  const finished = new Set<string>()
+
+  async function handleWakeCheckPark(ctx: DurableHandlerContext<TriggerData>): Promise<void> {
+    wakes.set(ctx.envelope.id, [])
+    ledger.set(ctx.envelope.id, [])
+    // Widened on purpose: `afterMessage` reads the envelope's id only.
+    let afterMessage: Envelope<MessageDataShape> | undefined
+    for (let round = 0; round < ctx.envelope.data.rounds; round += 1) {
+      const waitOptions: WaitForOptions = {
+        where: { field: 'data.orderId', equals: ctx.envelope.data.orderId },
+        timeout: '20s',
+      }
+      if (afterMessage !== undefined) waitOptions.afterMessage = afterMessage
+      const result: WaitForResult<typeof orderShipped.data> = await ctx.waitFor(orderShipped, waitOptions)
+      wakes.get(ctx.envelope.id)?.push(result.kind === 'message' ? result.envelope.id : 'timeout')
+      if (result.kind === 'timeout') break
+      afterMessage = result.envelope
+      const seen = ledger.get(ctx.envelope.id) ?? []
+      if (!seen.includes(result.envelope.id)) seen.push(result.envelope.id)
+    }
+    finished.add(ctx.envelope.id)
+  }
+
+  function makeSubscription() {
+    return durable(hatchet, trigger, { name: 'wake-check-park', handler: handleWakeCheckPark })
+  }
+
+  // Its own event and workflow name: the shared worker above stays
+  // registered for `trigger` throughout this describe, so reusing its event
+  // or workflow name here would let a push in this test also run on it.
+  function makeRestartSubscription() {
+    return durable(hatchet, restartTrigger, { name: 'wake-check-park-restart', handler: handleWakeCheckPark })
+  }
+
+  let worker: KyuWorker | undefined
+
+  beforeAll(async () => {
+    worker = await createWorker(hatchet, 'kyu-durable-recheck', {
+      subscriptions: [makeSubscription()],
+      durableSlots: 5,
+    })
+    void worker.start()
+    await worker.waitUntilReady()
+  }, 120_000)
+
+  afterAll(async () => {
+    await worker?.stop()
+  })
+
+  it('wakes once for each message that matches the key, and never again for the same one', async () => {
+    const orderId = randomBytes(8).toString('hex')
+    const trigerEnvelope = await createEnvelope(trigger, { orderId, rounds: 4 }, { tenantId: null, source: 'sdk.test' })
+    await hatchet.events.push(trigger.name, trigerEnvelope, {
+      additionalMetadata: toEnvelopeMetadata(trigerEnvelope),
+      scope: eventScope(trigerEnvelope),
+    })
+
+    await waitUntil(() => wakes.has(trigerEnvelope.id), 30_000)
+
+    const a = await pushShipped(orderId, null)
+    await sleep(800)
+    await pushShipped(randomBytes(8).toString('hex'), null) // decoy: another subject's orderId
+    await sleep(800)
+    const b = await pushShipped(orderId, null)
+    await sleep(800)
+    const c = await pushShipped(orderId, null)
+
+    expect(await waitUntil(() => finished.has(trigerEnvelope.id), 90_000)).toBe(true)
+    expect(wakes.get(trigerEnvelope.id)).toEqual([a.id, b.id, c.id, 'timeout'])
+  }, 240_000)
+
+  it('replays the same wait sequence after a worker restart', async () => {
+    const orderId = randomBytes(8).toString('hex')
+    const trigerEnvelope = await createEnvelope(
+      restartTrigger,
+      { orderId, rounds: 2 },
+      { tenantId: null, source: 'sdk.test' },
+    )
+
+    const workerA = await createWorker(hatchet, 'kyu-durable-recheck-restart-a', {
+      subscriptions: [makeRestartSubscription()],
+      durableSlots: 5,
+    })
+    void workerA.start()
+    await workerA.waitUntilReady()
+
+    await hatchet.events.push(restartTrigger.name, trigerEnvelope, {
+      additionalMetadata: toEnvelopeMetadata(trigerEnvelope),
+      scope: eventScope(trigerEnvelope),
+    })
+
+    const a = await pushShipped(orderId, null)
+    expect(await waitUntil(() => (wakes.get(trigerEnvelope.id)?.length ?? 0) >= 1, 60_000)).toBe(true)
+    // Give the body time to register the second wait before the worker stops,
+    // so the run is parked in it rather than caught mid-body.
+    await sleep(3_000)
+
+    await workerA.stop()
+
+    const workerB = await createWorker(hatchet, 'kyu-durable-recheck-restart-b', {
+      subscriptions: [makeRestartSubscription()],
+      durableSlots: 5,
+    })
+    void workerB.start()
+    await workerB.waitUntilReady()
+
+    const b = await pushShipped(orderId, null)
+
+    expect(await waitUntil(() => finished.has(trigerEnvelope.id), 150_000)).toBe(true)
+    expect(wakes.get(trigerEnvelope.id)).toEqual([a.id, b.id])
+    expect(ledger.get(trigerEnvelope.id)).toEqual([a.id, b.id])
+
+    await workerB.stop()
+  }, 300_000)
 })
 
 describe('durable: a stop while the body is executing', () => {

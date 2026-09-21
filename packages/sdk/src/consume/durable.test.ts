@@ -201,6 +201,49 @@ describe('buildWaitForConditions', () => {
 
     expect(userEvent.considerEventsSince).toBe(new Date(now.getTime() - 60 * 60_000).toISOString())
   })
+
+  it('requires a later envelope id when parking again after a wake', async () => {
+    const envelope = await handlerEnvelope(null)
+    const woke = await createEnvelope(orderShipped, { orderId: 'order-1' }, { tenantId: null, source: 'sdk.test' })
+
+    const { userEvent } = buildWaitForConditions(
+      envelope,
+      orderShipped,
+      { where: { field: 'data.orderId', equals: 'order-1' }, afterMessage: woke, timeout: '30s' },
+      now,
+    )
+
+    expect(userEvent.expression).toBe(
+      `input.data.orderId == "order-1" && input.version == 1 && input.id > "${woke.id}"`,
+    )
+  })
+
+  it('keeps the lookback origin when parking again after a wake', async () => {
+    const envelope = await handlerEnvelope(null)
+    const woke = await createEnvelope(orderShipped, { orderId: 'order-1' }, { tenantId: null, source: 'sdk.test' })
+
+    const { userEvent } = buildWaitForConditions(
+      envelope,
+      orderShipped,
+      { where: { field: 'data.orderId', equals: 'order-1' }, afterMessage: woke, timeout: '30s' },
+      now,
+    )
+
+    expect(userEvent.considerEventsSince).toBe(new Date(now.getTime() - 5 * 60_000).toISOString())
+  })
+
+  it('waits on the envelope correlation id when that is the subject key', async () => {
+    const envelope = await handlerEnvelope(null)
+
+    const { userEvent } = buildWaitForConditions(
+      envelope,
+      orderShipped,
+      { where: { field: 'correlationId', equals: envelope.correlationId }, timeout: '30s' },
+      now,
+    )
+
+    expect(userEvent.expression).toBe(`input.correlationId == "${envelope.correlationId}" && input.version == 1`)
+  })
 })
 
 interface FakeDurableContext {

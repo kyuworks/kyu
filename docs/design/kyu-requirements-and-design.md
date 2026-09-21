@@ -331,6 +331,8 @@ Priority is 1 to 3, default 1, and only orders runs within one workflow. Lanes t
 
 Durable handlers use `sleepFor` for delays and `waitFor(definition, { where, scope, lookback, timeout })` to park until a correlated event arrives, with a lookback window so an event that lands just before the wait is registered is not missed. Cron handlers replace tick-style sweeps.
 
+A handler that must re-check several facts passes the last matched envelope back as `afterMessage`: it wakes on every message for the subject, re-reads the project's own data and parks again, and the SDK evaluates no business predicate of its own. Envelope ids are uuid v7, so "after this message" is publish order, and each park is one durable wait counted by position.
+
 ## 10. SDK surface
 
 Working shape; names to be finalised in review.
