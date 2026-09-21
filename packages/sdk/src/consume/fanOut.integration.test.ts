@@ -3,7 +3,7 @@ import { createEnvelope, defineCommand, defineEvent, toEnvelopeMetadata } from '
 import type { Envelope, MessageDataShape } from '@kyuworks/schemas'
 import { Client } from 'pg'
 import { z } from 'zod'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { eventScope } from '../eventScope.js'
 import { NonRetryableError, createHatchetClient } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
@@ -13,6 +13,7 @@ import { durable } from './durable.js'
 import type { ChildOutcome } from './fanOut.js'
 import { subscribe } from './subscribe.js'
 import { createWorker } from './worker.js'
+import type { KyuWorker } from './worker.js'
 
 // Envelopes go straight to `hatchet.events.push` — no relay — the same
 // pattern as durable.integration.test.ts. Namespaced per run.
@@ -20,6 +21,41 @@ import { createWorker } from './worker.js'
 const namespace = `kfo${randomBytes(3).toString('hex')}_`
 const hatchet: HatchetClient = createHatchetClient({ namespace })
 const publisher = createPublisher({ source: 'sdk.test' })
+
+// Every worker this file starts is registered here and stopped in
+// `afterEach`, even when a test throws before reaching its own `finally` —
+// see the fan-out restart test, which stops `workerA` outside a try/finally.
+const activeWorkers = new Set<KyuWorker>()
+
+function trackWorker(worker: KyuWorker): KyuWorker {
+  activeWorkers.add(worker)
+  return {
+    ...worker,
+    stop: async () => {
+      activeWorkers.delete(worker)
+      await worker.stop()
+    },
+  }
+}
+
+// This file is the only one publishing with source `sdk.test` into
+// `kyu_outbox` (durable.integration.test.ts pushes straight to the engine,
+// never through `publisher.publish`), so the delete is scoped to just its
+// own rows and safe to run alongside other integration files sharing the
+// database.
+afterEach(async () => {
+  const workers = [...activeWorkers]
+  activeWorkers.clear()
+  await Promise.all(workers.map((worker) => worker.stop().catch(() => undefined)))
+
+  const db = new Client({ connectionString: dbUrl() })
+  await db.connect()
+  try {
+    await db.query("DELETE FROM kyu_outbox WHERE envelope->>'source' = 'sdk.test'")
+  } finally {
+    await db.end()
+  }
+})
 
 function sleep(ms: number): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -145,10 +181,12 @@ describe('durable fan-out', () => {
       },
     })
 
-    const worker = await createWorker(hatchet, `lane101-fan-out-worker-${suffix}`, {
-      subscriptions: [parentSubscription, childSubscription],
-      durableSlots: 5,
-    })
+    const worker = trackWorker(
+      await createWorker(hatchet, `lane101-fan-out-worker-${suffix}`, {
+        subscriptions: [parentSubscription, childSubscription],
+        durableSlots: 5,
+      }),
+    )
     void worker.start()
     await worker.waitUntilReady()
 
@@ -242,10 +280,12 @@ describe('durable fan-out', () => {
       })
     }
 
-    const workerA = await createWorker(hatchet, `lane101-fan-out-restart-worker-a-${suffix}`, {
-      subscriptions: [makeSubscription('a')],
-      durableSlots: 5,
-    })
+    const workerA = trackWorker(
+      await createWorker(hatchet, `lane101-fan-out-restart-worker-a-${suffix}`, {
+        subscriptions: [makeSubscription('a')],
+        durableSlots: 5,
+      }),
+    )
     void workerA.start()
     await workerA.waitUntilReady()
 
@@ -264,10 +304,12 @@ describe('durable fan-out', () => {
 
     await workerA.stop()
 
-    const workerB = await createWorker(hatchet, `lane101-fan-out-restart-worker-b-${suffix}`, {
-      subscriptions: [makeSubscription('b')],
-      durableSlots: 5,
-    })
+    const workerB = trackWorker(
+      await createWorker(hatchet, `lane101-fan-out-restart-worker-b-${suffix}`, {
+        subscriptions: [makeSubscription('b')],
+        durableSlots: 5,
+      }),
+    )
     void workerB.start()
     await workerB.waitUntilReady()
 
@@ -393,10 +435,12 @@ describe('durable fan-out', () => {
       },
     })
 
-    const worker = await createWorker(hatchet, `lane101-fan-out-failing-worker-${suffix}`, {
-      subscriptions: [parentSubscription, childSubscription],
-      durableSlots: 5,
-    })
+    const worker = trackWorker(
+      await createWorker(hatchet, `lane101-fan-out-failing-worker-${suffix}`, {
+        subscriptions: [parentSubscription, childSubscription],
+        durableSlots: 5,
+      }),
+    )
     void worker.start()
     await worker.waitUntilReady()
 
