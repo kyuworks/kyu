@@ -225,6 +225,12 @@ async function runDurableHandler<S extends MessageSchema>(
  *       if (await readyInOurOwnDatabase(leadId)) break
  *     }
  *
+ * Waiting on several names at once: `ctx.waitForAny([{ definition, where }, …], { timeout })` parks on every
+ * definition in the list and returns the first that matches, with `index` saying which entry it was. One
+ * engine registration holds one condition per entry in a single Or group, so the wait ends on the first
+ * match rather than waiting for all of them. `afterMessage` narrows every entry, so re-parking after a wake
+ * never re-matches an earlier message through another entry. At most 10 entries.
+ *
  * A parked run's wait is readable through `kyu.runs.forCorrelation`: a sleep
  * reports its wake time, a `waitFor` reports the message name and the field
  * match it is holding out for.
