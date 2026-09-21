@@ -19,7 +19,7 @@ CHECK="${SCRIPT_DIR}/check-pr-size.sh"
 # example a pre-commit run using it for one PR) must not leak into a case
 # that expects the gate to fail.
 # GITHUB_BASE_REF is live in the Gate Self Tests job; the moved-base case sets it itself.
-unset PR_SIZE_LABELS PR_SIZE_BODY GITHUB_BASE_REF
+unset PR_SIZE_LABELS PR_SIZE_BODY GITHUB_BASE_REF GITHUB_REF
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
@@ -190,9 +190,11 @@ git -C "${REPO}" update-ref refs/remotes/origin/main HEAD
 git -C "${REPO}" merge -q --no-ff -m "merge ref" "${MOVED_PR_SHA}"
 
 # $1 is the limit. The range is the one the Lint job builds from the event.
+# GITHUB_REF is the merge ref GitHub Actions checks out for a pull request.
 moved_base_check() {
   env ROOT_DIR="${REPO}" PR_SIZE_MAX="$1" PR_SIZE_LABELS="" PR_SIZE_BODY="" \
     GITHUB_BASE_REF=main GITHUB_BASE_SHA="${MOVED_BASE_SHA}" \
+    GITHUB_REF="refs/pull/1/merge" \
     bash "${CHECK}" --range "${MOVED_BASE_SHA}...HEAD"
 }
 
@@ -210,6 +212,42 @@ assert_output_lacks "the over-limit report leaves out the base branch's file" \
 git -C "${REPO}" update-ref -d refs/remotes/origin/main
 assert_output_contains "merge ref with no fetched base branch uses its first parent" \
   "production +4 −0 (net 4)" moved_base_check 5
+
+# A workaround some contributors use instead of GitHub's pull-request merge
+# ref: merging the base branch into their own feature branch by hand. HEAD is
+# a merge commit there too, but its first parent is the branch's own prior
+# commit, not the base — HEAD^1 must not be used, only GITHUB_REF set to a
+# pull-request merge ref (refs/pull/*/merge) may trigger that fallback.
+REPO="${WORK}/merge-main-into-branch"
+mkdir -p "${REPO}"
+init_repo "${REPO}"
+WORKAROUND_BASE_SHA="$(git -C "${REPO}" rev-parse HEAD)"
+git -C "${REPO}" checkout -q -b feature
+add_lines "${REPO}/apps/api/src/small.ts" 4
+git -C "${REPO}" add apps/api/src/small.ts
+git -C "${REPO}" commit -qm "pull request change"
+git -C "${REPO}" checkout -q "${WORKAROUND_BASE_SHA}"
+add_lines "${REPO}/apps/api/src/sibling.ts" 8
+git -C "${REPO}" add apps/api/src/sibling.ts
+git -C "${REPO}" commit -qm "a sibling pull request lands on the base branch"
+WORKAROUND_SIBLING_SHA="$(git -C "${REPO}" rev-parse HEAD)"
+git -C "${REPO}" checkout -q feature
+git -C "${REPO}" merge -q --no-ff -m "merge main into the branch" "${WORKAROUND_SIBLING_SHA}"
+
+# GITHUB_REF is unset (a plain checkout, not a GitHub-generated merge ref) and
+# there is no origin/main, so the gate must fall through to the given range.
+merge_workaround_check() {
+  env ROOT_DIR="${REPO}" PR_SIZE_MAX="$1" PR_SIZE_LABELS="" PR_SIZE_BODY="" \
+    GITHUB_BASE_REF=main GITHUB_BASE_SHA="${WORKAROUND_SIBLING_SHA}" \
+    bash "${CHECK}" --range "${WORKAROUND_SIBLING_SHA}...HEAD"
+}
+
+assert_exit "merge-main-into-branch workaround does not use HEAD^1 -> pass" 0 \
+  merge_workaround_check 5
+assert_output_contains "merge-main-into-branch workaround counts only the pull request's own lines" \
+  "production +4 −0 (net 4)" merge_workaround_check 5
+assert_output_lacks "merge-main-into-branch workaround leaves out the sibling file" \
+  "apps/api/src/sibling.ts" merge_workaround_check 5
 
 assert_exit "verify-gates registers the production PR size gate" 0 \
   grep -Fq 'bash scripts/gates/check-pr-size.sh' "${ROOT_DIR}/scripts/verify-gates.sh"
