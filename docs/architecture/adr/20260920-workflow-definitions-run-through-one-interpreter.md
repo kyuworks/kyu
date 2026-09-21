@@ -54,7 +54,7 @@ The SDK already gives a durable handler what a run needs: `sleepFor`, `waitFor` 
 **Negative**
 
 - The interpreter is one code path for every tenant's workflows. A bug in it reaches all of them.
-- One interpreter serves every business tenant, so a busy tenant can crowd out the quiet ones. The mitigation is [#104](https://github.com/Camba-nz/kyu/issues/104), round-robin concurrency across business tenant ids.
+- One interpreter serves every business tenant, so a busy tenant can crowd out the quiet ones. The mitigation now exists: `concurrency: { key: TENANT_CONCURRENCY_KEY, maxRuns: 1, strategy: 'round-robin' }` on the interpreter's subscription ([#104](https://github.com/Camba-nz/kyu/issues/104)).
 - A run replays. Parked in `sleepFor` or `waitFor`, it is evicted when its worker stops and continues on the next worker; a body that reaches a wait while its worker is stopping fails that attempt with `WorkerStoppingError` and retries, because `durable()` defaults `retries` to 3 (`packages/sdk/src/consume/durable.ts`). That is why every step effect must go through `onceById`.
 - Branch conditions are code, so a new kind of condition is a deploy, not a definition edit.
 - The SDK lacks six things the interpreter needs. Each is its own issue:
