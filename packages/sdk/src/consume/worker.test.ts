@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CommandHasTwoSubscribersError, SubscriptionAlreadyBoundError } from '../errors.js'
+import { CommandHasTwoSubscribersError, KyuError, SubscriptionAlreadyBoundError } from '../errors.js'
 import type { CreateWorkerOpts, HatchetClient, Worker } from '../hatchet.js'
 import { assertSingleCommandSubscriber, createWorker } from './worker.js'
 import type { Subscription } from './subscribe.js'
@@ -151,6 +151,64 @@ describe('createWorker', () => {
     )
 
     await expect(createWorker(client, 'worker-a', { subscriptions: [subscription] })).resolves.toBeDefined()
+  })
+
+  it('registers only the subscriptions named in serves', async () => {
+    const { client, capturedWorkerOptions } = fakeHatchetClient(() => Promise.resolve(fakeWorker({})))
+    const subscriptions = [
+      stubSubscription('record-order', 'event', 'shop.order.placed'),
+      stubSubscription('sync-marketplace', 'event', 'shop.order.placed'),
+    ]
+
+    await createWorker(client, 'marketplace-pool', { subscriptions, serves: ['sync-marketplace'] })
+
+    expect(capturedWorkerOptions()?.workflows).toHaveLength(1)
+    expect(capturedWorkerOptions()?.workflows?.[0]).toBe(subscriptions[1]?.workflow)
+  })
+
+  it('refuses a serves name that is not one of its subscriptions, before it touches the client', async () => {
+    const { client, workerCallCount } = fakeHatchetClient(() => Promise.resolve(fakeWorker({})))
+    const subscriptions = [stubSubscription('record-order', 'event', 'shop.order.placed')]
+
+    await expect(createWorker(client, 'marketplace-pool', { subscriptions, serves: ['sync-marketplace'] })).rejects.toThrow(
+      /sync-marketplace/,
+    )
+    expect(workerCallCount()).toBe(0)
+  })
+
+  it('refuses an empty serves list', async () => {
+    const { client, workerCallCount } = fakeHatchetClient(() => Promise.resolve(fakeWorker({})))
+    const subscriptions = [stubSubscription('record-order', 'event', 'shop.order.placed')]
+
+    await expect(createWorker(client, 'marketplace-pool', { subscriptions, serves: [] })).rejects.toBeInstanceOf(KyuError)
+    expect(workerCallCount()).toBe(0)
+  })
+
+  it('checks the one-subscriber-per-command rule on the served set only', async () => {
+    const { client, capturedWorkerOptions } = fakeHatchetClient(() => Promise.resolve(fakeWorker({})))
+    const subscriptions = [
+      stubSubscription('send-invoice', 'command', 'shop.invoice.send'),
+      stubSubscription('send-invoice-again', 'command', 'shop.invoice.send'),
+    ]
+
+    await createWorker(client, 'invoice-pool', { subscriptions, serves: ['send-invoice'] })
+
+    expect(capturedWorkerOptions()?.workflows).toHaveLength(1)
+  })
+
+  it('leaves a durable subscription it does not serve free for another worker', async () => {
+    const { client } = fakeHatchetClient(() => Promise.resolve(fakeWorker({})))
+    const servedSubscription = stubSubscription('record-order', 'event', 'shop.order.placed', () => undefined)
+    const unservedSubscription = stubSubscription('follow-up-order', 'event', 'shop.order.placed', () => undefined)
+
+    await createWorker(client, 'order-pool', {
+      subscriptions: [servedSubscription, unservedSubscription],
+      serves: ['record-order'],
+    })
+
+    await expect(
+      createWorker(client, 'follow-up-pool', { subscriptions: [unservedSubscription] }),
+    ).resolves.toBeDefined()
   })
 })
 
