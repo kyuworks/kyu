@@ -392,7 +392,7 @@ describe('handleUiRequest', () => {
 
   it('answers /bus.json from the JSON handler even when the static reader would also answer it (W1)', async () => {
     const kyu = fakeKyu([])
-    const pool = fakeQueryPool([[{ source: 'shop', published: 0, waiting: 0 }], [], []])
+    const pool = fakeQueryPool([[{ source: 'shop', published: 0, waiting: 0, retired: 0 }], [], []])
     const shell: UiResponse = { status: 200, contentType: 'text/html', body: '<!doctype html>shadowed' }
     // A static reader that would happily serve any path proves the JSON
     // route wins because it is checked first, not because no file exists.
@@ -435,7 +435,7 @@ describe('handleUiRequest', () => {
       ],
     })
     const pool = fakeQueryPool([
-      [{ source: 'shop', published: 7, waiting: 0 }],
+      [{ source: 'shop', published: 7, waiting: 0, retired: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [],
     ])
@@ -448,7 +448,7 @@ describe('handleUiRequest', () => {
     expect(parsed.topology).toEqual(fakeTopology)
     expect(parsed.counts).toEqual({
       producers: [{ source: 'shop', published: 7 }],
-      outbox: { published: 7, waitingForRelay: 0, shipped: 7 },
+      outbox: { published: 7, waitingForRelay: 0, shipped: 7, retired: 0 },
       subscriptions: [
         { name: 'record-order', queued: 0, running: 0, completed: 1, failed: 0, cancelled: 0 },
         {

@@ -17,7 +17,12 @@ const busTopologySchema = z.object({
 })
 
 const producerCountsSchema = z.object({ source: z.string(), published: z.number() })
-const outboxCountsSchema = z.object({ published: z.number(), waitingForRelay: z.number(), shipped: z.number() })
+const outboxCountsSchema = z.object({
+  published: z.number(),
+  waitingForRelay: z.number(),
+  shipped: z.number(),
+  retired: z.number(),
+})
 const doneOutcomeCountSchema = z.object({ label: z.string(), count: z.number() })
 const subscriptionRunCountsSchema = z.object({
   name: z.string(),

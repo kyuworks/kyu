@@ -28,7 +28,7 @@ const fixture: BusDocument = {
   },
   counts: {
     producers: [{ source: 'shop', published: 101 }],
-    outbox: { published: 205, waitingForRelay: 102, shipped: 103 },
+    outbox: { published: 205, waitingForRelay: 102, shipped: 103, retired: 105 },
     subscriptions: [
       { name: 'record-order', queued: 1, running: 2, completed: 3, failed: 4, cancelled: 5 },
       { name: 'audit-order', queued: 6, running: 7, completed: 8, failed: 9, cancelled: 10 },
@@ -80,6 +80,24 @@ describe('BusDiagram', () => {
 
     expect(markup).toContain(statRow('waiting for relay', 102))
     expect(markup).toContain(statRow('shipped', 103))
+  })
+
+  it('ties the outbox retired count to its label and pins the row', () => {
+    const markup = renderToStaticMarkup(<BusDiagram busDocument={fixture} />)
+
+    expect(markup).toContain(statRow('retired', 105))
+    expect(markup).toContain('data-outbox-bucket="retired"')
+  })
+
+  it('draws the retired row even at zero', () => {
+    const zeroRetiredFixture: BusDocument = {
+      ...fixture,
+      counts: { ...fixture.counts, outbox: { ...fixture.counts.outbox, retired: 0 } },
+    }
+
+    const markup = renderToStaticMarkup(<BusDiagram busDocument={zeroRetiredFixture} />)
+
+    expect(markup).toContain(statRow('retired', 0))
   })
 
   it('ties one subscription’s queued, running, done, failed and cancelled counts to their labels', () => {

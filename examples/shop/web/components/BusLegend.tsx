@@ -9,7 +9,7 @@ interface LegendEntry {
   description: string
 }
 
-// This page's own copy; BusLegend.test.tsx pins the wording. Entry 14's
+// This page's own copy; BusLegend.test.tsx pins the wording. The last entry's
 // number comes from engineWindowLimit so it cannot drift from the server.
 function legendEntries(engineWindowLimit: number): readonly LegendEntry[] {
   return [
@@ -27,6 +27,11 @@ function legendEntries(engineWindowLimit: number): readonly LegendEntry[] {
       term: 'Outbox',
       description:
         'The outbox is a table in the shop\'s own database, kyu_outbox. "Waiting for relay" counts rows the relay has not sent yet. "Shipped" counts the rest. Stop the relay and place an order: waiting for relay goes up and nothing below this box moves.',
+    },
+    {
+      term: 'Retired',
+      description:
+        'A row the relay could not read. Its envelope does not match the message contract, so after three tries the relay gave up and set the row\'s dead_at column. The row will never be sent, and it is not counted under "waiting for relay" any more, so that number can come back down to zero instead of alerting for ever. Retired rows stay in kyu_outbox until something deletes them.',
     },
     {
       term: 'Relay',
@@ -68,7 +73,7 @@ function legendEntries(engineWindowLimit: number): readonly LegendEntry[] {
     {
       term: 'Where the numbers come from',
       description:
-        "Published, waiting for relay and shipped are counted from kyu_outbox in the shop's database. Queued, running, done, failed and cancelled come from the engine, one call per message through kyu.runs.forEnvelope. Parked, shipped and timed out come from shop_handler_log, a table the shop writes itself.",
+        "Published, waiting for relay, shipped and retired are counted from kyu_outbox in the shop's database. Queued, running, done, failed and cancelled come from the engine, one call per message through kyu.runs.forEnvelope. Parked, shipped and timed out come from shop_handler_log, a table the shop writes itself.",
     },
     {
       term: 'What the numbers cover',
@@ -77,7 +82,7 @@ function legendEntries(engineWindowLimit: number): readonly LegendEntry[] {
   ]
 }
 
-/** The fourteen sentences that explain every term the diagram draws. */
+/** The fifteen sentences that explain every term the diagram draws. */
 export function BusLegend({ engineWindowLimit }: BusLegendProps) {
   return (
     <dl className="mt-6 [&_dt]:mt-3 [&_dt]:font-semibold [&_dd]:mt-0.5 [&_dd]:text-muted">

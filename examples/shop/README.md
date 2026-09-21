@@ -161,7 +161,10 @@ letter too, under `record-shipment`.
 
 `/bus` is a React page now: it draws the producer, the outbox, and one column per subscription
 in registry order, refreshed every 5 seconds. Outbox stages — published, waiting for relay,
-shipped — come from `kyu_outbox`. Each subscription's queued, running, done, failed and
+shipped and retired — come from `kyu_outbox`. A row whose envelope does not match the message
+contract is retired by the relay after three tries: it is counted under **retired**, not under
+waiting for relay, so the waiting number is not stuck above zero for ever. Each subscription's
+queued, running, done, failed and
 cancelled counts come from the engine, through the SDK's `runs.forEnvelope`, one call per
 message over the newest 200 subscribed messages. `watch-shipping`'s parked count and its
 shipped/timed-out split under "done" come from `shop_handler_log`. A legend under the diagram
@@ -217,6 +220,19 @@ pnpm --filter @kyuworks/shop publish-cli place-order --tenant <uuid>
 
 `HATCHET_CLIENT_TOKEN` and `HATCHET_CLIENT_TLS_STRATEGY` are needed by `relay`, `worker` and `ui`,
 not by `migrate` and not by `publish-cli`.
+
+To see the retired bucket move, insert a row the relay cannot read. `envelope` here is missing
+every field but `name` and `source`; `name` must match `envelope->>'name'` (the table checks
+it), and `source` must stay a string (the Bus page groups producers by it). Setting `dead_at`
+yourself skips the relay's three-try countdown.
+
+```sql
+INSERT INTO kyu_outbox (id, name, envelope, dead_at, attempts, last_error)
+VALUES (gen_random_uuid(), 'shop.order.legacy', '{"name":"shop.order.legacy","source":"shop"}'::jsonb, now(), 3, 'envelope: invalid');
+```
+
+Reload `/bus`: **retired** goes up by one and **waiting for relay** does not move. Delete the row
+when you are done, or leave it for `pruneRetired`.
 
 ## Engine hygiene
 

@@ -64,6 +64,10 @@ export function BusDiagram({ busDocument }: BusDiagramProps) {
             <span>shipped</span>
             <span>{counts.outbox.shipped}</span>
           </p>
+          <p className="my-0.5 flex justify-between gap-4 text-sm" data-outbox-bucket="retired">
+            <span>retired</span>
+            <span>{counts.outbox.retired}</span>
+          </p>
         </div>
       </div>
 
