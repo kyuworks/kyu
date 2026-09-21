@@ -38,6 +38,10 @@ a process that also subscribes, runs a worker, starts the relay or reads run out
 `HATCHET_CLIENT_TOKEN`, and `createHatchetClient()` throws "API token is required" the moment it is
 called without one.
 
+A subscription's `name` must be lowercase letters, digits, `-` or `_`, starting with a letter.
+`subscribe()` and `durable()` refuse anything else, because the engine lowercases the name when it
+registers the workflow and `runs.forEnvelope()` would then report a name the caller never chose.
+
 Run the relay on a small dedicated `pg.Pool` (the shop uses `max: 1`), not the application's pool and not a bare `pg.Client` (`kyu.startRelay({ db: pool, workerId })`). The relay never opens a transaction — a claim is held by the row's `claimed_by` stamp, not by the connection — so a pool is safe, and pg replaces a dropped connection on the next tick. `publish()` and `onceById()` still refuse a pool: their statements must land in the caller's transaction. Attach `pool.on('error', …)`, or a connection dropped while idle takes the process down.
 
 A relay handed a single `pg.Client` cannot recover: pg marks a client that lost its connection permanently unusable. The relay notices, stops polling, calls `onError` with a `RelayConnectionLostError` and rejects `relay.closed`. Exit non-zero on that rejection and let a supervisor restart the process. Rows the relay had claimed stay claimed until `staleClaimMs` passes, then another relay takes them over.
@@ -46,7 +50,7 @@ A row whose `envelope` column does not parse can never be shipped: the column is
 
 A durable run parked in `sleepFor`/`waitFor` reads as `running` in that outcome — the engine exposes no separate parked state. A run reads `completed` only once the engine has recorded both `startedAt` and `finishedAt`, and `failed` only once it has recorded `finishedAt`; a run caught in the gap between the terminal status and those timestamps reads `running` instead. A failed run may have no `startedAt` at all, because it can end before any worker starts it.
 
-`worker.stop()` first refuses any new durable wait on that worker, then pauses the worker, evicts every parked durable run and waits for the bodies still running. A handler that reaches its first `sleepFor`/`waitFor` during the stop fails that attempt straight away and the engine retries it on whichever worker is available; `durable()` sets `retries` to 3 for this reason, and an explicit value still wins.
+`worker.stop()` first refuses any new durable wait on that worker, then pauses the worker, evicts every parked durable run and waits for the bodies still running. A handler that reaches its first `sleepFor`/`waitFor` during the stop fails that attempt straight away and the engine retries it on whichever worker is available; `durable()` sets `retries` to 3 for this reason, and an explicit value still wins. The flag is one-way, so `createWorker` refuses a durable subscription object another worker already bound: build one subscription per worker.
 
 Eviction of an already-parked run is the slow part: the engine SDK waits up to 30 seconds per run for the engine to acknowledge it, so size a supervisor's SIGTERM grace period above that — or pass `stopTimeoutMs` to `createWorker` to cap the whole stop.
 

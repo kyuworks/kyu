@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { describe, expect, it, vi } from 'vitest'
 import { EnvelopeRejectedError } from '../errors.js'
 import type { Context, CreateTaskWorkflowOpts, HatchetClient, JsonObject, TaskWorkflowDeclaration } from '../hatchet.js'
-import { ConcurrencyLimitStrategy, Priority, RateLimitDuration } from '../hatchet.js'
+import { ConcurrencyLimitStrategy, KyuError, Priority, RateLimitDuration } from '../hatchet.js'
 import { decodeIncomingEnvelope, subscribe } from './subscribe.js'
 import { toHatchetRateLimit } from './taskOptions.js'
 
@@ -218,6 +218,32 @@ describe('subscribe: option wiring', () => {
     subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined })
 
     expect(capturedOptions()?.executionTimeout).toBeUndefined()
+  })
+})
+
+describe('subscribe: name validation', () => {
+  it.each([
+    ['an uppercase letter', 'RecordOrder'],
+    ['a space', 'record order'],
+    ['a dot', 'shop.invoice.send'],
+    ['an empty string', ''],
+    ['a leading digit', '1record'],
+    ['a leading dash', '-record'],
+  ])('rejects %s before the engine is touched', (_shape, name) => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    expect(() => subscribe(client, orderPlaced, { name, handler: () => undefined })).toThrow(KyuError)
+    expect(() => subscribe(client, orderPlaced, { name, handler: () => undefined })).toThrow(/lowercase letters/)
+    expect(capturedOptions()).toBeUndefined()
+  })
+
+  it('accepts a lowercase name with a dash and an underscore, unchanged', () => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    const subscription = subscribe(client, orderPlaced, { name: 'record_order-2', handler: () => undefined })
+
+    expect(capturedOptions()?.name).toBe('record_order-2')
+    expect(subscription.name).toBe('record_order-2')
   })
 })
 

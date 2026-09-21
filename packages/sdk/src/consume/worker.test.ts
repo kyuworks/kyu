@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CommandHasTwoSubscribersError } from '../errors.js'
+import { CommandHasTwoSubscribersError, SubscriptionAlreadyBoundError } from '../errors.js'
 import type { CreateWorkerOpts, HatchetClient, Worker } from '../hatchet.js'
 import { assertSingleCommandSubscriber, createWorker } from './worker.js'
 import type { Subscription } from './subscribe.js'
@@ -114,6 +114,43 @@ describe('createWorker', () => {
     await createWorker(client, 'worker', { subscriptions: [subscription], handleKill: true })
 
     expect(capturedWorkerOptions()?.handleKill).toBe(true)
+  })
+
+  it('takes a durable subscription once and refuses it on a second worker', async () => {
+    const { client, workerCallCount } = fakeHatchetClient(() => Promise.resolve(fakeWorker({})))
+    const subscription = stubSubscription('watch-shipping', 'event', 'shop.order.placed', () => undefined)
+
+    await createWorker(client, 'worker-a', { subscriptions: [subscription] })
+
+    await expect(createWorker(client, 'worker-b', { subscriptions: [subscription] })).rejects.toBeInstanceOf(
+      SubscriptionAlreadyBoundError,
+    )
+    // Refused before the client is touched: only worker-a reached it.
+    expect(workerCallCount()).toBe(1)
+  })
+
+  it('allows a subscription with no durable waits on a second worker', async () => {
+    const { client } = fakeHatchetClient(() => Promise.resolve(fakeWorker({})))
+    const subscription = stubSubscription('notify-ops', 'event', 'shop.order.placed')
+
+    await createWorker(client, 'worker-a', { subscriptions: [subscription] })
+
+    await expect(createWorker(client, 'worker-b', { subscriptions: [subscription] })).resolves.toBeDefined()
+  })
+
+  it('releases claimed durable subscriptions when hatchet.worker() rejects, so a retry succeeds', async () => {
+    let calls = 0
+    const { client } = fakeHatchetClient(() => {
+      calls += 1
+      return calls === 1 ? Promise.reject(new Error('engine unreachable')) : Promise.resolve(fakeWorker({}))
+    })
+    const subscription = stubSubscription('watch-shipping', 'event', 'shop.order.placed', () => undefined)
+
+    await expect(createWorker(client, 'worker-a', { subscriptions: [subscription] })).rejects.toThrow(
+      'engine unreachable',
+    )
+
+    await expect(createWorker(client, 'worker-a', { subscriptions: [subscription] })).resolves.toBeDefined()
   })
 })
 

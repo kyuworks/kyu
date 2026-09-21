@@ -15,7 +15,7 @@ import { decodeAndCheckMetadata, decodeIncomingEnvelope } from './subscribe.js'
 import type { Subscription } from './subscribe.js'
 import { buildHandlerContext } from './handlerContext.js'
 import type { HandlerContext } from './handlerContext.js'
-import { applySharedTaskOptions } from './taskOptions.js'
+import { applySharedTaskOptions, assertSubscriptionName } from './taskOptions.js'
 import type { SharedTaskOptions } from './taskOptions.js'
 
 export interface WaitForOptions {
@@ -44,6 +44,7 @@ export interface DurableHandlerContext<TData extends MessageDataShape> extends H
 }
 
 export interface DurableOptions<TData extends MessageDataShape> extends SharedTaskOptions {
+  /** Lowercase letters, digits, `-` or `_`, starting with a letter: the engine lowercases the registered name, and this rule stays narrower than that on purpose. */
   name: string
   handler: (ctx: DurableHandlerContext<TData>) => Promise<void> | void
 }
@@ -190,6 +191,8 @@ export function durable<S extends MessageSchema>(
   definition: MessageDefinition<S>,
   options: DurableOptions<MessageData<MessageDefinition<S>>>,
 ): Subscription {
+  assertSubscriptionName(options.name)
+
   let stopping = false
   const taskOptions: CreateDurableTaskWorkflowOpts<JsonObject, void> = {
     name: options.name,

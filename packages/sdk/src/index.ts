@@ -72,6 +72,7 @@ export {
   MessageDefinitionError,
   RelayConnectionLostError,
   KyuError,
+  SubscriptionAlreadyBoundError,
   WorkerStoppingError,
 } from './errors.js'
 export type { EnvelopeOptionIssue, MessageDataIssue } from './errors.js'

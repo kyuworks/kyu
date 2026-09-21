@@ -62,9 +62,6 @@ export function watchShippingSubscription(kyu: Kyu, pool: Pool, config: ShopConf
   return kyu.durable(orderPlaced, {
     name: WATCH_SHIPPING_NAME,
     executionTimeout: '1h',
-    // A worker stopped while the body executes (not while parked in a wait)
-    // fails that attempt; retrying is safe because every write goes through onceById.
-    retries: 3,
     handler: (ctx) => watchShipping(pool, kyu, config, ctx),
   })
 }
