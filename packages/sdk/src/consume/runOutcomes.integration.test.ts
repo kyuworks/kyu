@@ -122,6 +122,8 @@ describe('runOutcomes: plain subscriptions', () => {
   it('flow 1: a handler that returns normally reads completed with attempts 1', async () => {
     const envelope = await push(completedDef, { seq: 1 })
 
+    // toRunOutcome now reports completed only once both timestamps exist, so
+    // this predicate settling can no longer race the assertions below (#77).
     const outcomes = await waitForOutcomes(envelope.id, (o) => o.at(0)?.status === 'completed', 60_000)
 
     expect(outcomes).toHaveLength(1)
