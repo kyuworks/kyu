@@ -31,6 +31,12 @@ export function firstIssueMessage(error: z.ZodError): string {
   return path === '' ? issue.message : `${path}: ${issue.message}`
 }
 
+// No HTTP status to report, so the message travels in the body:
+// describeFetchFailure reads it straight back out.
+function networkFailureOutcome(message: string): JsonFetchOutcome {
+  return { ok: false, status: 0, bodyText: JSON.stringify({ error: message }) }
+}
+
 // Never rejects: a network failure (offline, refused connection) becomes an
 // outcome too, with no HTTP status, so every submit action has one place —
 // describeSubmitFailure below — to turn an outcome into a message, instead
@@ -41,8 +47,20 @@ export async function postJsonOutcome(path: string, body: string): Promise<JsonF
     const bodyText = await response.text()
     return { ok: response.ok, status: response.status, bodyText }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return { ok: false, status: 0, bodyText: JSON.stringify({ error: message }) }
+    return networkFailureOutcome(error instanceof Error ? error.message : String(error))
+  }
+}
+
+// Never rejects: an offline browser, a refused connection or an abort becomes
+// an outcome too, so a polling loop folds every refresh into state through one
+// path instead of a second .catch that repeats the message format.
+export async function getJsonOutcome(path: string, signal: AbortSignal): Promise<JsonFetchOutcome> {
+  try {
+    const response = await fetch(path, { signal })
+    const bodyText = await response.text()
+    return { ok: response.ok, status: response.status, bodyText }
+  } catch (error) {
+    return networkFailureOutcome(error instanceof Error ? error.message : String(error))
   }
 }
 
