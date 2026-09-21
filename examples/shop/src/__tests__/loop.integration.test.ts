@@ -316,9 +316,8 @@ describe('loop: relay and worker against the local engine', () => {
   }, 90_000)
 
   it('orders placed with no worker running are handled once it starts', async () => {
-    // A parked watch-shipping run makes stop() evict it (up to 30s ack); a single
-    // snapshot here races the previous test's run still finishing its watch, so
-    // poll instead (#83), capped at the file's watch timeout plus a margin.
+    // A shipped order's run always resolves: 5s sleepFor before the wait, then the wake and commit
+    // (waitFor's lookback is 5m, so the earlier shipped event still matches). Not a timeout wait.
     let parked: Awaited<ReturnType<typeof engine.runs.list>>['rows'] = []
     await waitUntil(
       async () => {
@@ -333,7 +332,7 @@ describe('loop: relay and worker against the local engine', () => {
           )
         return parked.length === 0
       },
-      18_000, // the file's watch timeout (~8s) plus a 10s margin
+      18_000, // 5s sleepFor plus margin for the wake and commit, not a timeout wait
       () => `parked watch-shipping runs: ${JSON.stringify(parked)}`,
     )
 
