@@ -31,12 +31,12 @@ pnpm check
 | `@kyuworks/schemas` | The envelope contract, naming rules, schema adapters |
 | `@kyuworks/sdk` | Publish through a transactional outbox, subscribe with Hatchet, run durable handlers, read a run's outcome by envelope id, read every run for one correlation id, cancel a run by envelope id or correlation id |
 
-A process that only publishes needs no engine credentials. `createPublisher({ source })` returns
-just `publish`, writes the outbox row inside the caller's transaction and never builds an engine
-client, so a web API or a CLI needs only its own database. `createKyu({ hatchet, source })` is for
-a process that also subscribes, runs a worker, starts the relay or reads run outcomes; those need
-`HATCHET_CLIENT_TOKEN`, and `createHatchetClient()` throws "API token is required" the moment it is
-called without one.
+A process that only publishes needs no engine credentials. `createPublisher({ source })`
+returns just `publish`, writes the outbox row inside the caller's transaction and never builds
+an engine client, so a web API or a CLI needs only its own database. `createKyu({ hatchet,
+source })` is for a process that also subscribes, runs a worker, starts the relay (its own
+process, one per project) or reads run outcomes; those need `HATCHET_CLIENT_TOKEN`, and
+`createHatchetClient()` throws "API token is required" the moment it is called without one.
 
 A subscription's `name` must be lowercase letters, digits, `-` or `_`, starting with a letter.
 `subscribe()` and `durable()` refuse anything else, because the engine lowercases the name when it

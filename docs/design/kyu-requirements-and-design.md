@@ -250,12 +250,14 @@ CREATE INDEX kyu_processed_processed_at_idx ON kyu_processed (processed_at);
 
 ### 8.3 Relay
 
-A loop in the producer process that, every tick:
+A loop that, every tick:
 
 1. Claims up to 100 pending rows with a single `UPDATE … SET claimed_at = now(), claimed_by = $workerId WHERE id IN (SELECT … ORDER BY created_at LIMIT 100 FOR UPDATE SKIP LOCKED) RETURNING *`, stamping the claim on the rows it takes. A row is pending when `published_at IS NULL`, its `dead_at` is unset, its `publish_at` has arrived, and its `claimed_at` is either unset or older than the relay's stale-claim window; any other in-progress claim is invisible to `SKIP LOCKED`.
 2. Groups the claimed rows by message name and calls Hatchet `events.bulkPush` once per name.
 3. Marks the pushed rows' `published_at = now()`, scoped to rows this relay instance still owns (`claimed_by = $workerId`). On failure it increments `attempts`, records `last_error`, and releases the claim (`claimed_at`/`claimed_by` cleared) so the row is claimable again. A claimed row whose `envelope` column does not parse cannot be shipped by any later attempt (the column is written once and never updated), so it records `last_error`, increments `attempts`, and on the third such claim sets `dead_at`. The row is then invisible to the claim, keeps its `attempts` and `last_error` for inspection, and is deleted by `pruneRetired`. A push failure is not retired: the engine being unavailable is transient, and a ceiling there would discard deliverable messages during an outage.
 4. Polls every 250 ms when idle; the relay re-ticks immediately only when the last batch was full and fully pushed. A batch with any push failure backs off (doubling, capped at 30 s) and alerts through `onError` instead.
+
+The relay runs as its own process, one per project per environment, beside that project's worker. Producers hold only a database URL and publish through `createPublisher`; the relay, the workers and any process that reads run outcomes hold the engine token. A project with exactly one long-lived process may run the relay inside it with `kyu.startRelay` instead; that is the only case where a producer needs the token.
 
 There is no advisory lock: a session-level lock is meaningless once connections come from a pool, and the row locks `FOR UPDATE SKIP LOCKED` takes end with the claiming statement, not the relay's lifetime — the `claimed_at`/`claimed_by` stamp is what actually protects a row while the relay is between the claim and the mark. A relay that crashes mid-batch leaves its claims to go stale; another relay instance (or the same one, restarted) reclaims and republishes them once the stale window passes. A thrown mark after a successful push releases the group's claims so the next tick pushes them again, a duplicate the consumer's `onceById` absorbs. A push response that reports fewer events than sent fails the whole group and retries it, including rows the engine already accepted. Consumers dedupe on `envelope.id` (section 9.1).
 
@@ -419,6 +421,7 @@ Commands use the same `publish` and `subscribe` calls with `kind: 'command'`; th
 | Concern | Release one |
 |---|---|
 | Runtime | `hatchet-lite` as a Fly app per environment, region `syd`, one machine, no autostop |
+| Relay | One sidecar process per project per environment, on a small dedicated pool; supervised, restarted on exit; in-process only for a single-process project |
 | Database | Dedicated Postgres per environment, session-mode connection; not a project's own database or its transaction pooler |
 | Config | `DATABASE_URL`, `SERVER_GRPC_BROADCAST_ADDRESS`, `SERVER_URL`, auth cookie settings, from 1Password |
 | Backups | Daily snapshot; restore rehearsed once before production go-live |
@@ -474,7 +477,7 @@ Synchronous third-party lookups get a shared HTTP client with timeouts, retries 
 ## 14. Open questions
 
 1. **npm scope and home — resolved.** The `@kyuworks` npm scope is registered. The SDK lives in this repository (`Camba-nz/kyu`), with the Hatchet deployment config alongside.
-2. **Relay placement.** In every producer process (simplest) or as a sidecar per project (one fewer thing in app code, one more deployable)?
+2. **Relay placement — resolved 2026-09-22.** A sidecar process per project per environment; in-process only for a project with a single long-lived process (section 8.3).
 3. **Outbox retention and the audit question.** Is the outbox also the producer's durable event log, or is Hatchet's history enough?
 4. **Non-TypeScript projects.** Which languages will the other company projects use, and does the outbox SDK need a second implementation soon?
 5. **Hatchet retention and metrics.** Confirm the retention settings and whether the engine exposes Prometheus metrics in the pinned version.
