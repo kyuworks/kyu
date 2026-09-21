@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { KyuError } from '../hatchet.js'
-import { readRunWait, toWaitLabel } from './runWaits.js'
+import { readRunWait, toAnyWaitLabel, toWaitLabel } from './runWaits.js'
 import type { DurableLogReader } from './runWaits.js'
 
 type Entry = Awaited<ReturnType<DurableLogReader['api']['v1DurableTaskEventLogList']>>['data'][number]
@@ -175,5 +175,52 @@ describe('readRunWait', () => {
     const entries = Array.from({ length: 5000 }, (_, i) => entry({ nodeId: i + 1, isSatisfied: true }))
     const reader = fakeReader(entries)
     await expect(readRunWait(reader, 'run-1', 'ns_', 'runs.forCorrelation')).rejects.toBeInstanceOf(KyuError)
+  })
+
+  it('a wait on several names reports every name and its match from the label', async () => {
+    const reader = fakeReader([
+      entry({
+        userMessage: toAnyWaitLabel([
+          { name: 'shop.order.shipped', field: 'data.orderId', equals: 'ord-1' },
+          { name: 'shop.order.cancelled', field: 'data.orderId', equals: 'ord-1' },
+        ]),
+        waitData: [
+          {
+            or: [
+              { kind: 'SLEEP', sleepDurationMs: 30_000 },
+              { kind: 'USER_EVENT', eventKey: 'ns_shop.order.shipped' },
+              { kind: 'USER_EVENT', eventKey: 'ns_shop.order.cancelled' },
+            ],
+          },
+        ],
+      }),
+    ])
+    await expect(readRunWait(reader, 'run-1', 'ns_', 'runs.forCorrelation')).resolves.toEqual({
+      kind: 'anyMessage',
+      waits: [
+        { name: 'shop.order.shipped', match: { field: 'data.orderId', equals: 'ord-1' } },
+        { name: 'shop.order.cancelled', match: { field: 'data.orderId', equals: 'ord-1' } },
+      ],
+    })
+  })
+
+  it('a wait on several names with no decodable label reports the names alone', async () => {
+    const reader = fakeReader([
+      entry({
+        waitData: [
+          {
+            or: [
+              { kind: 'SLEEP', sleepDurationMs: 30_000 },
+              { kind: 'USER_EVENT', eventKey: 'ns_shop.order.shipped' },
+              { kind: 'USER_EVENT', eventKey: 'ns_shop.order.cancelled' },
+            ],
+          },
+        ],
+      }),
+    ])
+    await expect(readRunWait(reader, 'run-1', 'ns_', 'runs.forCorrelation')).resolves.toEqual({
+      kind: 'anyMessage',
+      waits: [{ name: 'shop.order.shipped' }, { name: 'shop.order.cancelled' }],
+    })
   })
 })

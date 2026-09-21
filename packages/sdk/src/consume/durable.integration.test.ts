@@ -10,6 +10,7 @@ import type { DurableHandlerContext, WaitForOptions, WaitForResult } from './dur
 import { durable } from './durable.js'
 import { createWorker } from './worker.js'
 import type { KyuWorker } from './worker.js'
+import type { WaitForAnyOptions } from './waitAny.js'
 
 // Envelopes go straight to `hatchet.events.push` — no relay or outbox — the
 // same pattern as subscribe.integration.test.ts. Namespaced per run.
@@ -389,5 +390,93 @@ describe('durable: a stop while the body is executing', () => {
     expect(await waitUntil(() => completedBy.has(envelope.id), 150_000)).toBe(true)
     expect(completedBy.get(envelope.id)).toBe('b')
     expect(enteredBy.get(envelope.id)).toBe('b')
+  }, 240_000)
+})
+
+describe('durable: waiting on more than one message name', () => {
+  const trigger = defineEvent({
+    name: 'kyu.durable.any_trigger',
+    version: 1,
+    data: z.object({ subject: z.string(), rounds: z.number() }),
+  })
+  const stageChanged = defineEvent({
+    name: 'kyu.durable.any_stage_changed',
+    version: 1,
+    data: z.object({ subject: z.string() }),
+  })
+  const taskClosed = defineEvent({
+    name: 'kyu.durable.any_task_closed',
+    version: 1,
+    data: z.object({ subject: z.string() }),
+  })
+  type TriggerData = { subject: string; rounds: number }
+
+  const wakes = new Map<string, string[]>()
+  const finished = new Set<string>()
+  let worker: KyuWorker | undefined
+
+  async function push(definition: typeof stageChanged, subject: string): Promise<Envelope<{ subject: string }>> {
+    const envelope = await createEnvelope(definition, { subject }, { tenantId: null, source: 'sdk.test' })
+    await hatchet.events.push(definition.name, envelope, {
+      additionalMetadata: toEnvelopeMetadata(envelope),
+      scope: eventScope(envelope),
+    })
+    return envelope
+  }
+
+  beforeAll(async () => {
+    const subscription = durable(hatchet, trigger, {
+      name: 'wait-any',
+      handler: async (ctx: DurableHandlerContext<TriggerData>) => {
+        wakes.set(ctx.envelope.id, [])
+        const waits = [
+          { definition: stageChanged, where: { field: 'data.subject', equals: ctx.envelope.data.subject } },
+          { definition: taskClosed, where: { field: 'data.subject', equals: ctx.envelope.data.subject } },
+        ]
+        // Widened on purpose: `afterMessage` reads the envelope's id only.
+        let afterMessage: Envelope<MessageDataShape> | undefined
+        for (let round = 0; round < ctx.envelope.data.rounds; round += 1) {
+          const options: WaitForAnyOptions = { timeout: '20s' }
+          if (afterMessage !== undefined) options.afterMessage = afterMessage
+          const result = await ctx.waitForAny(waits, options)
+          wakes
+            .get(ctx.envelope.id)
+            ?.push(result.kind === 'timeout' ? 'timeout' : `${result.index}:${result.envelope.id}`)
+          if (result.kind === 'timeout') break
+          afterMessage = result.envelope
+        }
+        finished.add(ctx.envelope.id)
+      },
+    })
+    worker = await createWorker(hatchet, 'kyu-durable-any', { subscriptions: [subscription], durableSlots: 5 })
+    void worker.start()
+    await worker.waitUntilReady()
+  }, 120_000)
+
+  afterAll(async () => {
+    await worker?.stop()
+  })
+
+  it('wakes on each name in turn and never again on a message it already returned', async () => {
+    const subject = randomBytes(8).toString('hex')
+    const trigerEnvelope = await createEnvelope(trigger, { subject, rounds: 3 }, { tenantId: null, source: 'sdk.test' })
+    await hatchet.events.push(trigger.name, trigerEnvelope, {
+      additionalMetadata: toEnvelopeMetadata(trigerEnvelope),
+      scope: eventScope(trigerEnvelope),
+    })
+    await waitUntil(() => wakes.has(trigerEnvelope.id), 60_000)
+
+    const stage = await push(stageChanged, subject)
+    await waitUntil(() => (wakes.get(trigerEnvelope.id)?.length ?? 0) >= 1, 60_000)
+    await sleep(800)
+    await push(taskClosed, randomBytes(8).toString('hex')) // decoy: another subject
+    await sleep(800)
+    const closed = await push(taskClosed, subject)
+
+    // The third round can only time out: `stage` is older than `closed` and
+    // still inside the lookback, so it would re-fire if the afterMessage
+    // clause were missing from the stage_changed branch.
+    expect(await waitUntil(() => finished.has(trigerEnvelope.id), 120_000)).toBe(true)
+    expect(wakes.get(trigerEnvelope.id)).toEqual([`0:${stage.id}`, `1:${closed.id}`, 'timeout'])
   }, 240_000)
 })

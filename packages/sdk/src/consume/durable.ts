@@ -8,28 +8,32 @@ import type {
   Unparsed,
 } from '@kyuworks/schemas'
 import { KyuError, WorkerStoppingError } from '../errors.js'
-import { eventScope } from '../eventScope.js'
-import { Or, SleepCondition, UserEventCondition, durationToMs } from '../hatchet.js'
-import type { CreateDurableTaskWorkflowOpts, Duration, DurableContext, HatchetClient, JsonObject } from '../hatchet.js'
+import { Or, SleepCondition } from '../hatchet.js'
+import type {
+  CreateDurableTaskWorkflowOpts,
+  Duration,
+  DurableContext,
+  HatchetClient,
+  JsonObject,
+  UserEventCondition,
+} from '../hatchet.js'
 import { decodeAndCheckMetadata, decodeIncomingEnvelope } from './subscribe.js'
 import type { Subscription } from './subscribe.js'
 import { buildHandlerContext } from './handlerContext.js'
 import type { HandlerContext } from './handlerContext.js'
-import { celEquals, decodeMatchedEnvelope } from './waitMatch.js'
+import { buildMessageCondition, buildWaitWindow, decodeMatchedEnvelope } from './waitMatch.js'
+import type { FieldMatch } from './waitMatch.js'
 import { waitForChildMessages } from './fanOut.js'
 import type { ChildOutcome, WaitForChildrenOptions } from './fanOut.js'
+import { waitForAnyMessage } from './waitAny.js'
+import type { MessageWait, WaitForAnyOptions, WaitForAnyResult } from './waitAny.js'
 import type { RunsReader } from './runOutcomes.js'
 import { toWaitLabel } from './runWaits.js'
 import { applySharedTaskOptions, assertSubscriptionName } from './taskOptions.js'
 import type { SharedTaskOptions } from './taskOptions.js'
 
 export interface WaitForOptions {
-  where: {
-    /** Dotted path relative to the payload — no `input.` prefix, no array index, e.g. `data.orderId`. */
-    field: string
-    /** Compared to `where.field` as a string literal. */
-    equals: string
-  }
+  where: FieldMatch
   /**
    * The envelope a previous wake returned. The wait then matches only messages published after
    * it, so a handler can wake, re-read its own state and park again without the message that
@@ -57,6 +61,8 @@ export interface DurableHandlerContext<TData extends MessageDataShape> extends H
     definition: MessageDefinition<S>,
     options: WaitForChildrenOptions,
   ): Promise<readonly ChildOutcome<S>[]>
+  /** Parks on several message names at once and returns the first one that matches; at most `MAX_WAIT_FOR_ANY_MESSAGES` waits. */
+  waitForAny(waits: readonly MessageWait[], options: WaitForAnyOptions): Promise<WaitForAnyResult>
 }
 
 export interface DurableOptions<TData extends MessageDataShape> extends SharedTaskOptions {
@@ -78,17 +84,16 @@ export function buildWaitForConditions(
   options: WaitForOptions,
   now: Date,
 ): WaitForConditions {
-  const lookback = options.lookback ?? '5m'
-  const scope = options.scope ?? eventScope(handlerEnvelope)
-  const considerEventsSince = new Date(now.getTime() - durationToMs(lookback)).toISOString()
-  // Pinned to the awaited definition's version, so a same-name event on another version does
-  // not match here and fail decoding. Envelope ids are uuid v7, so CEL `>` is publish order.
-  const keyMatch = celEquals('waitFor', options.where.field, options.where.equals)
-  const afterClause =
-    options.afterMessage === undefined ? '' : ` && input.id > ${JSON.stringify(options.afterMessage.id)}`
-  const expression = `${keyMatch} && input.version == ${definition.version}${afterClause}`
+  const window = buildWaitWindow(handlerEnvelope, options.scope, options.lookback, now)
   return {
-    userEvent: new UserEventCondition(definition.name, expression, 'message', undefined, scope, considerEventsSince),
+    userEvent: buildMessageCondition({
+      caller: 'waitFor',
+      definition,
+      where: options.where,
+      readableDataKey: 'message',
+      window,
+      afterMessageId: options.afterMessage?.id,
+    }),
     sleep: new SleepCondition(options.timeout, 'timeout'),
   }
 }
@@ -159,6 +164,10 @@ function buildDurableHandlerContext<TData extends MessageDataShape>(
     waitForChildren: async (definition, options) => {
       assertWorkerNotStopping(isStopping)
       return waitForChildMessages(hatchetContext, runs, envelope, definition, options)
+    },
+    waitForAny: async (waits, options) => {
+      assertWorkerNotStopping(isStopping)
+      return waitForAnyMessage(hatchetContext, envelope, waits, options)
     },
   }
 }
