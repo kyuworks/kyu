@@ -158,7 +158,9 @@ describe('loop: relay and worker against the local engine', () => {
     const rows = await handlerLogRows([placed.envelopeIds.orderPlaced, placed.envelopeIds.sendInvoice])
     const byHandler = (name: string): LogRow[] => rows.filter((row) => row.handler === name)
     expect(byHandler('record-order')).toHaveLength(1)
+    expect(byHandler('record-order')[0]?.note).toBeNull()
     expect(byHandler('audit-order')).toHaveLength(1)
+    expect(byHandler('audit-order')[0]?.note).toBeNull()
     expect(byHandler('send-invoice')).toHaveLength(1)
     expect(rows.every((row) => row.tenant_id === tenantId)).toBe(true)
 

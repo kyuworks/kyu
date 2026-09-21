@@ -1,8 +1,9 @@
 import type { DurableHandlerContext, Kyu, MessageData, Subscription } from '@kyuworks/sdk'
-import type { Pool, PoolClient } from 'pg'
+import type { Pool } from 'pg'
 import type { ShopConfig } from '../config.js'
 import { withTransaction } from '../db/pool.js'
 import { orderPlaced, orderShipped } from '../messages.js'
+import { writeHandlerLogRow } from './handlerLog.js'
 import { requireTenant } from './tenant.js'
 
 type OrderPlacedContext = DurableHandlerContext<MessageData<typeof orderPlaced>>
@@ -13,30 +14,17 @@ export const WATCH_SHIPPING_WAITING = `${WATCH_SHIPPING_NAME}:waiting`
 export const WATCH_SHIPPING_COMPLETED = `${WATCH_SHIPPING_NAME}:completed`
 export const WATCH_SHIPPING_TIMEOUT = `${WATCH_SHIPPING_NAME}:timeout`
 
-async function logRow(
-  tx: PoolClient,
-  handler: string,
-  envelopeId: string,
-  orderId: string,
-  tenantId: string,
-  note: string | null = null,
-): Promise<void> {
-  await tx.query(
-    'INSERT INTO shop_handler_log (handler, envelope_id, order_id, tenant_id, pid, note) VALUES ($1, $2, $3, $4, $5, $6)',
-    [handler, envelopeId, orderId, tenantId, process.pid, note],
-  )
-}
-
 // The body re-runs from the top on every reassignment (durable.ts), so both
 // writes go through onceById under their own handler names: the waiting row
 // before the wait, the completed/timeout row after it.
 async function watchShipping(pool: Pool, kyu: Kyu, config: ShopConfig, ctx: OrderPlacedContext): Promise<void> {
   const tenantId = requireTenant(WATCH_SHIPPING_NAME, ctx)
+  const envelopeId = ctx.envelope.id
   const { orderId } = ctx.envelope.data
 
   await withTransaction(pool, (tx) =>
-    kyu.onceById(tx, ctx.envelope.id, WATCH_SHIPPING_WAITING, () =>
-      logRow(tx, WATCH_SHIPPING_WAITING, ctx.envelope.id, orderId, tenantId),
+    kyu.onceById(tx, envelopeId, WATCH_SHIPPING_WAITING, () =>
+      writeHandlerLogRow(tx, { handler: WATCH_SHIPPING_WAITING, envelopeId, orderId, tenantId }),
     ),
   )
 
@@ -48,12 +36,10 @@ async function watchShipping(pool: Pool, kyu: Kyu, config: ShopConfig, ctx: Orde
   })
 
   await withTransaction(pool, (tx) =>
-    kyu.onceById(tx, ctx.envelope.id, `${WATCH_SHIPPING_NAME}:done`, async () => {
-      if (result.kind === 'message') {
-        await logRow(tx, WATCH_SHIPPING_COMPLETED, ctx.envelope.id, orderId, tenantId, result.envelope.data.carrier)
-      } else {
-        await logRow(tx, WATCH_SHIPPING_TIMEOUT, ctx.envelope.id, orderId, tenantId)
-      }
+    kyu.onceById(tx, envelopeId, `${WATCH_SHIPPING_NAME}:done`, async () => {
+      const handler = result.kind === 'message' ? WATCH_SHIPPING_COMPLETED : WATCH_SHIPPING_TIMEOUT
+      const note = result.kind === 'message' ? result.envelope.data.carrier : null
+      await writeHandlerLogRow(tx, { handler, envelopeId, orderId, tenantId, note })
     }),
   )
 }

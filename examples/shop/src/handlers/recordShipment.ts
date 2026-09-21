@@ -3,6 +3,7 @@ import { NonRetryableError } from '@kyuworks/sdk'
 import type { Pool } from 'pg'
 import { withTransaction } from '../db/pool.js'
 import { orderShipped } from '../messages.js'
+import { writeHandlerLogRow } from './handlerLog.js'
 import { requireTenant } from './tenant.js'
 
 type OrderShippedContext = HandlerContext<MessageData<typeof orderShipped>>
@@ -13,10 +14,11 @@ type OrderShippedContext = HandlerContext<MessageData<typeof orderShipped>>
 // without reaching into the opaque Hatchet workflow subscribe() builds.
 export async function handleRecordShipment(pool: Pool, kyu: Kyu, ctx: OrderShippedContext): Promise<void> {
   const tenantId = requireTenant('record-shipment', ctx)
+  const envelopeId = ctx.envelope.id
   const { orderId, carrier } = ctx.envelope.data
 
   await withTransaction(pool, (tx) =>
-    kyu.onceById(tx, ctx.envelope.id, 'record-shipment', async () => {
+    kyu.onceById(tx, envelopeId, 'record-shipment', async () => {
       // coalesce, not `WHERE shipped_at IS NULL`: a zero-row result then means
       // "no such order for this tenant", never "already shipped".
       const updated = await tx.query(
@@ -26,10 +28,7 @@ export async function handleRecordShipment(pool: Pool, kyu: Kyu, ctx: OrderShipp
       if (updated.rows.length === 0) {
         throw new NonRetryableError(`record-shipment: no shop_order row for order ${orderId} in tenant ${tenantId}`)
       }
-      await tx.query(
-        'INSERT INTO shop_handler_log (handler, envelope_id, order_id, tenant_id, pid, note) VALUES ($1, $2, $3, $4, $5, $6)',
-        ['record-shipment', ctx.envelope.id, orderId, tenantId, process.pid, carrier],
-      )
+      await writeHandlerLogRow(tx, { handler: 'record-shipment', envelopeId, orderId, tenantId, note: carrier })
     }),
   )
 }

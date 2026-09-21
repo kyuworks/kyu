@@ -8,8 +8,9 @@ import { handleRecordShipment, recordShipmentSubscription } from './recordShipme
 
 type OrderShippedContext = HandlerContext<MessageData<typeof orderShipped>>
 
-const LOG_INSERT =
-  'INSERT INTO shop_handler_log (handler, envelope_id, order_id, tenant_id, pid, note) VALUES ($1, $2, $3, $4, $5, $6)'
+// The statement text is pinned once in handlerLog.test.ts; this file only
+// checks that its own handler writes the row with its own values.
+const isLogInsert = (text: string): boolean => text.startsWith('INSERT INTO shop_handler_log')
 
 interface FakeClientOptions {
   orderExists: boolean
@@ -84,13 +85,13 @@ describe('handleRecordShipment', () => {
 
     await handleRecordShipment(pool, fakeKyu(), ctx)
 
-    expect(events).toContain(LOG_INSERT)
+    expect(events.some(isLogInsert)).toBe(true)
     const updateIndex = events.findIndex((event) => event.startsWith('UPDATE shop_order'))
     // Pins the coalesce: a plain `$2::timestamptz` would also pass the params
     // assertion below but would let a second shipment move an already-set time.
     expect(events[updateIndex]).toContain('coalesce(shipped_at,')
     expect(params[updateIndex]).toEqual([orderId, ctx.envelope.occurredAt, tenantId])
-    const logIndex = events.findIndex((event) => event === LOG_INSERT)
+    const logIndex = events.findIndex(isLogInsert)
     expect(params[logIndex]).toEqual(['record-shipment', ctx.envelope.id, orderId, tenantId, process.pid, 'ups'])
   })
 
@@ -105,7 +106,7 @@ describe('handleRecordShipment', () => {
     const rejection = handleRecordShipment(pool, fakeKyu(), ctx)
     await expect(rejection).rejects.toThrow(new RegExp(orderId))
     await expect(rejection).rejects.toBeInstanceOf(NonRetryableError)
-    expect(events).not.toContain(LOG_INSERT)
+    expect(events.some(isLogInsert)).toBe(false)
   })
 
   it('skips the update and the log row when the envelope was already processed', async () => {
@@ -118,7 +119,7 @@ describe('handleRecordShipment', () => {
 
     await handleRecordShipment(pool, fakeKyu(), ctx)
 
-    expect(events).not.toContain(LOG_INSERT)
+    expect(events.some(isLogInsert)).toBe(false)
     expect(events.some((event) => event.startsWith('UPDATE shop_order'))).toBe(false)
   })
 })
