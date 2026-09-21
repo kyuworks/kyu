@@ -90,9 +90,10 @@ interface HandlerLogRow {
 
 // Producer and outbox totals, lifetime, every row: envelope->>'source' is the
 // only place a producer's name lives, since kyu_outbox has no source column.
+// A retired row's envelope can be missing it; those group as "(unknown)".
 async function readProducerTotals(db: CountsSource): Promise<ProducerTotalsRow[]> {
   const result = await db.query(
-    `SELECT envelope->>'source' AS source,
+    `SELECT coalesce(envelope->>'source', '(unknown)') AS source,
             count(*)::int AS published,
             count(*) FILTER (WHERE published_at IS NULL AND dead_at IS NULL)::int AS waiting,
             count(*) FILTER (WHERE dead_at IS NOT NULL)::int AS retired

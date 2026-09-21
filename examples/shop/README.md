@@ -248,16 +248,16 @@ pnpm --filter @kyuworks/shop publish-cli place-order --tenant <uuid>
 not by `migrate` and not by `publish-cli`.
 
 To see the retired bucket move, insert a row the relay cannot read. `envelope` here is missing
-every field but `name` and `source`; `name` must match `envelope->>'name'` (the table checks
-it), and `source` must stay a string (the Bus page groups producers by it). Setting `dead_at`
+every field but `name`; `name` must match `envelope->>'name'` (the table checks it). A retired
+row with no `source` is counted under a producer named `(unknown)`. Setting `dead_at`
 yourself skips the relay's three-try countdown.
 
 ```sql
 INSERT INTO kyu_outbox (id, name, envelope, dead_at, attempts, last_error)
-VALUES (gen_random_uuid(), 'shop.order.legacy', '{"name":"shop.order.legacy","source":"shop"}'::jsonb, now(), 3, 'envelope: invalid');
+VALUES (gen_random_uuid(), 'shop.order.legacy', '{"name":"shop.order.legacy"}'::jsonb, now(), 3, 'envelope: invalid');
 ```
 
-Reload `/bus`: **retired** goes up by one and **waiting for relay** does not move. Delete the row
+Reload `/bus`: a **Producer: (unknown)** box appears, **retired** goes up by one and **waiting for relay** does not move. Delete the row
 when you are done. Nothing in the shop deletes retired rows; the SDK's `pruneRetired` does, when
 a consumer schedules it.
 
