@@ -4,10 +4,15 @@ import { z } from 'zod'
 
 export const stepIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,38}$/)
 
+// A year. A delay at or above the hand-off threshold is served by a scheduled
+// publish at its wake time (handlers/runWorkflow.ts), so any length is
+// deliverable; this only rejects a typo that would park an outbox row for ever.
+const MAX_DELAY_SECONDS = 365 * 24 * 60 * 60
+
 const delayStepSchema = z.object({
   id: stepIdSchema,
   kind: z.literal('delay'),
-  input: z.object({ seconds: z.number().int().min(1).max(600) }),
+  input: z.object({ seconds: z.number().int().min(1).max(MAX_DELAY_SECONDS) }),
   next: stepIdSchema,
 })
 const branchStepSchema = z.object({
@@ -39,12 +44,6 @@ function stepTargets(step: WorkflowStep): readonly string[] {
   if (step.kind === 'end') return []
   return [step.next]
 }
-
-// 3000s: run-workflow fixes executionTimeout at 1h, and a run's total sleep
-// must stay under it. A delay that outlasts the execution timeout is #113.
-// The cap only bounds a run's total sleep on an acyclic graph — the walk
-// below rejects a cycle before this sum is ever trusted.
-const MAX_TOTAL_DELAY_SECONDS = 3000
 
 // A DFS from `start`. A step already on the current path (in `visiting`) is
 // a cycle: an interpreter walking this definition would sleep forever. A
@@ -93,8 +92,17 @@ function walkFromStart(
   }
 }
 
+// A definition's total in-process sleep is at most this many steps times
+// DELAY_HANDOFF_SECONDS (handlers/runWorkflow.ts), which must stay under
+// run-workflow's 1h execution timeout.
+export const MAX_WORKFLOW_STEPS = 20
+
 export const workflowDefinitionSchema = z
-  .object({ schemaVersion: z.literal(1), start: stepIdSchema, steps: z.array(workflowStepSchema).min(1).max(20) })
+  .object({
+    schemaVersion: z.literal(1),
+    start: stepIdSchema,
+    steps: z.array(workflowStepSchema).min(1).max(MAX_WORKFLOW_STEPS),
+  })
   .superRefine((definition, ctx) => {
     const ids = new Set<string>()
     for (const step of definition.steps) {
@@ -122,17 +130,6 @@ export const workflowDefinitionSchema = z
       })
     }
     walkFromStart(definition, ctx)
-    const totalDelaySeconds = definition.steps.reduce(
-      (sum, step) => sum + (step.kind === 'delay' ? step.input.seconds : 0),
-      0,
-    )
-    if (totalDelaySeconds > MAX_TOTAL_DELAY_SECONDS) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `total delay ${String(totalDelaySeconds)}s exceeds the ${String(MAX_TOTAL_DELAY_SECONDS)}s cap (#113)`,
-        path: ['steps'],
-      })
-    }
   })
 export type WorkflowDefinition = z.infer<typeof workflowDefinitionSchema>
 

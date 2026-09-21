@@ -84,42 +84,20 @@ describe('parseWorkflowDefinition', () => {
     expect(definition.steps).toHaveLength(2)
   })
 
-  it('rejects a delay of 601 seconds', () => {
-    const bad = { schemaVersion: 1, start: 'a', steps: [delayStep('a', 601, 'a')] }
-    expect(() => parseWorkflowDefinition(bad)).toThrow(NonRetryableError)
-  })
-
-  it('accepts a total delay of exactly 3000 seconds, split across steps under the 600s-per-step cap (#113)', () => {
+  it('accepts a delay of 30 days, past the durable execution timeout (#113)', () => {
     const definition = parseWorkflowDefinition({
       schemaVersion: 1,
       start: 'a',
-      steps: [
-        delayStep('a', 600, 'b'),
-        delayStep('b', 600, 'c'),
-        delayStep('c', 600, 'd'),
-        delayStep('d', 600, 'e'),
-        delayStep('e', 600, 'f'),
-        { id: 'f', kind: 'end' },
-      ],
+      steps: [delayStep('a', 30 * 24 * 60 * 60, 'b'), { id: 'b', kind: 'end' }],
     })
-    expect(definition.steps).toHaveLength(6)
+    expect(definition.steps).toHaveLength(2)
   })
 
-  // Acyclic on purpose: every step reaches "end" through a single forward
-  // path, so this is rejected by the sum cap alone, not by the cycle check.
-  it('rejects a total delay of 3001 seconds (#113)', () => {
+  it('rejects a delay longer than a year', () => {
     const bad = {
       schemaVersion: 1,
       start: 'a',
-      steps: [
-        delayStep('a', 600, 'b'),
-        delayStep('b', 600, 'c'),
-        delayStep('c', 600, 'd'),
-        delayStep('d', 600, 'e'),
-        delayStep('e', 600, 'f'),
-        delayStep('f', 1, 'g'),
-        { id: 'g', kind: 'end' },
-      ],
+      steps: [delayStep('a', 365 * 24 * 60 * 60 + 1, 'b'), { id: 'b', kind: 'end' }],
     }
     expect(() => parseWorkflowDefinition(bad)).toThrow(NonRetryableError)
   })
