@@ -74,6 +74,7 @@ function fakeKyu(publishes: RecordedPublish[], runOutcomes: Readonly<Record<stri
   const forId = (id: string) => Promise.resolve(runOutcomes[id] ?? [])
   const runs: Kyu['runs'] = {
     forEnvelope: forId,
+    forCorrelation: forId,
     cancelForEnvelope: forId,
     cancelForCorrelation: forId,
   }

@@ -3,14 +3,19 @@ import type { Concurrency, CreateTaskWorkflowOpts, Duration, JsonObject } from '
 import { toHatchetConcurrency } from './concurrency.js'
 import type { ConcurrencyOption } from './concurrency.js'
 
-export type RateLimitOption =
-  | { staticKey: string; units?: number }
-  | {
-      dynamicKey: string
-      units?: number
-      limit: number
-      duration: 'SECOND' | 'MINUTE' | 'HOUR' | 'DAY' | 'WEEK' | 'MONTH' | 'YEAR'
-    }
+/**
+ * An engine-side rate limit on a subscription. `key` is a CEL expression over
+ * the event, the same language a concurrency key uses: a constant such as
+ * `"'marketplace'"` gives every run one bucket, and `"'marketplace:' +
+ * additional_metadata.tenantId"` gives each business tenant its own. A run
+ * that would pass the limit is queued and starts in a later period; the
+ * engine never fails it.
+ */
+export interface RateLimitOption {
+  key: string
+  limit: number
+  period: 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year'
+}
 
 // subscribe() and durable() both build one of these; the Omit works for both
 // because neither field type depends on the handler's fn signature.
@@ -42,26 +47,33 @@ export function assertSubscriptionName(name: string): void {
 }
 
 const RATE_LIMIT_DURATION = {
-  SECOND: RateLimitDuration.SECOND,
-  MINUTE: RateLimitDuration.MINUTE,
-  HOUR: RateLimitDuration.HOUR,
-  DAY: RateLimitDuration.DAY,
-  WEEK: RateLimitDuration.WEEK,
-  MONTH: RateLimitDuration.MONTH,
-  YEAR: RateLimitDuration.YEAR,
-} satisfies Record<Extract<RateLimitOption, { dynamicKey: string }>['duration'], RateLimitDuration>
+  second: RateLimitDuration.SECOND,
+  minute: RateLimitDuration.MINUTE,
+  hour: RateLimitDuration.HOUR,
+  day: RateLimitDuration.DAY,
+  week: RateLimitDuration.WEEK,
+  month: RateLimitDuration.MONTH,
+  year: RateLimitDuration.YEAR,
+} satisfies Record<RateLimitOption['period'], RateLimitDuration>
 
 const PRIORITY_CODE = { low: Priority.LOW, medium: Priority.MEDIUM, high: Priority.HIGH } as const
 
 export function toHatchetRateLimit(option: RateLimitOption): HatchetRateLimitInput {
-  if ('staticKey' in option) {
-    return { staticKey: option.staticKey, units: option.units ?? 1 }
+  if (option.key.trim() === '') {
+    throw new KyuError(`rate limit key is empty: give a CEL expression, for example "'marketplace'"`)
+  }
+  // The engine reads a missing limit as -1, which means "look the key up in
+  // this tenant's registered static rate limits"; the SDK registers none, so
+  // the engine holds every run queued for ever. (A negative limit never
+  // reaches the engine: the check below refuses it first.)
+  if (!Number.isInteger(option.limit) || option.limit < 1) {
+    throw new KyuError(`rate limit ${option.key} needs a whole number of runs above zero, got ${option.limit}`)
   }
   return {
-    dynamicKey: option.dynamicKey,
-    units: option.units ?? 1,
+    dynamicKey: option.key,
+    units: 1,
     limit: option.limit,
-    duration: RATE_LIMIT_DURATION[option.duration],
+    duration: RATE_LIMIT_DURATION[option.period],
   }
 }
 

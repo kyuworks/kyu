@@ -4,6 +4,7 @@ import { durable } from './consume/durable.js'
 import type { DurableOptions } from './consume/durable.js'
 import { readRunOutcomes } from './consume/runOutcomes.js'
 import type { KyuRuns } from './consume/runOutcomes.js'
+import { readRunProgressForCorrelation } from './consume/runProgress.js'
 import { subscribe } from './consume/subscribe.js'
 import type { SubscribeOptions, Subscription } from './consume/subscribe.js'
 import { createWorker } from './consume/worker.js'
@@ -61,6 +62,7 @@ export function createKyu(options: CreateKyuOptions): Kyu {
     durable: (definition, durableOptions) => durable(hatchet, definition, durableOptions),
     runs: {
       forEnvelope: (envelopeId, runOptions) => readRunOutcomes(hatchet, envelopeId, runOptions),
+      forCorrelation: (correlationId, runOptions) => readRunProgressForCorrelation(hatchet, correlationId, runOptions),
       cancelForEnvelope: (envelopeId, runOptions) =>
         cancelRunsFor(hatchet, { key: 'envelopeId', id: envelopeId, caller: 'runs.cancelForEnvelope' }, runOptions),
       cancelForCorrelation: (correlationId, runOptions) =>

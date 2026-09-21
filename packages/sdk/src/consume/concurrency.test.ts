@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ConcurrencyLimitStrategy } from '../hatchet.js'
-import { toHatchetConcurrency } from './concurrency.js'
+import { TENANT_CONCURRENCY_KEY, toHatchetConcurrency } from './concurrency.js'
 
 describe('toHatchetConcurrency', () => {
   it('maps fifo to GROUP_ROUND_ROBIN', () => {
@@ -39,6 +39,14 @@ describe('toHatchetConcurrency', () => {
     expect(toHatchetConcurrency({ key: 'input.data.orderId', maxRuns: 5, strategy: 'fifo' })).toEqual({
       expression: 'input.data.orderId',
       maxRuns: 5,
+      limitStrategy: ConcurrencyLimitStrategy.GROUP_ROUND_ROBIN,
+    })
+  })
+
+  it('maps round-robin to GROUP_ROUND_ROBIN on the tenant key', () => {
+    expect(toHatchetConcurrency({ key: TENANT_CONCURRENCY_KEY, maxRuns: 1, strategy: 'round-robin' })).toEqual({
+      expression: 'input.tenantId',
+      maxRuns: 1,
       limitStrategy: ConcurrencyLimitStrategy.GROUP_ROUND_ROBIN,
     })
   })

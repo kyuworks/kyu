@@ -82,6 +82,7 @@ export type { EnvelopeOptionIssue, MessageDataIssue } from './errors.js'
 export { groupEnvelopesForPush, startRelay } from './relay/index.js'
 export type { PushItem, Relay, RelayOptions, TickResult } from './relay/index.js'
 
+export { TENANT_CONCURRENCY_KEY } from './consume/concurrency.js'
 export type { ConcurrencyOption } from './consume/concurrency.js'
 
 export type { HandlerContext, HandlerLogger } from './consume/handlerContext.js'
@@ -102,6 +103,11 @@ export type { ChildOutcome, WaitForChildrenOptions } from './consume/fanOut.js'
 // type is derived from HatchetClient and not exported either, so a consumer
 // could not name it. Reach this through kyu.runs.forEnvelope instead.
 export type { KyuRuns, ReadRunOutcomesOptions, RunOutcome, RunStatus } from './consume/runOutcomes.js'
+
+// readRunProgressForCorrelation/readRunWait are not exported for the same
+// reason: reach this through kyu.runs.forCorrelation instead.
+export type { RunProgress } from './consume/runProgress.js'
+export type { RunWait } from './consume/runWaits.js'
 
 export { createWorker } from './consume/worker.js'
 export type { CreateWorkerOptions, KyuWorker } from './consume/worker.js'

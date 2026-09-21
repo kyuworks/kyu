@@ -317,15 +317,19 @@ Declared per subscription, evaluated by Hatchet on the engine using CEL against 
 | FIFO per order | `concurrency: { expression: 'input.data.orderId', maxRuns: 1, limitStrategy: GROUP_ROUND_ROBIN }` |
 | Only the newest matters (debounced push) | `limitStrategy: CANCEL_IN_PROGRESS` on the same key |
 | One active run per owner, drop extras | `limitStrategy: CANCEL_NEWEST` |
-| Per-business-tenant fairness | second concurrency key on `additional_metadata.tenantId` |
+| Per-business-tenant fairness | `concurrency: { key: 'input.tenantId', maxRuns: 1, strategy: 'round-robin' }` — one run per tenant at a time, tenants taking turns |
+
+`'fifo'` and `'round-robin'` both map to `GROUP_ROUND_ROBIN`, the engine's only non-deprecated queueing strategy: FIFO inside a key group, round robin across groups. Fairness comes from choosing a key that groups a whole business tenant, not from a different strategy. A concurrency expression may read `additional_metadata.tenantId` as well as `input.tenantId`; both are proven against the local engine.
 
 ### 9.3 Retries and failure
 
 Subscriptions declare `retries` and `backoff: { factor, maxSeconds }`. Handlers throw `NonRetryableError` for permanent conditions such as 4xx responses from an external API or an order that no longer exists. Exhausted retries mark the run failed. Failed runs are the dead-letter set: alerted on, visible and replayable in the dashboard, and never silently dropped. A consumer reads a run's status and attempt count by envelope id with `kyu.runs.forEnvelope(id)`; it never calls the engine client itself.
 
+A workflow run is one durable run plus the command runs it published, and they all carry the same `correlationId`. `kyu.runs.forCorrelation(correlationId)` returns them together, oldest first, so a consumer can show where a run has got to without reading Hatchet's own run records. A run still parked in `sleepFor` or `waitFor` reports what it is waiting for: a sleep with the time it wakes, or the message name and, when the label is present, the field match it is holding out for. The engine records every durable wait in its own log; the SDK adds only the field match, which it writes as the wait's label when `waitFor` registers it. A run parked by a worker on an older SDK, or one whose label this SDK cannot decode, reports the message name alone rather than failing the read.
+
 ### 9.4 Priority and rate limits
 
-Priority is 1 to 3, default 1, and only orders runs within one workflow. Lanes that must not compete, such as interactive sends versus bulk sweeps, are separate workflows rather than priorities. Rate limits are declared per subscription with a dynamic key, for example `'mailer:' + additional_metadata.tenantId` at the tenant's quota with the mail provider; Hatchet re-queues rather than fails when a limit is hit.
+Priority is 1 to 3, default 1, and only orders runs within one workflow. Lanes that must not compete, such as interactive sends versus bulk sweeps, are separate workflows rather than priorities. Rate limits are declared per subscription as `rateLimits: [{ key, limit, period }]`, where `key` is a CEL expression over the event: `'mailer:' + additional_metadata.tenantId` gives each business tenant its own bucket at its quota with the provider, and a constant such as `'marketplace'` gives every run one shared bucket. A run that would pass the limit is queued and starts in a later period; the engine never fails it.
 
 ### 9.5 Timers and correlation
 
@@ -366,6 +370,7 @@ export const sendInvoice = kyu.subscribe(orderPlaced, {
   concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'cancel_in_progress' },
   retries: 5,
   backoff: { factor: 2, maxSeconds: 600 },
+  rateLimits: [{ key: "'invoices:' + additional_metadata.tenantId", limit: 50, period: 'minute' }],
   handler: (ctx) => { /* open tenant-scoped tx with ctx.envelope.tenantId */ },
 });
 
@@ -383,6 +388,7 @@ export const followUpOrder = kyu.durable(orderPlaced, {
 // Worker
 const worker = await kyu.worker('shop-api', { subscriptions: [sendInvoice, followUpOrder], slots: 10 });
 await worker.start();
+const marketplaceWorker = await kyu.worker('shop-marketplace', { subscriptions: [sendInvoice, followUpOrder], serves: ['send-invoice'], slots: 2 });
 
 // Relay, started once per producer process
 const relay = kyu.startRelay({ db: pool, workerId: 'shop-api-1' });
@@ -390,6 +396,7 @@ const relay = kyu.startRelay({ db: pool, workerId: 'shop-api-1' });
 // Alerting: a run's outcome by envelope id, without the engine client
 const outcomes = await kyu.runs.forEnvelope(envelope.id);
 const deadLetters = outcomes.filter((o) => o.status === 'failed');
+const progress = await kyu.runs.forCorrelation(envelope.correlationId); // every run of one workflow run, oldest first
 await kyu.runs.cancelForCorrelation(envelope.correlationId); // stop a workflow run and everything it started
 ```
 
@@ -417,6 +424,8 @@ Commands use the same `publish` and `subscribe` calls with `kind: 'command'`; th
 | Retention | Configure run and event retention to 30 days in production, 7 in dev |
 | Monitoring | Hatchet failure alerts to Slack; scrape engine metrics if exposed; outbox-lag alert from each producer |
 | Scaling path | Compose or Helm topology with separate engine replicas and RabbitMQ when N4 is exceeded; no code change |
+
+**Worker pools.** One bus tenant per project per environment, and separate worker pools by subscription name inside it. A consumer builds its whole subscription list once and starts one process per pool, each with `kyu.worker(name, { subscriptions, serves: [...] })` naming the subscriptions that pool serves. A pool whose subscriptions call a slow third party runs on its own machine with its own rate limit, so it cannot hold up the pool that runs durable workflow handlers. A subscription no running worker serves gets no run at all: the engine does not back-fill when a worker starts later and picks it up, so every subscription must be served by some pool that is actually running. How the pools are laid out for a real integration is a second ADR, deferred until a marketplace integration is scheduled.
 
 ## 13. Adoption plan
 
