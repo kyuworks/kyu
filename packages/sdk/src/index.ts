@@ -98,6 +98,11 @@ export type { DurableHandlerContext, DurableOptions, WaitForOptions, WaitForResu
 // could not name it. Reach this through kyu.runs.forEnvelope instead.
 export type { KyuRuns, ReadRunOutcomesOptions, RunOutcome, RunStatus } from './consume/runOutcomes.js'
 
+// readRunProgressForCorrelation/readRunWait are not exported for the same
+// reason: reach this through kyu.runs.forCorrelation instead.
+export type { RunProgress } from './consume/runProgress.js'
+export type { RunWait } from './consume/runWaits.js'
+
 export { createWorker } from './consume/worker.js'
 export type { CreateWorkerOptions, KyuWorker } from './consume/worker.js'
 

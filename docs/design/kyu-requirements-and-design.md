@@ -323,6 +323,8 @@ Declared per subscription, evaluated by Hatchet on the engine using CEL against 
 
 Subscriptions declare `retries` and `backoff: { factor, maxSeconds }`. Handlers throw `NonRetryableError` for permanent conditions such as 4xx responses from an external API or an order that no longer exists. Exhausted retries mark the run failed. Failed runs are the dead-letter set: alerted on, visible and replayable in the dashboard, and never silently dropped. A consumer reads a run's status and attempt count by envelope id with `kyu.runs.forEnvelope(id)`; it never calls the engine client itself.
 
+A workflow run is one durable run plus the command runs it published, and they all carry the same `correlationId`. `kyu.runs.forCorrelation(correlationId)` returns them together, oldest first, so a consumer can show where a run has got to without reading Hatchet's own run records. A run still parked in `sleepFor` or `waitFor` reports what it is waiting for: a sleep with the time it wakes, or the message name and the field match it is holding out for. The engine records every durable wait in its own log; the SDK adds only the field match, which it writes as the wait's label when `waitFor` registers it.
+
 ### 9.4 Priority and rate limits
 
 Priority is 1 to 3, default 1, and only orders runs within one workflow. Lanes that must not compete, such as interactive sends versus bulk sweeps, are separate workflows rather than priorities. Rate limits are declared per subscription with a dynamic key, for example `'mailer:' + additional_metadata.tenantId` at the tenant's quota with the mail provider; Hatchet re-queues rather than fails when a limit is hit.
@@ -386,6 +388,7 @@ const relay = kyu.startRelay({ db: pool, workerId: 'shop-api-1' });
 // Alerting: a run's outcome by envelope id, without the engine client
 const outcomes = await kyu.runs.forEnvelope(envelope.id);
 const deadLetters = outcomes.filter((o) => o.status === 'failed');
+const progress = await kyu.runs.forCorrelation(envelope.correlationId); // every run of one workflow run, oldest first
 await kyu.runs.cancelForCorrelation(envelope.correlationId); // stop a workflow run and everything it started
 ```
 
