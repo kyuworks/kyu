@@ -169,6 +169,42 @@ describe('toRunOutcome', () => {
     const row = fixtureRow({ taskExternalId: '018f0000-0000-7000-8000-0000000000ff' })
     expect(toRunOutcome(row, 'ns_')?.runId).toBe('018f0000-0000-7000-8000-0000000000ff')
   })
+
+  // The engine writes the terminal status before it writes the timestamps,
+  // so a row caught in that gap must not report a terminal outcome a
+  // consumer would treat as settled.
+  it('a COMPLETED row missing finishedAt reads running, with finishedAt absent', () => {
+    const row = fixtureRow({ status: 'COMPLETED', finishedAt: undefined })
+    const outcome = toRunOutcome(row, 'ns_')
+    expect(outcome?.status).toBe('running')
+    expect('finishedAt' in (outcome ?? {})).toBe(false)
+  })
+
+  it('a FAILED row missing finishedAt reads running', () => {
+    const row = fixtureRow({ status: 'FAILED', finishedAt: undefined })
+    expect(toRunOutcome(row, 'ns_')?.status).toBe('running')
+  })
+
+  it('a COMPLETED row missing startedAt reads running', () => {
+    const row = fixtureRow({ status: 'COMPLETED', startedAt: undefined })
+    expect(toRunOutcome(row, 'ns_')?.status).toBe('running')
+  })
+
+  it('a FAILED row with finishedAt and no startedAt still reads failed (a run that ended before it started is a dead letter)', () => {
+    const row = fixtureRow({ status: 'FAILED', startedAt: undefined })
+    expect(toRunOutcome(row, 'ns_')?.status).toBe('failed')
+  })
+
+  it('a RUNNING row stays running regardless of its timestamps', () => {
+    const row = fixtureRow({ status: 'RUNNING', startedAt: undefined, finishedAt: undefined })
+    expect(toRunOutcome(row, 'ns_')?.status).toBe('running')
+  })
+
+  // A run cancelled while still queued never started.
+  it('a CANCELLED row with neither timestamp still reads cancelled', () => {
+    const row = fixtureRow({ status: 'CANCELLED', startedAt: undefined, finishedAt: undefined })
+    expect(toRunOutcome(row, 'ns_')?.status).toBe('cancelled')
+  })
 })
 
 interface FakeRunsReaderCalls {

@@ -9,6 +9,7 @@ export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancell
 export interface RunOutcome {
   /** The subscription's name as the engine registered it, lowercased. */
   subscription: string
+  /** `completed` is reported only once both timestamps exist, `failed` only once `finishedAt` does; until then the run reads `running`. */
   status: RunStatus
   /** The engine's own attempt number, 1 on the first try; a queued run — none picked up yet — also reads 1. */
   attempts: number
@@ -66,9 +67,21 @@ export function toRunOutcome(row: EngineRunRow, namespace: string): RunOutcome |
   // "Delivery rules") is what keeps that from happening in production.
   if (workflowName === undefined || !workflowName.startsWith(namespace)) return undefined
 
+  let status = RUN_STATUS[row.status]
+  // The engine writes the terminal status before it writes startedAt/finishedAt,
+  // so an unsettled completed row reads running. A failed row is different: a
+  // run can fail before any worker starts it (scheduling timeout, could-not-
+  // send-to-worker, rate limit) and never gets a startedAt, so only a missing
+  // finishedAt — not a missing startedAt — holds a failed row back.
+  if (status === 'completed' && (row.startedAt === undefined || row.finishedAt === undefined)) {
+    status = 'running'
+  } else if (status === 'failed' && row.finishedAt === undefined) {
+    status = 'running'
+  }
+
   const outcome: RunOutcome = {
     subscription: workflowName.slice(namespace.length),
-    status: RUN_STATUS[row.status],
+    status,
     // The engine's own `attempt` is the source of truth; `retryCount + 1`
     // is a fallback for the rare row where `attempt` itself is absent.
     attempts: row.attempt ?? (row.retryCount ?? 0) + 1,
