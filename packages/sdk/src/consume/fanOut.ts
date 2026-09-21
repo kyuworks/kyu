@@ -13,7 +13,7 @@ import { Or, SleepCondition, UserEventCondition, durationToMs } from '../hatchet
 import type { DurableContext, Duration, JsonObject, OrCondition } from '../hatchet.js'
 import { readRunOutcomes } from './runOutcomes.js'
 import type { RunsReader } from './runOutcomes.js'
-import { celEquals, decodeMatchedEnvelope } from './waitMatch.js'
+import { celEquals, decodeMatchedEnvelope, readEnvelopeField } from './waitMatch.js'
 
 export interface WaitForChildrenOptions {
   where: {
@@ -136,10 +136,25 @@ export async function waitForChildMessages<S extends MessageSchema>(
   // A satisfied Or group still records its sibling timeout key, so a child
   // replied when its own child-<i> key is present — never test timeout-<i>.
   const replied = new Map<number, Envelope<MessageData<MessageDefinition<S>>>>()
-  for (const index of options.where.envelopeIds.keys()) {
+  for (const [index, expectedId] of options.where.envelopeIds.entries()) {
     const matches = created[`child-${index}`]
     if (matches !== undefined && matches.length > 0) {
-      const envelope = await decodeMatchedEnvelope(definition, matches[0], handlerEnvelope, options.scope)
+      const envelope = await decodeMatchedEnvelope(
+        'waitForChildren',
+        definition,
+        matches[0],
+        handlerEnvelope,
+        options.scope,
+      )
+      // The CEL condition already filtered on this field, but a replay that
+      // pairs child-<i> with the wrong engine result would otherwise
+      // misattribute a reply to the wrong child; check it again here.
+      const actualId = readEnvelopeField(envelope, options.where.field)
+      if (actualId !== expectedId) {
+        throw new KyuError(
+          `waitForChildren: child-${index}'s reply carries envelope id ${JSON.stringify(actualId)} at "${options.where.field}", expected ${expectedId}`,
+        )
+      }
       replied.set(index, envelope)
     }
   }

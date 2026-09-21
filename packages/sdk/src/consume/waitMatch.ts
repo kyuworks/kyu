@@ -1,5 +1,7 @@
 import type {
   Envelope,
+  JsonObject,
+  JsonValue,
   MessageData,
   MessageDataShape,
   MessageDefinition,
@@ -27,6 +29,7 @@ export function celEquals(caller: string, field: string, equals: string): string
 
 /** Trust edge for a matched engine event: decodes it and rejects one from another tenant. */
 export async function decodeMatchedEnvelope<S extends MessageSchema>(
+  caller: string,
   definition: MessageDefinition<S>,
   match: Unparsed,
   handlerEnvelope: Envelope<MessageDataShape>,
@@ -35,9 +38,26 @@ export async function decodeMatchedEnvelope<S extends MessageSchema>(
   const envelope = await decodeIncomingEnvelope(definition, match)
   if (explicitScope === undefined && envelope.tenantId !== handlerEnvelope.tenantId) {
     throw new EnvelopeRejectedError(
-      `matched an envelope from tenant ${String(envelope.tenantId)}, expected the handler envelope's tenant ${String(handlerEnvelope.tenantId)}`,
+      `${caller}: matched an envelope from tenant ${String(envelope.tenantId)}, expected the handler envelope's tenant ${String(handlerEnvelope.tenantId)}`,
       envelope.id,
     )
   }
   return envelope
+}
+
+function isJsonObject(value: JsonValue): value is JsonObject {
+  return value !== null && !Array.isArray(value) && value instanceof Object
+}
+
+/**
+ * Dotted-path read of a value on an already-decoded envelope, the same
+ * segment convention `celEquals` compiles into CEL. Round-trips through JSON
+ * first — the same conversion `fanOut.test.ts`'s `asIncoming` uses — so the
+ * walk narrows `JsonValue` without a runtime `typeof` check.
+ */
+export function readEnvelopeField(envelope: Envelope<MessageDataShape>, path: string): JsonValue | undefined {
+  const plain = JSON.parse(JSON.stringify(envelope)) as JsonValue
+  return path.split('.').reduce<JsonValue | undefined>((current, key) => {
+    return current !== undefined && isJsonObject(current) ? current[key] : undefined
+  }, plain)
 }

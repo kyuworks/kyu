@@ -121,7 +121,7 @@ export async function waitForMessage<S extends MessageSchema>(
 
   const matches = created.message
   if (matches !== undefined && matches.length > 0) {
-    const envelope = await decodeMatchedEnvelope(definition, matches[0], handlerEnvelope, options.scope)
+    const envelope = await decodeMatchedEnvelope('waitFor', definition, matches[0], handlerEnvelope, options.scope)
     return { kind: 'message', envelope }
   }
 

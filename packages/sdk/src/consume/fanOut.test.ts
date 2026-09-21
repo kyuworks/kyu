@@ -373,4 +373,20 @@ describe('waitForChildMessages', () => {
       }),
     ).rejects.toBeInstanceOf(EnvelopeRejectedError)
   })
+
+  it('rejects a reply behind child-<i> that does not carry envelopeIds[i], so a misordered replay is not misattributed', async () => {
+    const [id0, id1] = [uuidv7(), uuidv7()]
+    // child-0's own key should pair with id0; this reply carries id1 instead.
+    const reply = await createEnvelope(childReplied, { childEnvelopeId: id1 }, { tenantId: null, source: 'sdk.test' })
+    const { context } = fakeDurableContext({ CREATE: { 'child-0': [asIncoming(reply)] } })
+    const envelope = await handlerEnvelope(null)
+    const runs = fakeRunsReader('ns_', new Map())
+
+    await expect(
+      waitForChildMessages(context, runs, envelope, childReplied, {
+        where: { field: 'data.childEnvelopeId', envelopeIds: [id0, id1] },
+        timeout: '30s',
+      }),
+    ).rejects.toThrow(new RegExp(`${id0}.*${id1}|${id1}.*${id0}`))
+  })
 })

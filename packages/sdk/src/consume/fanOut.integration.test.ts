@@ -167,6 +167,7 @@ describe('durable fan-out', () => {
         expect(outcome.status).toBe('replied')
         if (outcome.status === 'replied') {
           expect(outcome.envelope.data.childEnvelopeId).toBe(outcome.envelopeId)
+          expect(outcome.envelope.tenantId).toBe(trigger.tenantId)
         }
       }
     } finally {
@@ -409,7 +410,9 @@ describe('durable fan-out', () => {
       await push(start.name, trigger)
 
       expect(await waitUntil(() => results.has(trigger.id), 90_000)).toBe(true)
-      expect(Date.now() - startedAt).toBeLessThan(90_000)
+      // The one failing child's timeout is 20s; a bound this side of the 90s
+      // wait budget still fails if waitForChildren stops honoring it.
+      expect(Date.now() - startedAt).toBeLessThan(60_000)
 
       const outcomes = results.get(trigger.id) ?? []
       expect(outcomes).toHaveLength(2)
