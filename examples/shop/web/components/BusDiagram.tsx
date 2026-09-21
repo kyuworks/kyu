@@ -60,12 +60,10 @@ export function BusDiagram({ busDocument }: BusDiagramProps) {
             <span>waiting for relay</span>
             <span>{counts.outbox.waitingForRelay}</span>
           </p>
-          {counts.outbox.scheduled > 0 && (
-            <p className="my-0.5 flex justify-between gap-4 text-sm" data-outbox-bucket="scheduled">
-              <span>scheduled</span>
-              <span>{counts.outbox.scheduled}</span>
-            </p>
-          )}
+          <p className="my-0.5 flex justify-between gap-4 text-sm" data-outbox-bucket="scheduled">
+            <span>scheduled</span>
+            <span>{counts.outbox.scheduled}</span>
+          </p>
           <p className="my-0.5 flex justify-between gap-4 text-sm">
             <span>shipped</span>
             <span>{counts.outbox.shipped}</span>

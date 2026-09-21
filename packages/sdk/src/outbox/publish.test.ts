@@ -1,8 +1,8 @@
-import { defineEvent, envelopeSchema } from '@kyuworks/schemas'
+import { createEnvelope, defineEvent, envelopeSchema } from '@kyuworks/schemas'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import type { Queryable, QueryParam, QueryRows } from '../db/queryable.js'
-import { createPublisher } from './publish.js'
+import { createPublisher, publishEnvelope } from './publish.js'
 
 const orderPlaced = defineEvent({ name: 'shop.order.placed', version: 1, data: z.object({ orderId: z.uuid() }) })
 
@@ -80,6 +80,29 @@ describe('createPublisher', () => {
         { tenantId: null, publishAt: new Date('nonsense') },
       ),
     ).rejects.toThrow(RangeError)
+    expect(calls).toBe(0)
+  })
+})
+
+describe('publishEnvelope', () => {
+  it('rejects an invalid publishAt before touching the database', async () => {
+    let calls = 0
+    const db: Queryable = {
+      query(_text: string, _params: readonly QueryParam[]): Promise<QueryRows> {
+        calls += 1
+        return Promise.resolve({ rows: [], rowCount: 1 })
+      },
+    }
+    const envelope = await createEnvelope(
+      orderPlaced,
+      { orderId: '018f0000-0000-7000-8000-000000000002' },
+      {
+        tenantId: null,
+        source: 'shop-service',
+      },
+    )
+
+    await expect(publishEnvelope(db, envelope, new Date('nonsense'))).rejects.toThrow(RangeError)
     expect(calls).toBe(0)
   })
 })

@@ -76,7 +76,8 @@ export async function claimPendingRows(db: RelayQueryable, options: ClaimPending
          AND dead_at IS NULL
          AND publish_at <= now() -- a future publish_at is not due yet
          AND (claimed_at IS NULL OR claimed_at < now() - ($2::text || ' milliseconds')::interval)
-       ORDER BY created_at, id
+       -- Matches the (publish_at, created_at) index: a due backlog is an index scan, not a seq scan plus sort.
+       ORDER BY publish_at, created_at, id
        LIMIT $3
        FOR UPDATE SKIP LOCKED
      )

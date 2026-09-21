@@ -19,6 +19,9 @@ export async function publishEnvelope<TData extends MessageDataShape = EnvelopeD
   envelope: Envelope<TData>,
   publishAt?: Date,
 ): Promise<void> {
+  if (publishAt !== undefined && Number.isNaN(publishAt.getTime())) {
+    throw new RangeError('publishAt must be a valid Date')
+  }
   await insertOutboxRow(tx, envelope, publishAt)
 }
 
