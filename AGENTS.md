@@ -142,7 +142,7 @@ A new test that still passes after reverting the production change does not coun
 
 Levels: unit (`*.test.ts`, colocated), integration (`*.integration.test.ts`, against the local engine), manual (justified, listed). There is no browser level.
 
-Every SDK integration file starts from empty `kyu_outbox` and `kyu_processed` because `packages/sdk/vitest.integration.clearBusTables.ts` runs before each file, and a file must still clean up after itself rather than rely on the next one.
+Every SDK integration file starts from empty `kyu_outbox` and `kyu_processed`, because `packages/sdk/vitest.integration.clearBusTables.ts` runs before each file. A file must still clean up after itself rather than rely on the next one.
 
 A suite that builds a git repository sources `scripts/lib/git-env.sh` and unsets the variables it lists. The gate `check-selftest-git-isolation.sh` fails one that does not.
 

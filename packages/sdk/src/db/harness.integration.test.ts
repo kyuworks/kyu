@@ -19,6 +19,13 @@ afterAll(async () => {
 const databaseName = decodeURIComponent(new URL(process.env['KYU_TEST_DATABASE_URL'] ?? '').pathname.replace(/^\//, ''))
 
 describe('integration test harness', () => {
+  it('starts with empty bus tables', async () => {
+    const outboxCount = await client.query<{ count: number }>('SELECT count(*)::int FROM kyu_outbox')
+    const processedCount = await client.query<{ count: number }>('SELECT count(*)::int FROM kyu_processed')
+    expect(outboxCount.rows[0]?.count).toBe(0)
+    expect(processedCount.rows[0]?.count).toBe(0)
+  })
+
   it('connects to the configured test database', async () => {
     const result = await client.query<{ current_database: string }>('SELECT current_database()')
     expect(result.rows[0]?.current_database).toBe(databaseName)

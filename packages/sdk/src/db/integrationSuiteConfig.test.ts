@@ -6,6 +6,6 @@ import integrationConfig from '../../vitest.integration.config.js'
 // neighbour in CI than it does locally.
 describe('integration suite config', () => {
   it('empties the bus tables before every integration file', () => {
-    expect(integrationConfig.test?.setupFiles).toEqual(['./vitest.integration.clearBusTables.ts'])
+    expect(integrationConfig.test?.setupFiles).toContain('./vitest.integration.clearBusTables.ts')
   })
 })
