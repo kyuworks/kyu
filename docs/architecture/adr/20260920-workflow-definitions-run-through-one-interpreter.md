@@ -91,7 +91,7 @@ A delay step under 60 seconds is `sleepFor`, as decision 5 says: the run parks a
 
 A delay step of 60 seconds or more is a hand-off. In one transaction, under the step's own `onceById` guard, the interpreter writes the step's ledger row and publishes the trigger message again with `publishAt` set to the wake time, the same run id, the same tenant id, and the step to continue at. The run then ends and holds nothing. At the wake time the relay ships that row and a new run loads the version this run pinned and walks on. A delay of any length is legal, including 30 days.
 
-The threshold exists because a run's total sleep must stay under its execution timeout, which `durable()` sets to 24 hours and `run-workflow` to 1 hour. A definition has at most 20 steps, so the worst run sleeps in process for 20 minutes.
+The threshold exists because a run's total sleep must stay under its execution timeout, which `durable()` sets to 24 hours and `run-workflow` to 1 hour. A definition has at most 20 steps, each below the 60-second hand-off boundary, so the worst run sleeps in process for just under 20 minutes.
 
 The continuation keeps the trigger's message name, so it queues in the same concurrency group (`input.data.orderId`, `maxRuns: 1`): two runs of one order still never run at once. Its place in that order is its wake time, not its publish time.
 

@@ -102,9 +102,9 @@ describe('parseWorkflowDefinition', () => {
     expect(() => parseWorkflowDefinition(bad)).toThrow(NonRetryableError)
   })
 
-  // Red proof: a two-step cycle with a total delay well under the 3000s cap.
-  // The sum check alone would accept this; only a walk from `start` that
-  // rejects a revisited step catches it.
+  // Red proof: a two-step cycle where each delay is well under the per-delay
+  // cap (a year, MAX_DELAY_SECONDS). A per-step check alone would accept
+  // this; only a walk from `start` that rejects a revisited step catches it.
   it('rejects a two-step cycle even when the total delay is under the cap', () => {
     const bad = {
       schemaVersion: 1,
