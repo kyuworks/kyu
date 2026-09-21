@@ -316,17 +316,25 @@ describe('loop: relay and worker against the local engine', () => {
   }, 90_000)
 
   it('orders placed with no worker running are handled once it starts', async () => {
-    // A parked watch-shipping run makes stop() evict it (up to 30s ack); assert none remain for this file's own orders.
-    const runsByEnvelope = await Promise.all(
-      placedOrderEnvelopeIds.map((envelopeId) => engine.runs.list({ additionalMetadata: { envelopeId } })),
+    // A shipped order's run always resolves: 5s sleepFor before the wait, then the wake and commit
+    // (waitFor's lookback is 5m, so the earlier shipped event still matches). Not a timeout wait.
+    let parked: Awaited<ReturnType<typeof engine.runs.list>>['rows'] = []
+    await waitUntil(
+      async () => {
+        const runsByEnvelope = await Promise.all(
+          placedOrderEnvelopeIds.map((envelopeId) => engine.runs.list({ additionalMetadata: { envelopeId } })),
+        )
+        parked = runsByEnvelope
+          .flatMap((result) => result.rows)
+          .filter(
+            (row) =>
+              row.displayName.startsWith(WATCH_SHIPPING_DISPLAY_NAME_PREFIX) && !TERMINAL_RUN_STATUSES.has(row.status),
+          )
+        return parked.length === 0
+      },
+      18_000, // 5s sleepFor plus margin for the wake and commit, not a timeout wait
+      () => `parked watch-shipping runs: ${JSON.stringify(parked)}`,
     )
-    const parked = runsByEnvelope
-      .flatMap((result) => result.rows)
-      .filter(
-        (row) =>
-          row.displayName.startsWith(WATCH_SHIPPING_DISPLAY_NAME_PREFIX) && !TERMINAL_RUN_STATUSES.has(row.status),
-      )
-    expect(parked, `parked watch-shipping runs: ${JSON.stringify(parked)}`).toHaveLength(0)
 
     const stoppedCode = await worker.stop()
     expect(stoppedCode).toBe(0)
