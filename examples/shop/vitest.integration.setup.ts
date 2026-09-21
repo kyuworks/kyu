@@ -5,11 +5,17 @@ import { APP_MIGRATIONS_DIRECTORY, applyPending, ensureDatabase } from './src/db
 
 // shop_order_line references shop_order, so it must truncate in the same
 // statement (0002_shop.sql); shop_product is seed data and is never cleaned.
+// shop_workflow_definition and shop_workflow_version have no migration seed
+// in this PR — tests insert their own rows directly and this suite never
+// cleans them, so they grow by one per test tenant across runs. A seed
+// migration arrives in a later PR.
 const CLEAN_TABLES = [
   'shop_order_line',
   'shop_order',
   'shop_invoice',
   'shop_handler_log',
+  'shop_workflow_step_log',
+  'shop_workflow_run',
   'kyu_outbox',
   'kyu_processed',
 ]

@@ -1,6 +1,6 @@
 import { createEnvelope, uuidv7 } from '@kyuworks/sdk'
 import { describe, expect, it } from 'vitest'
-import { orderPlaced, orderShipped, sendInvoice } from './messages.js'
+import { notifyStaff, orderPlaced, orderShipped, sendInvoice, workflowTriggered } from './messages.js'
 
 describe('messages', () => {
   it('defines the two events and the command, all at version 1', () => {
@@ -13,6 +13,15 @@ describe('messages', () => {
     expect(sendInvoice.kind).toBe('command')
     expect(sendInvoice.name).toBe('shop.invoice.send')
     expect(sendInvoice.version).toBe(1)
+  })
+
+  it('defines workflowTriggered as an event and notifyStaff as a command, both at version 1', () => {
+    expect(workflowTriggered.kind).toBe('event')
+    expect(workflowTriggered.name).toBe('shop.workflow.triggered')
+    expect(workflowTriggered.version).toBe(1)
+    expect(notifyStaff.kind).toBe('command')
+    expect(notifyStaff.name).toBe('shop.staff.notify')
+    expect(notifyStaff.version).toBe(1)
   })
 
   it('rejects data that fails its schema for orderPlaced', async () => {
@@ -36,6 +45,26 @@ describe('messages', () => {
       createEnvelope(
         sendInvoice,
         { orderId: 'not-a-uuid', invoiceId: uuidv7() },
+        { tenantId: uuidv7(), source: 'test' },
+      ),
+    ).rejects.toThrow()
+  })
+
+  it('rejects data that fails its schema for workflowTriggered', async () => {
+    await expect(
+      createEnvelope(
+        workflowTriggered,
+        { runId: uuidv7(), definitionId: 'not-a-uuid', versionId: uuidv7(), orderId: uuidv7() },
+        { tenantId: uuidv7(), source: 'test' },
+      ),
+    ).rejects.toThrow()
+  })
+
+  it('rejects data that fails its schema for notifyStaff', async () => {
+    await expect(
+      createEnvelope(
+        notifyStaff,
+        { runId: uuidv7(), versionId: uuidv7(), stepId: '', orderId: uuidv7() },
         { tenantId: uuidv7(), source: 'test' },
       ),
     ).rejects.toThrow()

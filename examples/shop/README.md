@@ -73,6 +73,25 @@ nothing and publishes nothing — the whole transaction rolls back. `POST /invoi
 `{ orderId, invoiceId? }`; a missing `invoiceId` sends the command for a fresh id with no
 matching `shop_invoice` row, the simulated fault that gives the Bus page a dead letter to show.
 
+## The workflow tables
+
+`migrations/0004_shop.sql` adds four tables that hold a user-defined workflow as data, following
+`docs/architecture/adr/20260920-workflow-definitions-run-through-one-interpreter.md`:
+`shop_workflow_definition` (one row per definition, at most one `enabled` per tenant),
+`shop_workflow_version` (one row per saved version, its steps stored as JSON against
+`src/workflow/definition.ts`'s schema), `shop_workflow_run` (one row per run, pinned to the version
+it started with) and `shop_workflow_step_log` (one row per step a run has finished). The schema is
+in place but nothing reads a version's steps yet; the interpreter in the next pull request parses
+them against it on every read, so a stored definition that has drifted from the schema is caught
+there, not here.
+
+When an order is placed, `placeOrder` looks for the one workflow enabled for that tenant. If there
+is one, it publishes `shop.workflow.triggered` in the same transaction as the order, carrying a new
+run id, the definition id, the pinned version id and the order id — ids only, never a step's
+authored text. The run id is a uuid v7 minted at that point and is also the message's correlation
+id. Nothing consumes this message yet: `run-workflow`, the durable handler that reads the pinned
+version and walks its steps, is the next pull request.
+
 ## Web page
 
 A Vite + React app under `web/`, built to `dist/web/` by `pnpm --filter @kyuworks/shop build`
@@ -131,7 +150,7 @@ oldest first — a worklist, not a shop view. Each row shows the order's short i
 line of text, its total, and a carrier input defaulted to `Speedy` next to a **Ship** button
 posting to `POST /shipments`. There is no new read model: the page reads the same document
 `/orders` does and filters it. A shipped row leaves the worklist on the next 5-second refresh, and
-`/orders` shows that order's stage as *shipped* once `record-shipment` records it. A shipment that
+`/orders` shows that order's stage as _shipped_ once `record-shipment` records it. A shipment that
 arrives after `watch-shipping`'s wait has already timed out still marks the order shipped — the
 run that timed out is not a dead end for the business process.
 
@@ -154,24 +173,24 @@ screen rather than being wiped by a failed refresh.
 
 Tracked across issue #81 (Tailwind v4, HeroUI v3, Heroicons), `pnpm --filter @kyuworks/shop build`:
 
-| | JS raw | JS gzip | CSS raw | CSS gzip |
-|---|---|---|---|---|
-| `main` (before #81) | 325.69 kB | 97.61 kB | 6.38 kB | 1.65 kB |
-| after PR 3 (Warehouse, ship form, shell) | 476.51 kB | 145.08 kB | 81.53 kB | 10.10 kB |
-| after PR 4 (Bus page, `styles.css` deleted) | 478.05 kB | 145.23 kB | 77.62 kB | 9.58 kB |
+|                                             | JS raw    | JS gzip   | CSS raw  | CSS gzip |
+| ------------------------------------------- | --------- | --------- | -------- | -------- |
+| `main` (before #81)                         | 325.69 kB | 97.61 kB  | 6.38 kB  | 1.65 kB  |
+| after PR 3 (Warehouse, ship form, shell)    | 476.51 kB | 145.08 kB | 81.53 kB | 10.10 kB |
+| after PR 4 (Bus page, `styles.css` deleted) | 478.05 kB | 145.23 kB | 77.62 kB | 9.58 kB  |
 
 ## Environment variables
 
-| Variable | Required | Default | Purpose |
-| --- | --- | --- | --- |
-| `KYU_SHOP_DATABASE_URL` | yes | — | Postgres connection string for this app's own database. |
-| `KYU_SHOP_NAMESPACE` | no | `shop_` | Shared prefix so the three processes agree on one run. |
-| `KYU_SHOP_LOG_LEVEL` | no | `info` | One of `debug`, `info`, `warn`, `error`. |
-| `KYU_SHOP_WATCH_TIMEOUT` | no | `3m` | `watch-shipping`'s correlated wait timeout; an h/m/s duration string. |
-| `KYU_SHOP_RELAY_BATCH_SIZE` | no | the SDK's default | Read only by `relay`; rows claimed per tick. |
-| `KYU_SHOP_UI_PORT` | no | `3333` | Read only by `ui`; the local port the web page binds to. |
-| `HATCHET_CLIENT_TOKEN` | for `relay`, `worker` and `ui` | — | Read by the engine client directly, same as the SDK's own integration lane. `migrate` and `publish-cli` never build one. |
-| `HATCHET_CLIENT_TLS_STRATEGY` | for `relay`, `worker` and `ui` | — | Read by the engine client directly. |
+| Variable                      | Required                       | Default           | Purpose                                                                                                                  |
+| ----------------------------- | ------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `KYU_SHOP_DATABASE_URL`       | yes                            | —                 | Postgres connection string for this app's own database.                                                                  |
+| `KYU_SHOP_NAMESPACE`          | no                             | `shop_`           | Shared prefix so the three processes agree on one run.                                                                   |
+| `KYU_SHOP_LOG_LEVEL`          | no                             | `info`            | One of `debug`, `info`, `warn`, `error`.                                                                                 |
+| `KYU_SHOP_WATCH_TIMEOUT`      | no                             | `3m`              | `watch-shipping`'s correlated wait timeout; an h/m/s duration string.                                                    |
+| `KYU_SHOP_RELAY_BATCH_SIZE`   | no                             | the SDK's default | Read only by `relay`; rows claimed per tick.                                                                             |
+| `KYU_SHOP_UI_PORT`            | no                             | `3333`            | Read only by `ui`; the local port the web page binds to.                                                                 |
+| `HATCHET_CLIENT_TOKEN`        | for `relay`, `worker` and `ui` | —                 | Read by the engine client directly, same as the SDK's own integration lane. `migrate` and `publish-cli` never build one. |
+| `HATCHET_CLIENT_TLS_STRATEGY` | for `relay`, `worker` and `ui` | —                 | Read by the engine client directly.                                                                                      |
 
 The namespace is a prefix; the engine lowercases it and gives it a trailing underscore if one
 is missing.
