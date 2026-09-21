@@ -337,7 +337,7 @@ describe('restart: the durable watch-shipping handler', () => {
       // The old (wrong) headline timing, on purpose: stop worker A the instant
       // the waiting row appears, which is during sleepFor('5s') while the body
       // is still executing. That attempt fails with "DurableListener stopped";
-      // watchShipping.ts's retries makes the engine redeliver it to worker B.
+      // the 3 retries `durable()` sets by default make the engine redeliver it to worker B.
       // Every write goes through onceById, so the replayed attempt is safe.
       const waiting = await waitUntil(() => hasRow(envelopeId, 'watch-shipping:waiting'), 60_000)
       await expectEventually(

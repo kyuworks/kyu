@@ -29,7 +29,8 @@ export interface Subscription {
   /**
    * Set by `durable()` only. `KyuWorker.stop()` calls it before the engine's
    * own stop, so a wait entered afterwards fails fast instead of hanging on a
-   * stopped durable listener. One-way: build one subscription per worker.
+   * stopped durable listener. One-way: build one subscription per worker —
+   * `createWorker` refuses a second bind.
    */
   stopDurableWaits?: () => void
 }

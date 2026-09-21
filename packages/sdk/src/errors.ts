@@ -24,6 +24,21 @@ export class CommandHasTwoSubscribersError extends KyuError {
   }
 }
 
+/** `createWorker` refuses a subscription object another worker already bound: `stopDurableWaits` is one-way. */
+export class SubscriptionAlreadyBoundError extends KyuError {
+  readonly subscriptionName: string
+  readonly workerName: string
+
+  constructor(subscriptionName: string, workerName: string) {
+    super(
+      `subscription "${subscriptionName}" is already bound to another worker and cannot also serve "${workerName}": build one subscription per worker`,
+    )
+    this.name = 'SubscriptionAlreadyBoundError'
+    this.subscriptionName = subscriptionName
+    this.workerName = workerName
+  }
+}
+
 /**
  * A subscribed task rejected the arriving payload: not an envelope, or an
  * envelope with the wrong name or version. Non-retryable — a redelivery of
@@ -50,9 +65,10 @@ export class EnvelopeRejectedError extends NonRetryableError {
 
 /**
  * A durable handler reached `sleepFor`/`waitFor` after its worker began
- * stopping. Retryable on purpose: the engine SDK's durable listener has
- * already stopped, so registering the wait would never settle and would hold
- * `stop()` open; failing the attempt lets the engine re-dispatch the run.
+ * stopping. Retryable on purpose: its worker is shutting down and the durable
+ * listener is about to stop, so registering the wait would never settle and
+ * would hold `stop()` open; failing the attempt lets the engine re-dispatch
+ * the run.
  */
 export class WorkerStoppingError extends KyuError {
   constructor() {
