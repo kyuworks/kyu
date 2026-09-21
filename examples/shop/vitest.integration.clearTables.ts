@@ -4,7 +4,10 @@ import { readConfig } from './src/config.js'
 
 // shop_product (0002_shop.sql) and the demo workflow definition and version
 // (0005_shop.sql) are migration seed and are never cleaned: no later migration
-// re-inserts them. shop_order_line references shop_order and shop_workflow_run
+// re-inserts them. Tests also insert their own definition and version rows
+// for random tenants, so those two tables grow per run on purpose; they are
+// never truncated because the migrations seed them.
+// shop_order_line references shop_order and shop_workflow_run
 // references shop_order, so the set truncates in one statement.
 const CLEAN_TABLES = [
   'shop_order_line',

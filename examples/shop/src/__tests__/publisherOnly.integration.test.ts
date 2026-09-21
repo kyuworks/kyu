@@ -29,8 +29,8 @@ interface TableCounts {
 }
 
 // vitest.integration.clearTables.ts empties these before every file. This is
-// the smallest integration file, so vitest's size-descending order runs it
-// last: whatever an earlier file left behind, this file still starts clean.
+// the last file that writes these tables in vitest's size-descending order:
+// only src/db/pool.integration.test.ts is smaller, and it writes none of them.
 describe('the shop integration harness', () => {
   it('starts every file with empty bus and shop tables', async () => {
     const result = await admin.query<TableCounts>(
