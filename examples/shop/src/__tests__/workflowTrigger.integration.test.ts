@@ -19,6 +19,12 @@ let pool: Pool
 let kyu: Kyu
 let admin: Client
 
+// Every order this file commits, so afterAll can remove them: this suite's
+// kyu_outbox rows are never claimed by a relay, and left unpublished they
+// would inflate producer.integration.test.ts's own relay.tick() count when
+// both files run in the same (fileParallelism: false) vitest invocation.
+const placedOrders: PlacedOrder[] = []
+
 beforeAll(async () => {
   const base = readConfig()
   config = { ...base, namespace }
@@ -29,16 +35,29 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  const envelopeIds = placedOrders.flatMap((placed) =>
+    [placed.envelopeIds.orderPlaced, placed.envelopeIds.sendInvoice, placed.envelopeIds.workflowTriggered].filter(
+      (id): id is string => id !== undefined,
+    ),
+  )
+  if (envelopeIds.length > 0) await admin.query('DELETE FROM kyu_outbox WHERE id = ANY($1)', [envelopeIds])
+  const orderIds = placedOrders.map((placed) => placed.orderId)
+  if (orderIds.length > 0) {
+    await admin.query('DELETE FROM shop_invoice WHERE order_id = ANY($1)', [orderIds])
+    await admin.query('DELETE FROM shop_order WHERE id = ANY($1)', [orderIds])
+  }
   await admin.end()
   await pool.end()
 })
 
 // Inserts one enabled definition + version for a fresh random tenant, the
 // smallest fixture that makes triggerWorkflowOn find something to trigger.
+// shop_workflow_definition and shop_workflow_version are never cleaned
+// (vitest.integration.setup.ts), so this grows both tables by one row per run.
 async function insertEnabledDefinition(tenantId: string): Promise<{ definitionId: string; versionId: string }> {
   const definitionId = randomUUID()
   const versionId = randomUUID()
-  const steps = { schemaVersion: 1, steps: [{ id: 'finish', kind: 'end' }] }
+  const steps = { schemaVersion: 1, start: 'finish', steps: [{ id: 'finish', kind: 'end' }] }
   await admin.query(
     'INSERT INTO shop_workflow_definition (id, tenant_id, name, enabled, current_version_id) VALUES ($1, $2, $3, false, NULL)',
     [definitionId, tenantId, 'proof-workflow'],
@@ -54,12 +73,13 @@ async function insertEnabledDefinition(tenantId: string): Promise<{ definitionId
   return { definitionId, versionId }
 }
 
-interface WorkflowTriggeredEnvelopeRow {
-  envelope: { data: { runId: string; definitionId: string; versionId: string; orderId: string } }
+interface WorkflowTriggeredOutboxRow {
+  tenant_id: string
+  envelope: { tenantId: string; data: { runId: string; definitionId: string; versionId: string; orderId: string } }
 }
 
 describe('triggerWorkflowOn: the transaction boundary (mandatory)', () => {
-  it('a rolled-back placeOrder leaves no shop.workflow.triggered row and no run row', async () => {
+  it('a rolled-back placeOrder leaves no shop.workflow.triggered row', async () => {
     const tenantId = randomUUID()
     await insertEnabledDefinition(tenantId)
 
@@ -79,11 +99,14 @@ describe('triggerWorkflowOn: the transaction boundary (mandatory)', () => {
     } finally {
       client.release()
     }
+    // Not tracked in placedOrders: the rows were rolled back, so afterAll
+    // has nothing to clean up for this order.
 
     const afterTx = await admin.query('SELECT id FROM kyu_outbox WHERE id = $1', [placed.envelopeIds.workflowTriggered])
     expect(afterTx.rows).toHaveLength(0)
-    const runRows = await admin.query('SELECT run_id FROM shop_workflow_run WHERE order_id = $1', [placed.orderId])
-    expect(runRows.rows).toHaveLength(0)
+    // shop_workflow_run has no writer yet (the interpreter, PR B), so this
+    // is not yet a real assertion — it would pass whether or not the
+    // rollback worked. It becomes a must-hold check once run rows exist.
   })
 
   it('publishes shop.workflow.triggered inside the same commit as the order, when a definition is enabled', async () => {
@@ -93,11 +116,17 @@ describe('triggerWorkflowOn: the transaction boundary (mandatory)', () => {
     const placed = await withTransaction(pool, (client) =>
       placeOrderOn(client, kyu, { tenantId, customerId: randomUUID() }),
     )
+    placedOrders.push(placed)
 
-    const row = await admin.query<WorkflowTriggeredEnvelopeRow>('SELECT envelope FROM kyu_outbox WHERE id = $1', [
-      placed.envelopeIds.workflowTriggered,
-    ])
+    const row = await admin.query<WorkflowTriggeredOutboxRow>(
+      'SELECT tenant_id, envelope FROM kyu_outbox WHERE id = $1',
+      [placed.envelopeIds.workflowTriggered],
+    )
     expect(row.rows).toHaveLength(1)
+    // tenant-id-unchanged (mandatory): the tenant the order was placed with
+    // reaches both the outbox column and the envelope's own tenantId.
+    expect(row.rows[0]?.tenant_id).toBe(tenantId)
+    expect(row.rows[0]?.envelope.tenantId).toBe(tenantId)
     expect(row.rows[0]?.envelope.data).toEqual({
       runId: expect.any(String),
       definitionId,
@@ -112,6 +141,7 @@ describe('triggerWorkflowOn: the transaction boundary (mandatory)', () => {
     const placed = await withTransaction(pool, (client) =>
       placeOrderOn(client, kyu, { tenantId, customerId: randomUUID() }),
     )
+    placedOrders.push(placed)
 
     expect(placed.envelopeIds.workflowTriggered).toBeUndefined()
   })

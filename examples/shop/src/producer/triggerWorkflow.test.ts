@@ -82,7 +82,7 @@ describe('triggerWorkflowOn', () => {
         correlationId: result?.runId,
       },
     ])
-    expect(result?.runId).toBe(publishes[0]?.correlationId)
+    expect(result?.runId).toBe(publishes.at(0)?.correlationId)
   })
 
   it('mints the run id as a uuid v7', async () => {

@@ -2,7 +2,7 @@ import type { Unparsed } from '@kyuworks/sdk'
 import { NonRetryableError } from '@kyuworks/sdk'
 import { z } from 'zod'
 
-const stepIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,38}$/)
+export const stepIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,38}$/)
 
 const delayStepSchema = z.object({
   id: stepIdSchema,
@@ -42,10 +42,59 @@ function stepTargets(step: WorkflowStep): readonly string[] {
 
 // 3000s: run-workflow fixes executionTimeout at 1h, and a run's total sleep
 // must stay under it. A delay that outlasts the execution timeout is #113.
+// The cap only bounds a run's total sleep on an acyclic graph — the walk
+// below rejects a cycle before this sum is ever trusted.
 const MAX_TOTAL_DELAY_SECONDS = 3000
 
+// A DFS from `start`. A step already on the current path (in `visiting`) is
+// a cycle: an interpreter walking this definition would sleep forever. A
+// step never reached this way is unreachable and would never run. A step
+// reached twice through different, non-cyclic paths (a branch's two exits
+// rejoining at one `end`) is fine and only recursed into once.
+function walkFromStart(
+  definition: { start: string; steps: readonly WorkflowStep[] },
+  ctx: z.core.$RefinementCtx,
+): void {
+  const byId = new Map(definition.steps.map((step) => [step.id, step]))
+  if (!byId.has(definition.start)) return // reported separately, below
+
+  const visiting = new Set<string>()
+  const visited = new Set<string>()
+  let cycleReported = false
+
+  function visit(stepId: string): void {
+    if (visited.has(stepId)) return
+    if (visiting.has(stepId)) {
+      if (!cycleReported) {
+        cycleReported = true
+        ctx.addIssue({ code: 'custom', message: `workflow has a cycle at step "${stepId}"`, path: ['steps'] })
+      }
+      return
+    }
+    const step = byId.get(stepId)
+    if (step === undefined) return // a dangling target, reported separately
+
+    visiting.add(stepId)
+    for (const target of stepTargets(step)) visit(target)
+    visiting.delete(stepId)
+    visited.add(stepId)
+  }
+
+  visit(definition.start)
+
+  for (const step of definition.steps) {
+    if (!visited.has(step.id)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `step "${step.id}" is unreachable from start "${definition.start}"`,
+        path: ['steps'],
+      })
+    }
+  }
+}
+
 export const workflowDefinitionSchema = z
-  .object({ schemaVersion: z.literal(1), steps: z.array(workflowStepSchema).min(1).max(20) })
+  .object({ schemaVersion: z.literal(1), start: stepIdSchema, steps: z.array(workflowStepSchema).min(1).max(20) })
   .superRefine((definition, ctx) => {
     const ids = new Set<string>()
     for (const step of definition.steps) {
@@ -65,6 +114,14 @@ export const workflowDefinitionSchema = z
         }
       }
     }
+    if (!ids.has(definition.start)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `start "${definition.start}" does not name an existing step`,
+        path: ['start'],
+      })
+    }
+    walkFromStart(definition, ctx)
     const totalDelaySeconds = definition.steps.reduce(
       (sum, step) => sum + (step.kind === 'delay' ? step.input.seconds : 0),
       0,

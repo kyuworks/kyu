@@ -219,6 +219,7 @@ describe('placeOrder', () => {
 
     expect(placed.envelopeIds.workflowTriggered).toEqual(expect.any(String))
     expect(publishes).toHaveLength(3)
+    expect(txs).toEqual([client, client, client])
     const triggerPublish = publishes.at(2)
     if (triggerPublish === undefined) throw new Error('expected a third publish')
     expect(triggerPublish.name).toBe('shop.workflow.triggered')

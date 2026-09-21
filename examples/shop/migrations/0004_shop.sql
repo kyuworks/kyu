@@ -11,7 +11,10 @@ CREATE TABLE shop_workflow_definition (
   -- No FK: shop_workflow_version points back at this table, so two foreign
   -- keys in a cycle could not both hold inside one INSERT without deferring.
   current_version_id uuid,
-  created_at         timestamptz NOT NULL DEFAULT now()
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  -- Lets shop_workflow_version's FK pin (definition_id, tenant_id) together,
+  -- so a version can never carry a different tenant than its definition.
+  UNIQUE (id, tenant_id)
 );
 
 -- placeOrder triggers "the definition enabled for this tenant"; a second
@@ -21,11 +24,14 @@ CREATE UNIQUE INDEX shop_workflow_definition_one_enabled_idx
 
 CREATE TABLE shop_workflow_version (
   id            uuid PRIMARY KEY,
-  definition_id uuid NOT NULL REFERENCES shop_workflow_definition (id),
+  definition_id uuid NOT NULL,
   tenant_id     uuid NOT NULL,
   version       integer NOT NULL CHECK (version > 0),
   steps         jsonb NOT NULL,
-  created_at    timestamptz NOT NULL DEFAULT now()
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  -- Composite, not just (definition_id): ties this row's tenant to its
+  -- definition's tenant, so the two can never drift apart.
+  FOREIGN KEY (definition_id, tenant_id) REFERENCES shop_workflow_definition (id, tenant_id)
 );
 CREATE UNIQUE INDEX shop_workflow_version_number_idx
   ON shop_workflow_version (definition_id, version);
@@ -36,9 +42,12 @@ CREATE UNIQUE INDEX shop_workflow_version_number_idx
 CREATE TABLE shop_workflow_run (
   run_id              uuid PRIMARY KEY,
   tenant_id           uuid NOT NULL,
-  definition_id       uuid NOT NULL,
+  definition_id       uuid NOT NULL REFERENCES shop_workflow_definition (id),
   version_id          uuid NOT NULL REFERENCES shop_workflow_version (id),
-  order_id            uuid NOT NULL,
+  -- shop_order and shop_workflow_run truncate together, in one statement
+  -- (vitest.integration.setup.ts's CLEAN_TABLES), so this FK never blocks
+  -- test cleanup.
+  order_id            uuid NOT NULL REFERENCES shop_order (id),
   trigger_envelope_id uuid NOT NULL,
   started_at          timestamptz NOT NULL DEFAULT now(),
   finished_at         timestamptz
@@ -49,6 +58,8 @@ CREATE INDEX shop_workflow_run_order_idx ON shop_workflow_run (tenant_id, order_
 -- is written here in the same transaction as the decision and read back on a
 -- replay, so the replay never re-evaluates it. The primary key turns a second
 -- walk of one step into a database error, not a silent duplicate.
+-- exit_step_id: null for an end step, the step's own `next` for delay and
+-- notify, and whichever of `whenTrue`/`whenFalse` a branch chose.
 CREATE TABLE shop_workflow_step_log (
   run_id       uuid NOT NULL REFERENCES shop_workflow_run (run_id),
   step_id      text NOT NULL,

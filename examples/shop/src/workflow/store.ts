@@ -6,7 +6,7 @@ export interface EnabledDefinition {
   versionId: string
 }
 
-const enabledDefinitionRowSchema = z.object({ definition_id: z.string(), version_id: z.string() })
+const enabledDefinitionRowSchema = z.object({ definition_id: z.uuid(), version_id: z.uuid() })
 
 // The one definition turned on for this tenant, or null when none is (the
 // normal case, not an error). shop_workflow_definition_one_enabled_idx

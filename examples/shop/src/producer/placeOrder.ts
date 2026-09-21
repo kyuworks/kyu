@@ -106,7 +106,11 @@ export async function placeOrderOn(
   return { orderId, invoiceId, totalCents, envelopeIds }
 }
 
-/** One transaction: two INSERTs then two publishes, committed together. */
+/**
+ * One transaction: two INSERTs, two publishes, then a SELECT for the one
+ * workflow definition enabled for this tenant and, when one is enabled, a
+ * third publish (`shop.workflow.triggered`) — all committed together.
+ */
 export function placeOrder(pool: Pool, publisher: Publisher, input: PlaceOrderInput): Promise<PlacedOrder> {
   return withTransaction(pool, (client) => placeOrderOn(client, publisher, input))
 }
