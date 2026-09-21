@@ -38,6 +38,10 @@ a process that also subscribes, runs a worker, starts the relay or reads run out
 `HATCHET_CLIENT_TOKEN`, and `createHatchetClient()` throws "API token is required" the moment it is
 called without one.
 
+A subscription's `name` must be lowercase letters, digits, `-` or `_`, starting with a letter.
+`subscribe()` and `durable()` refuse anything else, because the engine lowercases the name when it
+registers the workflow and `runs.forEnvelope()` would then report a name the caller never chose.
+
 Run the relay on a small dedicated `pg.Pool` (the shop uses `max: 1`), not the application's pool and not a bare `pg.Client` (`kyu.startRelay({ db: pool, workerId })`). The relay never opens a transaction — a claim is held by the row's `claimed_by` stamp, not by the connection — so a pool is safe, and pg replaces a dropped connection on the next tick. `publish()` and `onceById()` still refuse a pool: their statements must land in the caller's transaction. Attach `pool.on('error', …)`, or a connection dropped while idle takes the process down.
 
 A relay handed a single `pg.Client` cannot recover: pg marks a client that lost its connection permanently unusable. The relay notices, stops polling, calls `onError` with a `RelayConnectionLostError` and rejects `relay.closed`. Exit non-zero on that rejection and let a supervisor restart the process. Rows the relay had claimed stay claimed until `staleClaimMs` passes, then another relay takes them over.
