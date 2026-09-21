@@ -93,6 +93,11 @@ export type { RateLimitOption, SharedTaskOptions } from './consume/taskOptions.j
 export { durable } from './consume/durable.js'
 export type { DurableHandlerContext, DurableOptions, WaitForOptions, WaitForResult } from './consume/durable.js'
 
+// MAX_FAN_OUT_CHILDREN/buildChildConditions/waitForChildMessages stay
+// unexported: like readRunOutcomes, their parameter types name engine values
+// a consumer cannot hold. Reach this through ctx.waitForChildren instead.
+export type { ChildOutcome, WaitForChildrenOptions } from './consume/fanOut.js'
+
 // readRunOutcomes/toRunOutcome are not exported: their RunsReader parameter
 // type is derived from HatchetClient and not exported either, so a consumer
 // could not name it. Reach this through kyu.runs.forEnvelope instead.
