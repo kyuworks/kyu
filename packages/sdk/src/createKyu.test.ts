@@ -140,7 +140,17 @@ describe('createKyu', () => {
     const kyu = createKyu({ hatchet: client, source: 'shop-service' })
 
     expect(Object.keys(kyu).sort()).toEqual(
-      ['durable', 'onceById', 'publish', 'runs', 'startRelay', 'subscribe', 'worker'].sort(),
+      [
+        'durable',
+        'onceById',
+        'publish',
+        'runs',
+        'scheduleRunner',
+        'schedules',
+        'startRelay',
+        'subscribe',
+        'worker',
+      ].sort(),
     )
   })
 

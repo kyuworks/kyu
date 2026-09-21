@@ -13,6 +13,10 @@ import { createPublisher } from './outbox/publish.js'
 import type { Publisher } from './outbox/publish.js'
 import { startRelay } from './relay/index.js'
 import type { Relay, RelayOptions } from './relay/index.js'
+import { createScheduleRunner } from './schedule/scheduleRunner.js'
+import type { ScheduleRunnerOptions } from './schedule/scheduleRunner.js'
+import { createSchedules } from './schedule/schedules.js'
+import type { KyuSchedules } from './schedule/schedules.js'
 
 export interface CreateKyuOptions {
   hatchet: HatchetClient
@@ -40,6 +44,9 @@ export interface Kyu {
   runs: KyuRuns
   worker(name: string, options: CreateWorkerOptions): Promise<KyuWorker>
   startRelay(options: KyuRelayOptions): Relay
+  schedules: KyuSchedules
+  /** Registers the one task every `schedules.create` cron fires. Pass the result to `worker`'s `subscriptions` like any other. */
+  scheduleRunner(options: ScheduleRunnerOptions): Subscription
 }
 
 export function createKyu(options: CreateKyuOptions): Kyu {
@@ -54,5 +61,7 @@ export function createKyu(options: CreateKyuOptions): Kyu {
     runs: { forEnvelope: (envelopeId, runOptions) => readRunOutcomes(hatchet, envelopeId, runOptions) },
     worker: (name, workerOptions) => createWorker(hatchet, name, workerOptions),
     startRelay: (relayOptions) => startRelay({ ...relayOptions, hatchet }),
+    schedules: createSchedules(hatchet),
+    scheduleRunner: (scheduleRunnerOptions) => createScheduleRunner(hatchet, { ...scheduleRunnerOptions, source }),
   }
 }

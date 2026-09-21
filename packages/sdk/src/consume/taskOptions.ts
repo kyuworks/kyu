@@ -29,7 +29,9 @@ export interface SharedTaskOptions {
 
 // The engine registers a workflow as the namespace plus this name, lowercased (Hatchet SDK's
 // normalizeWorkflowDefinition); anything it would change reads back as a name the caller never chose.
-const SUBSCRIPTION_NAME_PATTERN = /^[a-z][a-z0-9_-]*$/
+// Exported for schedule/scheduleTrigger.ts: a cron name is never namespaced by the engine, but the
+// same character class keeps it registrable and legible in the dashboard.
+export const SUBSCRIPTION_NAME_PATTERN = /^[a-z][a-z0-9_-]*$/
 
 export function assertSubscriptionName(name: string): void {
   if (!SUBSCRIPTION_NAME_PATTERN.test(name)) {

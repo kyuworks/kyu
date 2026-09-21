@@ -56,6 +56,8 @@ A durable run parked in `sleepFor`/`waitFor` reads as `running` in that outcome 
 
 Eviction of an already-parked run is the slow part: the engine SDK waits up to 30 seconds per run for the engine to acknowledge it, so size a supervisor's SIGTERM grace period above that — or pass `stopTimeoutMs` to `createWorker` to cap the whole stop.
 
+`kyu.schedules.create({ name, cron, definition, data, tenantId })` registers a cron that publishes a message on a schedule; `remove` and `list` manage what is registered. A cron hangs off `kyu.scheduleRunner`'s workflow, which a worker must register before `create`, `remove` or `list` — call each only after `kyu.worker(...)` with `kyu.scheduleRunner({ db, definitions })` in its subscriptions has started, or the SDK throws a `KyuError` saying so instead of the engine's own bare "workflow not found". A cron's name is unique within this client's namespace, not across every consumer.
+
 ## Examples
 
 [`examples/shop`](examples/shop) is a small app that uses `@kyuworks/sdk` the way a real project would.
