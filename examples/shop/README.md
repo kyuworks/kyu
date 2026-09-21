@@ -218,6 +218,8 @@ Tracked across issue #81 (Tailwind v4, HeroUI v3, Heroicons), `pnpm --filter @ky
 | `KYU_SHOP_LOG_LEVEL`          | no                             | `info`            | One of `debug`, `info`, `warn`, `error`.                                                                                 |
 | `KYU_SHOP_WATCH_TIMEOUT`      | no                             | `3m`              | `watch-shipping`'s correlated wait timeout; an h/m/s duration string.                                                    |
 | `KYU_SHOP_RELAY_BATCH_SIZE`   | no                             | the SDK's default | Read only by `relay`; rows claimed per tick.                                                                             |
+| `KYU_SHOP_SLOTS`              | no                             | `5`                | Read only by `worker`; how many plain handler runs it takes at once.                                                     |
+| `KYU_SHOP_DURABLE_SLOTS`      | no                             | `5`                | Read only by `worker`; how many durable runs it takes at once. A durable run holds its slot for the whole wait.          |
 | `KYU_SHOP_UI_PORT`            | no                             | `3333`            | Read only by `ui`; the local port the web page binds to.                                                                 |
 | `HATCHET_CLIENT_TOKEN`        | for `relay`, `worker` and `ui` | —                 | Read by the engine client directly, same as the SDK's own integration lane. `migrate` and `publish-cli` never build one. |
 | `HATCHET_CLIENT_TLS_STRATEGY` | for `relay`, `worker` and `ui` | —                 | Read by the engine client directly.                                                                                      |
@@ -261,6 +263,34 @@ VALUES (gen_random_uuid(), 'shop.order.legacy', '{"name":"shop.order.legacy"}'::
 Reload `/bus`: a **Producer: (unknown)** box appears, **retired** goes up by one and **waiting for relay** does not move. Delete the row
 when you are done. Nothing in the shop deletes retired rows; the SDK's `pruneRetired` does, when
 a consumer schedules it.
+
+## Failure and load harness
+
+The harness runs the shop under injected faults and checks two things after every scenario: no
+effect was lost, and no effect happened twice.
+
+```bash
+pnpm --filter @kyuworks/shop build
+export KYU_SHOP_DATABASE_URL=postgresql://hatchet:hatchet@localhost:15432/kyu_shop_harness
+export KYU_SHOP_NAMESPACE=harness_
+export HATCHET_CLIENT_TLS_STRATEGY=none
+export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/token.sh)"
+pnpm --filter @kyuworks/shop migrate
+pnpm --filter @kyuworks/shop harness --scenario all --size smoke --out report.json
+```
+
+`--size smoke` is the default and takes a few minutes. `--size report` uses the full numbers from
+the written proof and takes longer; the time per scenario is in `docs/proofs/`.
+
+The harness empties the shop and bus tables in the database you point it at, before and after
+every scenario. Point it at its own database. It starts and stops its own relay and worker
+processes and never touches Docker.
+
+The harness is not run by CI. It is run by hand to produce the proof under `docs/proofs/`. This
+first pull request ships the runner and four crash scenarios (a relay killed between pushing and
+marking a message published, a worker killed mid-step, a worker killed while parked, the relay's
+database connection dropped); a second pull request adds the engine outage, load, long-delay and
+cancel scenarios and the report.
 
 ## Engine hygiene
 

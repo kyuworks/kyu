@@ -132,6 +132,8 @@ The commit is the verification checkpoint. `.husky/pre-commit` runs `scripts/che
 
 **Do not run `check:changed` as a final "am I done" step** — the commit runs it on staged files. **Do not run a full suite locally**; CI owns exhaustive coverage. Iterating on one test file is feedback, not verification: `pnpm --filter @kyuworks/sdk exec vitest run <file>`.
 
+The shop's failure harness (`examples/shop/src/__tests__/harness/`) is run by hand, not by CI; it may SIGKILL and proxy only processes and ports it started itself.
+
 ## Test-driven changes
 
 Behavior-affecting code: tests first when practical; at minimum tests before claiming done.
