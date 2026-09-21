@@ -6,7 +6,7 @@ messages are named `shop.*` as a neutral stand-in.
 Four processes share one Postgres database and one Hatchet engine:
 
 - **migrate** — applies the SDK's shipped migrations, then this app's own, through its own runner.
-- **relay** — ships the transactional outbox to the engine.
+- **relay** — ships the transactional outbox to the engine; the sidecar shape a project uses by default.
 - **worker** — runs the event and command handlers.
 - **ui** — the web app on `KYU_SHOP_UI_PORT`; serves the pages and the JSON routes, and reads run outcomes from the engine.
 
