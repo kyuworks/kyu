@@ -9,6 +9,7 @@ export default defineConfig({
   },
   test: {
     globalSetup: ['./vitest.integration.setup.ts'],
+    setupFiles: ['./vitest.integration.clearBusTables.ts'],
     include: ['src/**/*.integration.test.ts'],
     testTimeout: 30_000,
     hookTimeout: 60_000,
