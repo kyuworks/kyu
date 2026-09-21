@@ -459,15 +459,19 @@ describe('durable: waiting on more than one message name', () => {
 
   it('wakes on each name in turn and never again on a message it already returned', async () => {
     const subject = randomBytes(8).toString('hex')
-    const trigerEnvelope = await createEnvelope(trigger, { subject, rounds: 3 }, { tenantId: null, source: 'sdk.test' })
-    await hatchet.events.push(trigger.name, trigerEnvelope, {
-      additionalMetadata: toEnvelopeMetadata(trigerEnvelope),
-      scope: eventScope(trigerEnvelope),
+    const triggerEnvelope = await createEnvelope(
+      trigger,
+      { subject, rounds: 3 },
+      { tenantId: null, source: 'sdk.test' },
+    )
+    await hatchet.events.push(trigger.name, triggerEnvelope, {
+      additionalMetadata: toEnvelopeMetadata(triggerEnvelope),
+      scope: eventScope(triggerEnvelope),
     })
-    await waitUntil(() => wakes.has(trigerEnvelope.id), 60_000)
+    await waitUntil(() => wakes.has(triggerEnvelope.id), 60_000)
 
     const stage = await push(stageChanged, subject)
-    await waitUntil(() => (wakes.get(trigerEnvelope.id)?.length ?? 0) >= 1, 60_000)
+    await waitUntil(() => (wakes.get(triggerEnvelope.id)?.length ?? 0) >= 1, 60_000)
     await sleep(800)
     await push(taskClosed, randomBytes(8).toString('hex')) // decoy: another subject
     await sleep(800)
@@ -476,7 +480,7 @@ describe('durable: waiting on more than one message name', () => {
     // The third round can only time out: `stage` is older than `closed` and
     // still inside the lookback, so it would re-fire if the afterMessage
     // clause were missing from the stage_changed branch.
-    expect(await waitUntil(() => finished.has(trigerEnvelope.id), 120_000)).toBe(true)
-    expect(wakes.get(trigerEnvelope.id)).toEqual([`0:${stage.id}`, `1:${closed.id}`, 'timeout'])
+    expect(await waitUntil(() => finished.has(triggerEnvelope.id), 120_000)).toBe(true)
+    expect(wakes.get(triggerEnvelope.id)).toEqual([`0:${stage.id}`, `1:${closed.id}`, 'timeout'])
   }, 240_000)
 })

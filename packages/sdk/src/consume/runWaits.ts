@@ -106,15 +106,23 @@ function toRunWait(entry: DurableLogEntry, namespace: string): RunWait | undefin
 
   const userEvents = conditions.filter((condition) => condition.kind === 'USER_EVENT')
 
-  // Several user events in one entry is a waitForAny; the label is this SDK's
-  // own record of the registration, the engine's condition list the fallback.
+  // Several user events in one entry can be a waitForAny, or a
+  // waitForChildren fan-out registering one Or group per child with the same
+  // reply name and no label; only a decodable label or genuinely different
+  // names makes it a waitForAny. The label is this SDK's own record of the
+  // registration, the engine's condition list the fallback.
   if (userEvents.length > 1) {
     const label = parseAnyWaitLabel(entry.userMessage)
-    const waits =
-      label === undefined
-        ? userEvents.map((condition) => ({ name: toMessageName(condition.eventKey, namespace) }))
-        : label.map((item) => ({ name: item.name, match: { field: item.field, equals: item.equals } }))
-    return { kind: 'anyMessage', waits }
+    const distinctNames = new Set(userEvents.map((condition) => toMessageName(condition.eventKey, namespace)))
+    if (label !== undefined || distinctNames.size > 1) {
+      // A label whose entry count disagrees with the engine's own condition
+      // count cannot be trusted to pair correctly with them.
+      const waits =
+        label === undefined || label.length !== userEvents.length
+          ? userEvents.map((condition) => ({ name: toMessageName(condition.eventKey, namespace) }))
+          : label.map((item) => ({ name: item.name, match: { field: item.field, equals: item.equals } }))
+      return { kind: 'anyMessage', waits }
+    }
   }
 
   const userEvent = userEvents[0]

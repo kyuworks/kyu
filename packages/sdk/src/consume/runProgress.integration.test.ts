@@ -85,6 +85,16 @@ describe('runProgress: durable run and the command it publishes', () => {
     version: 1,
     data: z.object({ orderId: z.string() }),
   })
+  const fanOutTrigger = defineEvent({
+    name: 'kyu.runprogress.fanout_trigger',
+    version: 1,
+    data: z.object({ jobId: z.string() }),
+  })
+  const childReplied = defineEvent({
+    name: 'kyu.runprogress.child_replied',
+    version: 1,
+    data: z.object({ childEnvelopeId: z.string() }),
+  })
 
   let worker: KyuWorker | undefined
 
@@ -122,8 +132,29 @@ describe('runProgress: durable run and the command it publishes', () => {
         })
       },
     })
+    const fanOutWaiter = durable(hatchet, fanOutTrigger, {
+      name: 'lane100-fanout-waiter',
+      handler: async (ctx: DurableHandlerContext<{ jobId: string }>) => {
+        // Two ids are all `waitForChildren` needs to register its wait — the
+        // park this test reads never needs a real reply to arrive.
+        const childA = await createEnvelope(
+          childReplied,
+          { childEnvelopeId: '' },
+          { tenantId: null, source: 'sdk.test' },
+        )
+        const childB = await createEnvelope(
+          childReplied,
+          { childEnvelopeId: '' },
+          { tenantId: null, source: 'sdk.test' },
+        )
+        await ctx.waitForChildren(childReplied, {
+          where: { field: 'data.childEnvelopeId', envelopeIds: [childA.id, childB.id] },
+          timeout: '20s',
+        })
+      },
+    })
     worker = await createWorker(hatchet, 'lane100-run-progress', {
-      subscriptions: [interpreter, commandSubscription, sleeper, waiter],
+      subscriptions: [interpreter, commandSubscription, sleeper, waiter, fanOutWaiter],
       durableSlots: 5,
       slots: 5,
     })
@@ -184,5 +215,15 @@ describe('runProgress: durable run and the command it publishes', () => {
 
     const completed = await waitForProgress(envelope.correlationId, (p) => p.at(0)?.status === 'completed', 60_000)
     expect(completed.at(0)?.waiting).toBeUndefined()
+  }, 60_000)
+
+  it('flow 4: a run parked in waitForChildren on two children reports an ordinary message wait, not anyMessage', async () => {
+    const jobId = randomBytes(8).toString('hex')
+    const envelope = await push(fanOutTrigger, { jobId })
+
+    const parked = await waitForProgress(envelope.correlationId, (p) => p.at(0)?.waiting !== undefined, 30_000)
+    expect(parked.at(0)?.waiting).toEqual({ kind: 'message', name: childReplied.name })
+
+    await hatchet.runs.cancel({ ids: [parked.at(0)?.runId ?? ''] })
   }, 60_000)
 })
