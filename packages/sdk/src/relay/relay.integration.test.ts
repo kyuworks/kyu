@@ -622,3 +622,72 @@ describe('relay + subscribe: outbox claim order reaches the handler', () => {
     expect(seen).toEqual([1, 2, 3, 4, 5])
   }, 180_000)
 })
+
+const scheduledOrdered = defineEvent({
+  name: 'kyu.relay_test.scheduled_ordered',
+  version: 1,
+  data: z.object({ n: z.number() }),
+})
+
+describe('relay + subscribe: a scheduled publish waits for its time', () => {
+  const seen = new Map<string, Envelope<{ n: number }>>()
+  let worker: KyuWorker | undefined
+
+  beforeAll(async () => {
+    const subscription = subscribe(hatchet, scheduledOrdered, {
+      name: 'relay-scheduled-recorder',
+      handler: async (ctx: HandlerContext<{ n: number }>) => {
+        seen.set(ctx.envelope.id, ctx.envelope)
+      },
+    })
+    worker = await createWorker(hatchet, 'kyu-sdk-relay-scheduled-test', { subscriptions: [subscription] })
+    void worker.start()
+    await worker.waitUntilReady()
+
+    // Warm the workflow: a fresh workflow's first delivery can lag by up to a
+    // minute on a cold engine, and step 4 below relies on relay-side timing,
+    // not engine timing, so the workflow must already be warm before it runs.
+    const warm = await publisher.publish(client, scheduledOrdered, { n: 0 }, { tenantId: null })
+    const warmRelay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
+    try {
+      await warmRelay.tick()
+    } finally {
+      await warmRelay.stop()
+    }
+    await waitUntil(() => seen.has(warm.id), 150_000)
+    seen.delete(warm.id)
+  }, 180_000)
+
+  afterAll(async () => {
+    await worker?.stop()
+  })
+
+  it('is not claimed before publishAt and is delivered once it arrives, tenant and correlation unchanged', async () => {
+    const tenantId = randomUUID()
+    const envelope = await publisher.publish(
+      client,
+      scheduledOrdered,
+      { n: 1 },
+      {
+        tenantId,
+        publishAt: new Date(Date.now() + 3_000),
+      },
+    )
+
+    const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 250 })
+    try {
+      await new Promise<void>((resolve) => setTimeout(resolve, 1_500))
+      const early = await client.query('SELECT published_at FROM kyu_outbox WHERE id = $1', [envelope.id])
+      expect(early.rows[0]?.['published_at']).toBeNull()
+      expect(seen.has(envelope.id)).toBe(false)
+
+      expect(await waitUntil(() => seen.has(envelope.id), 120_000)).toBe(true)
+    } finally {
+      await relay.stop()
+    }
+
+    const delivered = seen.get(envelope.id)
+    expect(delivered?.tenantId).toBe(tenantId)
+    expect(delivered?.correlationId).toBe(envelope.id)
+  }, 180_000)
+})

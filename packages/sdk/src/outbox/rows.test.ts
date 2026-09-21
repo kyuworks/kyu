@@ -19,6 +19,7 @@ const baseRow = {
   tenant_id: null,
   envelope: validEnvelope,
   created_at: new Date(),
+  publish_at: new Date(),
   claimed_at: null,
   claimed_by: null,
   published_at: null,

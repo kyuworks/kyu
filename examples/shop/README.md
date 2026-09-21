@@ -187,7 +187,7 @@ letter too, under `record-shipment`.
 
 `/bus` is a React page now: it draws the producer, the outbox, and one column per subscription
 in registry order, refreshed every 5 seconds. Outbox stages — published, waiting for relay,
-shipped and retired — come from `kyu_outbox`. A row whose envelope does not match the message
+scheduled, shipped and retired — come from `kyu_outbox`. A row whose envelope does not match the message
 contract is retired by the relay after three tries: it is counted under **retired**, not under
 waiting for relay, so the waiting number is not stuck above zero for ever. Each subscription's
 queued, running, done, failed and

@@ -111,6 +111,32 @@ describe('claimPendingRows validation', () => {
   })
 })
 
+describe('claimPendingRows claim query', () => {
+  it('claimPendingRows only claims rows whose publish_at has arrived', async () => {
+    const texts: string[] = []
+    const db: Queryable = {
+      query(text: string, _params: readonly QueryParam[]): Promise<QueryRows> {
+        texts.push(text)
+        return Promise.resolve({ rows: [], rowCount: 0 })
+      },
+    }
+    await claimPendingRows(db, { limit: 10, workerId: 'worker-1', staleAfterMs: 1000 })
+    expect(texts[0]).toContain('publish_at <= now()')
+  })
+
+  it('claimPendingRows orders by publish_at first, to match the kyu_outbox_pending_idx index', async () => {
+    const texts: string[] = []
+    const db: Queryable = {
+      query(text: string, _params: readonly QueryParam[]): Promise<QueryRows> {
+        texts.push(text)
+        return Promise.resolve({ rows: [], rowCount: 0 })
+      },
+    }
+    await claimPendingRows(db, { limit: 10, workerId: 'worker-1', staleAfterMs: 1000 })
+    expect(texts[0]).toContain('ORDER BY publish_at, created_at, id')
+  })
+})
+
 describe('ownership functions reject an empty workerId before querying', () => {
   it('markPublished', async () => {
     const db = recordingQueryable()

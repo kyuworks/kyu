@@ -217,6 +217,7 @@ CREATE TABLE kyu_outbox (
   tenant_id     uuid,
   envelope      jsonb NOT NULL,
   created_at    timestamptz NOT NULL DEFAULT now(),
+  publish_at    timestamptz NOT NULL DEFAULT now(), -- earliest time the relay may ship the row
   claimed_at    timestamptz,                -- set by the relay while it holds the row
   claimed_by    text,                       -- the claiming relay instance's worker id
   published_at  timestamptz,
@@ -225,11 +226,11 @@ CREATE TABLE kyu_outbox (
   last_error    text,
   CONSTRAINT kyu_outbox_name_matches_envelope CHECK (name = envelope->>'name')
 );
-CREATE INDEX kyu_outbox_pending_idx ON kyu_outbox (created_at) WHERE published_at IS NULL AND dead_at IS NULL;
+CREATE INDEX kyu_outbox_pending_idx ON kyu_outbox (publish_at, created_at) WHERE published_at IS NULL AND dead_at IS NULL;
 CREATE INDEX kyu_outbox_dead_idx ON kyu_outbox (dead_at) WHERE dead_at IS NOT NULL;
 ```
 
-This is the cumulative shape. `dead_at` and the two index definitions come from the second migration file, not the first; migration files are immutable.
+This is the cumulative shape. `dead_at` and the two index definitions come from the second migration file, `publish_at` and the pending index's current definition from the third, not the first; migration files are immutable.
 
 The same migration creates `kyu_processed` (section 9.1):
 
@@ -245,13 +246,13 @@ CREATE INDEX kyu_processed_processed_at_idx ON kyu_processed (processed_at);
 
 ### 8.2 Write path
 
-`kyu.publish(tx, definition, data, options)` inserts the row inside the caller's transaction. If the transaction rolls back the row disappears; if it commits the row is durable before any consumer could act. When a consumer's callers run under Postgres row-level security, the table carries an insert-only policy for that role scoped to the current tenant, and the relay reads with a privileged connection.
+`kyu.publish(tx, definition, data, options)` inserts the row inside the caller's transaction. If the transaction rolls back the row disappears; if it commits the row is durable before any consumer could act. When a consumer's callers run under Postgres row-level security, the table carries an insert-only policy for that role scoped to the current tenant, and the relay reads with a privileged connection. `publish()` takes an optional `publishAt`; the row is still written in the caller's transaction, and `publish_at` only decides when the relay may claim it.
 
 ### 8.3 Relay
 
 A loop in the producer process that, every tick:
 
-1. Claims up to 100 pending rows with a single `UPDATE … SET claimed_at = now(), claimed_by = $workerId WHERE id IN (SELECT … ORDER BY created_at LIMIT 100 FOR UPDATE SKIP LOCKED) RETURNING *`, stamping the claim on the rows it takes. A row is pending when `published_at IS NULL` and its `dead_at` is unset, and its `claimed_at` is either unset or older than the relay's stale-claim window; any other in-progress claim is invisible to `SKIP LOCKED`.
+1. Claims up to 100 pending rows with a single `UPDATE … SET claimed_at = now(), claimed_by = $workerId WHERE id IN (SELECT … ORDER BY created_at LIMIT 100 FOR UPDATE SKIP LOCKED) RETURNING *`, stamping the claim on the rows it takes. A row is pending when `published_at IS NULL`, its `dead_at` is unset, its `publish_at` has arrived, and its `claimed_at` is either unset or older than the relay's stale-claim window; any other in-progress claim is invisible to `SKIP LOCKED`.
 2. Groups the claimed rows by message name and calls Hatchet `events.bulkPush` once per name.
 3. Marks the pushed rows' `published_at = now()`, scoped to rows this relay instance still owns (`claimed_by = $workerId`). On failure it increments `attempts`, records `last_error`, and releases the claim (`claimed_at`/`claimed_by` cleared) so the row is claimable again. A claimed row whose `envelope` column does not parse cannot be shipped by any later attempt (the column is written once and never updated), so it records `last_error`, increments `attempts`, and on the third such claim sets `dead_at`. The row is then invisible to the claim, keeps its `attempts` and `last_error` for inspection, and is deleted by `pruneRetired`. A push failure is not retired: the engine being unavailable is transient, and a ceiling there would discard deliverable messages during an outage.
 4. Polls every 250 ms when idle; the relay re-ticks immediately only when the last batch was full and fully pushed. A batch with any push failure backs off (doubling, capped at 30 s) and alerts through `onError` instead.
@@ -262,20 +263,26 @@ Because a claim is held by that stamp and not by the connection, the relay's own
 
 ### 8.4 Ordering
 
-The relay preserves insertion order within one producer instance. Cross-instance order is not guaranteed and is not needed: per-key ordering is enforced on the consumer side by Hatchet concurrency keys, and handlers check staleness where it matters.
+The relay preserves insertion order within one producer instance. Cross-instance order is not guaranteed and is not needed: per-key ordering is enforced on the consumer side by Hatchet concurrency keys, and handlers check staleness where it matters. A scheduled row is delivered at its own time, not in publish order: it carries no ordering guarantee against messages published after it.
 
 ### 8.5 Operations
 
 **Oldest pending row.** Alert when older than 60 seconds; retired rows excluded:
 
 ```sql
-SELECT min(created_at) AS oldest_pending FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL;
+SELECT min(created_at) AS oldest_pending FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND publish_at <= now();
 ```
 
 **Rows retrying too long.** Alert when any row is past 10 attempts (push failures retry for ever by design):
 
 ```sql
-SELECT id, name, attempts, last_error FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND attempts > 10;
+SELECT id, name, attempts, last_error FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND publish_at <= now() AND attempts > 10;
+```
+
+**Scheduled rows.** Rows waiting on purpose for a future `publish_at`; never late, so never alerted on:
+
+```sql
+SELECT id, name, publish_at FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND publish_at > now() ORDER BY publish_at;
 ```
 
 **Retired rows.** The relay's own dead letter; alert on any row. A retired row is a message that will never be delivered, and a permanent gap in its key's order:

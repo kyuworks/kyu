@@ -17,11 +17,18 @@ import { insertOutboxRow } from './outboxRepository.js'
 export async function publishEnvelope<TData extends MessageDataShape = EnvelopeData>(
   tx: Queryable,
   envelope: Envelope<TData>,
+  publishAt?: Date,
 ): Promise<void> {
-  await insertOutboxRow(tx, envelope)
+  if (publishAt !== undefined && Number.isNaN(publishAt.getTime())) {
+    throw new RangeError('publishAt must be a valid Date')
+  }
+  await insertOutboxRow(tx, envelope, publishAt)
 }
 
-export type PublisherOptions = Omit<CreateEnvelopeOptions, 'source'>
+export type PublisherOptions = Omit<CreateEnvelopeOptions, 'source'> & {
+  /** Earliest time the relay may ship this message. Defaults to now; a past date is due at once. */
+  publishAt?: Date
+}
 
 export interface Publisher {
   publish<S extends MessageSchema>(
@@ -44,6 +51,9 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
       data: MessageInput<MessageDefinition<S>>,
       publishOptions: PublisherOptions,
     ): Promise<Envelope<MessageData<MessageDefinition<S>>>> {
+      if (publishOptions.publishAt !== undefined && Number.isNaN(publishOptions.publishAt.getTime())) {
+        throw new RangeError('publishAt must be a valid Date')
+      }
       const envelopeOptions: CreateEnvelopeOptions = {
         tenantId: publishOptions.tenantId,
         source: options.source,
@@ -55,7 +65,7 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
       if (publishOptions.occurredAt !== undefined) envelopeOptions.occurredAt = publishOptions.occurredAt
 
       const envelope = await createEnvelope(definition, data, envelopeOptions)
-      await publishEnvelope(tx, envelope)
+      await publishEnvelope(tx, envelope, publishOptions.publishAt)
       return envelope
     },
   }

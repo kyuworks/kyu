@@ -36,13 +36,12 @@ function uuidArrayLiteral(ids: readonly string[]): string {
 export async function insertOutboxRow<TData extends MessageDataShape = EnvelopeData>(
   db: Queryable,
   envelope: Envelope<TData>,
+  publishAt?: Date,
 ): Promise<void> {
-  await db.query('INSERT INTO kyu_outbox (id, name, tenant_id, envelope) VALUES ($1, $2, $3, $4::jsonb)', [
-    envelope.id,
-    envelope.name,
-    envelope.tenantId,
-    JSON.stringify(envelope),
-  ])
+  await db.query(
+    'INSERT INTO kyu_outbox (id, name, tenant_id, envelope, publish_at) VALUES ($1, $2, $3, $4::jsonb, COALESCE($5::timestamptz, now()))',
+    [envelope.id, envelope.name, envelope.tenantId, JSON.stringify(envelope), publishAt ?? null],
+  )
 }
 
 export interface ClaimPendingRowsOptions {
@@ -75,8 +74,10 @@ export async function claimPendingRows(db: RelayQueryable, options: ClaimPending
        SELECT id FROM kyu_outbox
        WHERE published_at IS NULL
          AND dead_at IS NULL
+         AND publish_at <= now() -- a future publish_at is not due yet
          AND (claimed_at IS NULL OR claimed_at < now() - ($2::text || ' milliseconds')::interval)
-       ORDER BY created_at, id
+       -- Matches the (publish_at, created_at) index: a due backlog is an index scan, not a seq scan plus sort.
+       ORDER BY publish_at, created_at, id
        LIMIT $3
        FOR UPDATE SKIP LOCKED
      )

@@ -3,6 +3,7 @@ import { defineEvent, envelopeSchema } from '@kyuworks/schemas'
 import { Client, DatabaseError } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { claimPendingRows } from './outboxRepository.js'
 import { createPublisher, publishEnvelope } from './publish.js'
 
 // Mandatory must-hold: a message published inside a transaction that rolls
@@ -82,5 +83,51 @@ describe('publish via the outbox', () => {
 
     if (!(caught instanceof DatabaseError)) throw new Error('expected a pg DatabaseError')
     expect(caught.code).toBe('23505')
+  })
+
+  it('a future publishAt is not claimed before its time and is claimed after', async () => {
+    const publisher = createPublisher({ source: 'outbox-test' })
+    const envelope = await publisher.publish(
+      client,
+      thingHappened,
+      { n: 1 },
+      {
+        tenantId: null,
+        publishAt: new Date(Date.now() + 2_000),
+      },
+    )
+
+    const early = await claimPendingRows(client, { limit: 10, workerId: `w-${randomUUID()}`, staleAfterMs: 0 })
+    expect(early.rows).toEqual([])
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 2_500))
+
+    const late = await claimPendingRows(client, { limit: 10, workerId: `w-${randomUUID()}`, staleAfterMs: 0 })
+    expect(late.rows.map((row) => row.id)).toEqual([envelope.id])
+  }, 10_000)
+
+  it('a scheduled publish in a rolled-back transaction leaves no row', async () => {
+    const publisher = createPublisher({ source: 'outbox-test' })
+
+    await client.query('BEGIN')
+    const envelope = await publisher.publish(
+      client,
+      thingHappened,
+      { n: 4 },
+      {
+        tenantId: null,
+        publishAt: new Date(Date.now() + 3_600_000),
+      },
+    )
+
+    const beforeRollback = await client.query('SELECT count(*)::text AS count FROM kyu_outbox WHERE id = $1', [
+      envelope.id,
+    ])
+    expect(Number(beforeRollback.rows[0]?.count)).toBe(1)
+
+    await client.query('ROLLBACK')
+
+    const result = await client.query('SELECT count(*)::text AS count FROM kyu_outbox WHERE id = $1', [envelope.id])
+    expect(Number(result.rows[0]?.count)).toBe(0)
   })
 })
