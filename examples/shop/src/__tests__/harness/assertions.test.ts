@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assertNoDoubleEffect } from './assertions.js'
+import { assertNoDoubleEffect, assertNoFailedRun } from './assertions.js'
 
 const ENVELOPE = '01a0c900-0000-7000-8000-000000000001'
 const RUN = '01a0c901-0000-7000-8000-000000000001'
@@ -34,5 +34,41 @@ describe('assertNoDoubleEffect', () => {
     })
     expect(failures).toHaveLength(1)
     expect(failures[0]?.detail).toContain('nudge')
+  })
+})
+
+describe('assertNoFailedRun', () => {
+  it('passes when every run outcome is not failed', () => {
+    expect(
+      assertNoFailedRun([
+        {
+          envelopeId: ENVELOPE,
+          outcomes: [
+            { subscription: 'record-order', status: 'completed', attempts: 1, runId: RUN, createdAt: new Date() },
+          ],
+        },
+      ]),
+    ).toEqual([])
+  })
+
+  it('names the envelope id and the error when one run failed', () => {
+    const failures = assertNoFailedRun([
+      {
+        envelopeId: ENVELOPE,
+        outcomes: [
+          {
+            subscription: 'record-order',
+            status: 'failed',
+            attempts: 2,
+            runId: RUN,
+            createdAt: new Date(),
+            error: 'duplicate key value violates unique constraint "shop_handler_log_once_idx"',
+          },
+        ],
+      },
+    ])
+    expect(failures).toHaveLength(1)
+    expect(failures[0]?.detail).toContain(ENVELOPE)
+    expect(failures[0]?.detail).toContain('shop_handler_log_once_idx')
   })
 })

@@ -5,9 +5,10 @@
 // SIGKILL in place of stop()). A second worker then delivers the shipment
 // the parked run was waiting for.
 import { shipOrder } from '../../../producer/shipOrder.js'
+import { assertNoFailedRun } from '../assertions.js'
 import type { AssertionFailure } from '../assertions.js'
 import { startRelayChild, startWorkerChild } from '../children.js'
-import { newTenantId, placeOrders, readWatchShippingRows, waitUntil } from '../common.js'
+import { newTenantId, placeOrders, readEnvelopeRunOutcomes, readWatchShippingRows, waitUntil } from '../common.js'
 import type { Scenario, ScenarioObservation } from '../scenario.js'
 import { ScenarioAssertionError } from '../scenario.js'
 
@@ -53,7 +54,11 @@ export const workerKilledWhileParked: Scenario = {
     if (!workerAExited) throw new Error('worker A did not exit after SIGKILL')
 
     // The relay stays up, so the shipment reaches the engine while no worker runs.
-    await shipOrder(ctx.pool, ctx.kyu, { tenantId, orderId: order.orderId, carrier: CARRIER })
+    const shipmentEnvelopeId = await shipOrder(ctx.pool, ctx.kyu, {
+      tenantId,
+      orderId: order.orderId,
+      carrier: CARRIER,
+    })
 
     const workerB = await startWorkerChild(env)
     ctx.track(workerB)
@@ -69,8 +74,9 @@ export const workerKilledWhileParked: Scenario = {
     const waitingRows = rows.filter((row) => row.handler === WAITING)
     const completedRows = rows.filter((row) => row.handler === COMPLETED)
     const completedRow = completedRows[0]
+    const runOutcomes = await readEnvelopeRunOutcomes(ctx.kyu, [envelopeId, shipmentEnvelopeId])
 
-    const failures: AssertionFailure[] = []
+    const failures: AssertionFailure[] = [...assertNoFailedRun(runOutcomes)]
     if (waitingRows.length !== 1) {
       failures.push({
         check: 'no-effect-doubled',

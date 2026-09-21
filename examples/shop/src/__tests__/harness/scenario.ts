@@ -7,7 +7,7 @@ import type { Pool } from 'pg'
 import { describeError } from '../../log.js'
 import { stopAllSpawnedProcesses } from '../processes.js'
 import type { AssertionFailure } from './assertions.js'
-import type { HarnessChild, LogLine, laneEnv } from './children.js'
+import type { HarnessChild, laneEnv } from './children.js'
 
 export type HarnessSize = 'smoke' | 'report'
 
@@ -21,21 +21,12 @@ export const SIZE_PARAMS = {
   report: { orders: 20 },
 } satisfies Record<HarnessSize, SizeParams>
 
-export interface Closable {
-  close(): Promise<void>
-}
-
-function isHarnessChild(tracked: HarnessChild | Closable): tracked is HarnessChild {
-  return 'spawned' in tracked
-}
-
 export interface ScenarioContext {
   pool: Pool
   kyu: Kyu
   size: HarnessSize
   env: typeof laneEnv
   track(child: HarnessChild): void
-  track(closable: Closable): void
 }
 
 export type ScenarioObservationValue = string | number | boolean | null
@@ -121,46 +112,60 @@ function assertChildExited(child: HarnessChild): readonly AssertionFailure[] {
   return []
 }
 
-async function closeTracked(closable: Closable): Promise<readonly AssertionFailure[]> {
-  try {
-    await closable.close()
-  } catch (caught) {
-    return [{ check: 'harness-leaves-nothing', detail: `closing a tracked resource failed: ${describeError(caught)}` }]
-  }
-  return []
-}
-
 /** Times a scenario, always tears down what it tracked, and always checks harness-leaves-nothing. */
 export async function runScenario(base: Omit<ScenarioContext, 'track'>, scenario: Scenario): Promise<ScenarioResult> {
-  const tracked: (HarnessChild | Closable)[] = []
+  const tracked: HarnessChild[] = []
   const ctx: ScenarioContext = {
     ...base,
-    track: (item: HarnessChild | Closable) => {
-      tracked.push(item)
+    track: (child: HarnessChild) => {
+      tracked.push(child)
     },
   }
-  const children = (): readonly HarnessChild[] => tracked.filter(isHarnessChild)
-  const closables = (): readonly Closable[] => tracked.filter((item): item is Closable => !isHarnessChild(item))
+  const children = (): readonly HarnessChild[] => tracked
 
   const startedAt = Date.now()
   let observation: ScenarioObservation = {}
   let error: string | undefined
   const failures: AssertionFailure[] = []
 
-  try {
-    observation = await scenario.run(ctx)
-  } catch (caught) {
-    if (caught instanceof ScenarioAssertionError) failures.push(...caught.failures)
-    else error = describeError(caught)
+  // A crashed earlier run can leave rows behind; truncate before running,
+  // not only after, so the first scenario in a session starts clean too
+  // (this is what makes "before and after every scenario" true).
+  const preRunFailures = await truncateLaneTables(base.pool)
+  if (preRunFailures.length > 0) {
+    failures.push(...preRunFailures)
+  } else {
+    try {
+      observation = await scenario.run(ctx)
+    } catch (caught) {
+      if (caught instanceof ScenarioAssertionError) failures.push(...caught.failures)
+      else error = describeError(caught)
+    }
   }
 
   for (const child of children()) failures.push(...(await stopTrackedChild(child)))
-  await stopAllSpawnedProcesses()
-  for (const closable of closables()) failures.push(...(await closeTracked(closable)))
+
+  // Both steps below can throw (a process refusing to die, a dropped pool
+  // connection); collected here so one throwing does not skip the other —
+  // stopping every spawned process and checking the lane tables both matter
+  // even when one of them fails.
+  const teardownErrors: unknown[] = []
+  try {
+    await stopAllSpawnedProcesses()
+  } catch (caught) {
+    teardownErrors.push(caught)
+  }
   for (const child of children()) failures.push(...assertChildExited(child))
 
   failures.push(...(await truncateLaneTables(base.pool)))
-  failures.push(...(await assertLaneTablesEmpty(base.pool)))
+  try {
+    failures.push(...(await assertLaneTablesEmpty(base.pool)))
+  } catch (caught) {
+    teardownErrors.push(caught)
+  }
+  if (teardownErrors.length > 0) {
+    throw new AggregateError(teardownErrors, 'harness teardown failed')
+  }
 
   const result: ScenarioResult = {
     name: scenario.name,
@@ -171,9 +176,4 @@ export async function runScenario(base: Omit<ScenarioContext, 'track'>, scenario
   }
   if (error !== undefined) result.error = error
   return result
-}
-
-/** True when `child` printed a `stopped`/`ready` line matching `event`, false once it has exited without one — the give-up path config.ts's KYU_SHOP_SLOTS knob does not change (worker.ts's `void worker.start()`). */
-export function hasLine(child: HarnessChild, event: string): boolean {
-  return child.lines.some((line: LogLine) => line.event === event)
 }

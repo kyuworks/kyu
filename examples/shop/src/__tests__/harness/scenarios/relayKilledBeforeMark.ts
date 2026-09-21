@@ -8,6 +8,7 @@ import path from 'node:path'
 import { z } from 'zod'
 import {
   assertNoDoubleEffect,
+  assertNoFailedRun,
   assertNoLostEffect,
   assertOutboxSettled,
   assertPerKeyOrdering,
@@ -15,7 +16,7 @@ import {
 } from '../assertions.js'
 import type { AssertionFailure } from '../assertions.js'
 import { startHarnessChild, startRelayChild, startWorkerChild, waitForLine } from '../children.js'
-import { newTenantId, placeOrders, waitForExpectedEffects, waitUntil } from '../common.js'
+import { newTenantId, placeOrders, readEnvelopeRunOutcomes, waitForExpectedEffects, waitUntil } from '../common.js'
 import { readEffectCounts, readOrdering, readOutboxState, readTenantIds } from '../reads.js'
 import type { Scenario, ScenarioObservation } from '../scenario.js'
 import { SIZE_PARAMS, ScenarioAssertionError } from '../scenario.js'
@@ -88,7 +89,7 @@ export const relayKilledBeforeMark: Scenario = {
 
     // The outbox settling only means the relay pushed everything; give the
     // worker time to actually run each handler before reading final counts.
-    await waitForExpectedEffects(
+    const effectsSettledInTime = await waitForExpectedEffects(
       ctx.pool,
       { tenantIds: [tenantId] },
       [
@@ -99,19 +100,21 @@ export const relayKilledBeforeMark: Scenario = {
     )
 
     const orderIds = orders.map((order) => order.orderId)
-    const [counts, ordering, tenantRows, outboxRows] = await Promise.all([
+    const [counts, ordering, tenantRows, outboxRows, runOutcomes] = await Promise.all([
       readEffectCounts(ctx.pool, { tenantIds: [tenantId] }),
       readOrdering(ctx.pool, orderIds),
       readTenantIds(ctx.pool, { envelopeIds, publishingTenantId: tenantId }),
       readOutboxState(ctx.pool),
+      readEnvelopeRunOutcomes(ctx.kyu, envelopeIds),
     ])
 
     const orderPlacedEnvelopeId = orderPlacedIds[0]
     const engineDuplicateCount =
-      orderPlacedEnvelopeId !== undefined ? (await ctx.kyu.runs.forEnvelope(orderPlacedEnvelopeId)).length : 0
+      runOutcomes.find((row) => row.envelopeId === orderPlacedEnvelopeId)?.outcomes.length ?? 0
 
     const failures: AssertionFailure[] = [
       ...assertNoDoubleEffect(counts),
+      ...assertNoFailedRun(runOutcomes),
       ...assertNoLostEffect(counts, { envelopeIds: orderPlacedIds, handlers: ['record-order', 'audit-order'] }),
       ...assertNoLostEffect(counts, { envelopeIds: sendInvoiceIds, handlers: ['send-invoice'] }),
       ...assertOutboxSettled(outboxRows),
@@ -119,6 +122,9 @@ export const relayKilledBeforeMark: Scenario = {
       ...assertPerKeyOrdering(ordering),
     ]
     if (!settled) failures.push({ check: 'outbox-settled', detail: 'outbox never settled within 60s' })
+    if (!effectsSettledInTime) {
+      failures.push({ check: 'no-effect-lost', detail: 'expected handler effects never settled within 30s' })
+    }
     if (failures.length > 0) throw new ScenarioAssertionError(failures)
 
     return {
@@ -128,6 +134,7 @@ export const relayKilledBeforeMark: Scenario = {
       reclaimDelayMs,
       staleClaimMs: STALE_CLAIM_MS,
       engineDuplicateCountForOrderPlaced: engineDuplicateCount,
+      effectsSettledInTime,
       handlerRowCount: counts.handlerRows.reduce((total, row) => total + row.count, 0),
     }
   },

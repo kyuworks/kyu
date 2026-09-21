@@ -5,9 +5,10 @@
 // the redelivered run. Single order: this proves one run's crash survival,
 // the same shape as src/__tests__/restart.integration.test.ts, with SIGKILL
 // in place of stop().
+import { assertNoFailedRun } from '../assertions.js'
 import type { AssertionFailure } from '../assertions.js'
 import { startRelayChild, startWorkerChild } from '../children.js'
-import { newTenantId, placeOrders, readWatchShippingRows, waitUntil } from '../common.js'
+import { newTenantId, placeOrders, readEnvelopeRunOutcomes, readWatchShippingRows, waitUntil } from '../common.js'
 import type { Scenario, ScenarioObservation } from '../scenario.js'
 import { ScenarioAssertionError } from '../scenario.js'
 
@@ -38,8 +39,10 @@ export const workerKilledMidStep: Scenario = {
     }, 60_000)
     if (!waitingSeen) throw new Error(`${WAITING} row never appeared for envelope ${envelopeId}`)
 
-    // Kill now, not after a sleep: the waiting row lands before sleepFor('5s')
-    // runs, so this is still inside the step's body.
+    // Kill as soon as waitUntil's 250ms poll notices the waiting row, which
+    // lands before sleepFor('5s') runs — but the poll granularity means the
+    // kill can land a little after sleepFor has already begun, not exactly
+    // on the row write. Either way it is still inside the step's body.
     workerA.kill()
     const workerAExited = await waitUntil(
       () => Promise.resolve(workerA.spawned.child.exitCode !== null || workerA.spawned.child.signalCode !== null),
@@ -62,8 +65,9 @@ export const workerKilledMidStep: Scenario = {
     const waitingRows = rows.filter((row) => row.handler === WAITING)
     const terminalRows = rows.filter((row) => row.handler === COMPLETED || row.handler === TIMEOUT)
     const terminalRow = terminalRows[0]
+    const runOutcomes = await readEnvelopeRunOutcomes(ctx.kyu, [envelopeId])
 
-    const failures: AssertionFailure[] = []
+    const failures: AssertionFailure[] = [...assertNoFailedRun(runOutcomes)]
     if (waitingRows.length !== 1) {
       failures.push({
         check: 'no-effect-doubled',

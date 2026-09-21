@@ -1,5 +1,6 @@
 // Pure checks over already-parsed rows. reads.ts decodes pg rows with zod
 // once, at the edge; nothing here re-parses a value a caller already parsed.
+import type { RunOutcome } from '@kyuworks/sdk'
 
 export interface HandlerEffectRow {
   handler: string
@@ -52,7 +53,12 @@ export interface AssertionFailure {
   detail: string
 }
 
-/** No handler ran twice for one envelope, no workflow run doubled for one order, no notify published twice for one step. */
+/**
+ * No handler ran twice for one envelope, no workflow run doubled for one order, no notify published twice for one step.
+ * In these crash scenarios a genuine double rarely shows up here: `shop_handler_log_once_idx` turns a second
+ * `onceById` write into a failed run instead of a second row, and the workflow tables stay empty (a fresh random
+ * tenant has no enabled workflow definition). `assertNoFailedRun` reads the engine's own run outcomes and catches it there.
+ */
 export function assertNoDoubleEffect(counts: EffectCounts): readonly AssertionFailure[] {
   const failures: AssertionFailure[] = []
   for (const row of counts.handlerRows) {
@@ -122,6 +128,32 @@ export function assertTenantUnchanged(rows: readonly TenantRow[]): readonly Asse
         check: 'tenant-id-unchanged',
         detail: `handler saw tenant ${row.tenantId}, expected ${row.publishingTenantId}`,
       })
+    }
+  }
+  return failures
+}
+
+export interface EnvelopeRunOutcomes {
+  envelopeId: string
+  outcomes: readonly RunOutcome[]
+}
+
+/**
+ * The check that actually catches a leaked double in these scenarios:
+ * `shop_handler_log_once_idx` rejects a doubled `onceById` write, so the
+ * second delivery's run fails on the engine side instead of leaving a second
+ * row for `assertNoDoubleEffect` to see.
+ */
+export function assertNoFailedRun(rows: readonly EnvelopeRunOutcomes[]): readonly AssertionFailure[] {
+  const failures: AssertionFailure[] = []
+  for (const row of rows) {
+    for (const outcome of row.outcomes) {
+      if (outcome.status === 'failed') {
+        failures.push({
+          check: 'no-effect-doubled',
+          detail: `envelope ${row.envelopeId} run ${outcome.runId} (${outcome.subscription}) failed: ${outcome.error ?? 'no error message'}`,
+        })
+      }
     }
   }
   return failures

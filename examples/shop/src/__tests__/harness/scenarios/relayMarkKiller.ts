@@ -41,8 +41,12 @@ function wrapWithKillOnMark(pool: Pool): RelayQueryable {
 async function main(): Promise<void> {
   const config = readConfig()
   const db = createPool(config.databaseUrl, { max: 1 })
+  // A distinct event name from the real relay's own "db-connection-dropped"
+  // (examples/shop/src/relay.ts): this entry's own self-kill can trigger this
+  // handler, and the relay-db-connection-dropped scenario waits on the real
+  // relay's event name specifically, in its own child's log lines.
   db.on('error', (error) => {
-    log('relay', 'db-connection-dropped', { message: describeError(error) })
+    log('harness-relay', 'mark-killer-db-connection-dropped', { message: describeError(error) })
   })
   await db.query('SELECT 1')
 

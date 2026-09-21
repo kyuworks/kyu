@@ -8,6 +8,7 @@ import { readConfig } from '../../config.js'
 import { createPool } from '../../db/pool.js'
 import { createShopKyu } from '../../kyu.js'
 import { log } from '../../log.js'
+import { stopAllSpawnedProcesses } from '../processes.js'
 import { laneEnv } from './children.js'
 import { buildReport, reportSummaryLines } from './report.js'
 import type { HarnessSize, Scenario, ScenarioResult } from './scenario.js'
@@ -90,6 +91,28 @@ async function main(): Promise<void> {
   if (options.outPath !== undefined) await fs.writeFile(options.outPath, JSON.stringify(report, null, 2))
   if (results.some((result) => !result.passed)) nodeProcess.exitCode = 1
 }
+
+// A signal or an exception the try/finally above never reaches can still
+// leave a relay or worker child running; stop everything the harness itself
+// spawned before the process exits non-zero.
+function stopSpawnedThenExit(exitCode: number): void {
+  stopAllSpawnedProcesses()
+    .catch(() => undefined)
+    .finally(() => nodeProcess.exit(exitCode))
+}
+
+nodeProcess.once('SIGTERM', () => {
+  log('harness', 'signal', { signal: 'SIGTERM' })
+  stopSpawnedThenExit(1)
+})
+nodeProcess.once('SIGINT', () => {
+  log('harness', 'signal', { signal: 'SIGINT' })
+  stopSpawnedThenExit(1)
+})
+nodeProcess.once('uncaughtException', (error) => {
+  log('harness', 'uncaught-exception', { message: error instanceof Error ? error.message : String(error) })
+  stopSpawnedThenExit(1)
+})
 
 main().catch((error) => {
   const message = error instanceof Error ? error.message : String(error)

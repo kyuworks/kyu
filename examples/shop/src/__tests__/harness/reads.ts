@@ -100,7 +100,7 @@ const outboxStateRowSchema = z.object({
 })
 
 export async function readOutboxState(db: HarnessDb): Promise<readonly OutboxStateRow[]> {
-  const result = await db.query('SELECT id, published_at, dead_at, attempts, claimed_by FROM kyu_outbox', [])
+  const result = await db.query('SELECT id, published_at, dead_at FROM kyu_outbox', [])
   return result.rows.map((row) => outboxStateRowSchema.parse(row))
 }
 
@@ -139,26 +139,4 @@ export async function readOrdering(db: HarnessDb, orderIds: readonly string[]): 
     rows.push({ orderId: parsed.order_id, handler: parsed.handler, seq: parsed.seq })
   }
   return rows
-}
-
-const outboxLagRowSchema = z.object({
-  pending: z.coerce.number().int(),
-  oldest_seconds: z.coerce.number().nullable(),
-})
-
-export interface OutboxLag {
-  pending: number
-  oldestSeconds: number | null
-}
-
-// Defined here for PR A's shared query shape; PR B's backlog scenario is the
-// first caller that samples it repeatedly.
-export async function readOutboxLag(db: HarnessDb): Promise<OutboxLag> {
-  const result = await db.query(
-    `SELECT count(*)::int AS pending, extract(epoch from (now() - min(created_at)))::float AS oldest_seconds
-     FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL`,
-    [],
-  )
-  const parsed = outboxLagRowSchema.parse(result.rows[0])
-  return { pending: parsed.pending, oldestSeconds: parsed.oldest_seconds }
 }

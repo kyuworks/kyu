@@ -8,7 +8,7 @@ import { z } from 'zod'
 import type { PlacedOrder } from '../../producer/placeOrder.js'
 import { placeOrder } from '../../producer/placeOrder.js'
 import { assertNoLostEffect } from './assertions.js'
-import type { ExpectedEffects } from './assertions.js'
+import type { EnvelopeRunOutcomes, ExpectedEffects } from './assertions.js'
 import { readEffectCounts } from './reads.js'
 import type { EffectWindow } from './reads.js'
 
@@ -77,5 +77,17 @@ export async function waitForExpectedEffects(
     },
     timeoutMs,
     500,
+  )
+}
+
+// The only way to see a doubled handler that `shop_handler_log_once_idx`
+// turned into a failed run instead of a second row (assertions.ts's
+// assertNoFailedRun): read the engine's own run outcomes, one call per envelope.
+export async function readEnvelopeRunOutcomes(
+  kyu: Kyu,
+  envelopeIds: readonly string[],
+): Promise<readonly EnvelopeRunOutcomes[]> {
+  return Promise.all(
+    envelopeIds.map(async (envelopeId) => ({ envelopeId, outcomes: await kyu.runs.forEnvelope(envelopeId) })),
   )
 }
