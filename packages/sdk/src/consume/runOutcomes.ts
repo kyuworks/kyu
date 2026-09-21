@@ -9,7 +9,7 @@ export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancell
 export interface RunOutcome {
   /** The subscription's name as the engine registered it, lowercased. */
   subscription: string
-  /** `completed`/`failed` is reported only once the run's timestamps exist; until then it reads `running`. */
+  /** `completed` is reported only once both timestamps exist, `failed` only once `finishedAt` does; until then the run reads `running`. */
   status: RunStatus
   /** The engine's own attempt number, 1 on the first try; a queued run — none picked up yet — also reads 1. */
   attempts: number
