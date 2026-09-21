@@ -7,7 +7,7 @@ import type {
   MessageSchema,
   Unparsed,
 } from '@kyuworks/schemas'
-import { EnvelopeRejectedError, KyuError, WorkerStoppingError } from '../errors.js'
+import { KyuError, WorkerStoppingError } from '../errors.js'
 import { eventScope } from '../eventScope.js'
 import { Or, SleepCondition, UserEventCondition, durationToMs } from '../hatchet.js'
 import type { CreateDurableTaskWorkflowOpts, Duration, DurableContext, HatchetClient, JsonObject } from '../hatchet.js'
@@ -15,6 +15,10 @@ import { decodeAndCheckMetadata, decodeIncomingEnvelope } from './subscribe.js'
 import type { Subscription } from './subscribe.js'
 import { buildHandlerContext } from './handlerContext.js'
 import type { HandlerContext } from './handlerContext.js'
+import { celEquals, decodeMatchedEnvelope } from './waitMatch.js'
+import { waitForChildMessages } from './fanOut.js'
+import type { ChildOutcome, WaitForChildrenOptions } from './fanOut.js'
+import type { RunsReader } from './runOutcomes.js'
 import { toWaitLabel } from './runWaits.js'
 import { applySharedTaskOptions, assertSubscriptionName } from './taskOptions.js'
 import type { SharedTaskOptions } from './taskOptions.js'
@@ -48,28 +52,17 @@ export type WaitForResult<S extends MessageSchema> =
 export interface DurableHandlerContext<TData extends MessageDataShape> extends HandlerContext<TData> {
   sleepFor(duration: Extract<Duration, string>): Promise<void>
   waitFor<S extends MessageSchema>(definition: MessageDefinition<S>, options: WaitForOptions): Promise<WaitForResult<S>>
+  /** Waits for a reply from every child in `where.envelopeIds` at once; one outcome per child, in that order. */
+  waitForChildren<S extends MessageSchema>(
+    definition: MessageDefinition<S>,
+    options: WaitForChildrenOptions,
+  ): Promise<readonly ChildOutcome<S>[]>
 }
 
 export interface DurableOptions<TData extends MessageDataShape> extends SharedTaskOptions {
   /** Lowercase letters, digits, `-` or `_`, starting with a letter: the engine lowercases the registered name, and this rule stays narrower than that on purpose. */
   name: string
   handler: (ctx: DurableHandlerContext<TData>) => Promise<void> | void
-}
-
-// A dotted identifier path only: `where.field` is spliced straight into the
-// CEL expression, so anything else is a filter-injection vector.
-const FIELD_PATH_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/
-
-function celEquals(field: string, equals: string): string {
-  if (!FIELD_PATH_PATTERN.test(field)) {
-    throw new KyuError(`waitFor: where.field "${field}" is not a dotted identifier path`)
-  }
-  // `where.field` is relative to the payload already; a leading "input." would
-  // splice into `input.input....`, a silent never-match.
-  if (field === 'input' || field.startsWith('input.')) {
-    throw new KyuError(`waitFor: where.field "${field}" is relative to the payload; drop the leading "input."`)
-  }
-  return `input.${field} == ${JSON.stringify(equals)}`
 }
 
 interface WaitForConditions {
@@ -90,7 +83,7 @@ export function buildWaitForConditions(
   const considerEventsSince = new Date(now.getTime() - durationToMs(lookback)).toISOString()
   // Pinned to the awaited definition's version, so a same-name event on another version does
   // not match here and fail decoding. Envelope ids are uuid v7, so CEL `>` is publish order.
-  const keyMatch = celEquals(options.where.field, options.where.equals)
+  const keyMatch = celEquals('waitFor', options.where.field, options.where.equals)
   const afterClause =
     options.afterMessage === undefined ? '' : ` && input.id > ${JSON.stringify(options.afterMessage.id)}`
   const expression = `${keyMatch} && input.version == ${definition.version}${afterClause}`
@@ -128,13 +121,7 @@ export async function waitForMessage<S extends MessageSchema>(
 
   const matches = created.message
   if (matches !== undefined && matches.length > 0) {
-    const envelope = await decodeIncomingEnvelope(definition, matches[0])
-    if (options.scope === undefined && envelope.tenantId !== handlerEnvelope.tenantId) {
-      throw new EnvelopeRejectedError(
-        `waitFor matched an envelope from tenant ${String(envelope.tenantId)}, expected the handler envelope's tenant ${String(handlerEnvelope.tenantId)}`,
-        envelope.id,
-      )
-    }
+    const envelope = await decodeMatchedEnvelope('waitFor', definition, matches[0], handlerEnvelope, options.scope)
     return { kind: 'message', envelope }
   }
 
@@ -157,6 +144,7 @@ function buildDurableHandlerContext<TData extends MessageDataShape>(
   metadata: EnvelopeMetadataFields,
   hatchetContext: DurableContext<JsonObject>,
   isStopping: () => boolean,
+  runs: RunsReader,
 ): DurableHandlerContext<TData> {
   return {
     ...buildHandlerContext(envelope, metadata, hatchetContext),
@@ -168,6 +156,10 @@ function buildDurableHandlerContext<TData extends MessageDataShape>(
       assertWorkerNotStopping(isStopping)
       return waitForMessage(hatchetContext, envelope, definition, options)
     },
+    waitForChildren: async (definition, options) => {
+      assertWorkerNotStopping(isStopping)
+      return waitForChildMessages(hatchetContext, runs, envelope, definition, options)
+    },
   }
 }
 
@@ -177,10 +169,11 @@ async function runDurableHandler<S extends MessageSchema>(
   input: JsonObject,
   hatchetContext: DurableContext<JsonObject>,
   isStopping: () => boolean,
+  runs: RunsReader,
 ): Promise<void> {
   const envelope = await decodeIncomingEnvelope(definition, input)
   const metadata = decodeAndCheckMetadata(hatchetContext, envelope)
-  await handler(buildDurableHandlerContext(envelope, metadata, hatchetContext, isStopping))
+  await handler(buildDurableHandlerContext(envelope, metadata, hatchetContext, isStopping, runs))
 }
 
 /**
@@ -249,7 +242,7 @@ export function durable<S extends MessageSchema>(
     name: options.name,
     onEvents: [definition.name],
     fn: (input: JsonObject, ctx: DurableContext<JsonObject>) =>
-      runDurableHandler(definition, options.handler, input, ctx, () => stopping),
+      runDurableHandler(definition, options.handler, input, ctx, () => stopping, hatchet),
   }
 
   applySharedTaskOptions(taskOptions, options)

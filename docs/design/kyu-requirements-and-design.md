@@ -337,6 +337,8 @@ Durable handlers use `sleepFor` for delays and `waitFor(definition, { where, sco
 
 A handler that must re-check several facts passes the last matched envelope back as `afterMessage`: it wakes on every message for the subject, re-reads the project's own data and parks again, and the SDK evaluates no business predicate of its own. Envelope ids are uuid v7, so "after this message" is publish order, and each park is one durable wait counted by position.
 
+A durable handler waits for a set of children with `waitForChildren(definition, { where: { field, envelopeIds }, timeout })`: one durable registration holding one condition per child envelope id, returning one outcome per child. The children are ordinary commands published through the outbox, so nothing on the publish path changes; a child that never replies is classified from its own engine runs at the deadline, so a failed child reads `failed` rather than hanging the parent.
+
 ### 9.6 Cancelling a run
 
 A run is cancelled through the SDK, never through the engine client: `kyu.runs.cancelForEnvelope(envelopeId)` for one message, `kyu.runs.cancelForCorrelation(correlationId)` for a whole workflow run — the durable run and the command runs it published. Both look the runs up by the engine's own metadata and cancel them by run id, so they never reach a run in another namespace or under another correlation id. Both return the runs they cancelled, and both are safe to call twice: the engine ignores a cancel for a run that has already finished.

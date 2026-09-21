@@ -583,3 +583,28 @@ describe('durable: a wait entered after the worker began stopping', () => {
     expect(sleepForCalls()).toBe(0)
   })
 })
+
+describe('durable: durable handler context', () => {
+  it('exposes waitForChildren and refuses it once the worker is stopping', async () => {
+    const { client, capturedOptions } = fakeHatchetClient()
+    const subscription = durable(client, orderPlaced, {
+      name: 'follow-up',
+      handler: async (ctx) => {
+        // Flag flips from inside the body, same as the sleepFor case above.
+        subscription.stopDurableWaits?.()
+        await ctx.waitForChildren(orderShipped, {
+          where: { field: 'data.orderId', envelopeIds: ['018f0000-0000-7000-8000-000000000001'] },
+          timeout: '30s',
+        })
+      },
+    })
+    const fn = capturedOptions()?.fn
+    if (fn === undefined) throw new Error('durable did not capture a task fn')
+    const envelope = await createEnvelope(orderPlaced, { orderId: 'order-1' }, { tenantId: null, source: 'sdk.test' })
+    const { context } = fakeDurableHatchetContext(toEnvelopeMetadata(envelope))
+
+    const error: unknown = await Promise.resolve(fn(asIncoming(envelope), context)).catch((cause: unknown) => cause)
+
+    expect(error).toBeInstanceOf(WorkerStoppingError)
+  })
+})
