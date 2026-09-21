@@ -24,6 +24,8 @@ const orderPlaced = defineEvent({
   data: z.object({ orderId: z.string() }),
 })
 
+type EngineRunRow = Awaited<ReturnType<HatchetClient['runs']['list']>>['rows'][number]
+
 function fakeWorker(): Worker {
   const stub: Pick<Worker, 'start' | 'stop' | 'waitUntilReady'> = {
     start: () => new Promise<void>(() => undefined),
@@ -39,22 +41,28 @@ interface FakeHatchetClient {
   capturedDurableOptions: () => CreateDurableTaskWorkflowOpts<JsonObject, void> | undefined
   capturedWorkerOptions: () => CreateWorkerOpts | undefined
   capturedRunsListOptions: () => Parameters<HatchetClient['runs']['list']>[0]
+  capturedRunsCancelOptions: () => Parameters<HatchetClient['runs']['cancel']>[0] | undefined
   workerCallCount: () => number
 }
 
-// One stub covering task, durableTask, worker and runs.list: subscribe,
-// durable, worker and runs.forEnvelope each reach a different engine method
-// through the same client.
-function fakeHatchetClient(): FakeHatchetClient {
+// One stub covering task, durableTask, worker, runs.list and runs.cancel:
+// subscribe, durable, worker, runs.forEnvelope and runs.cancelForEnvelope
+// each reach a different engine method through the same client.
+function fakeHatchetClient(listRows: EngineRunRow[] = []): FakeHatchetClient {
   let taskOptions: CreateTaskWorkflowOpts | undefined
   let durableOptions: CreateDurableTaskWorkflowOpts<JsonObject, void> | undefined
   let workerOptions: CreateWorkerOpts | undefined
   let runsListOptions: Parameters<HatchetClient['runs']['list']>[0]
+  let runsCancelOptions: Parameters<HatchetClient['runs']['cancel']>[0] | undefined
   let workerCalls = 0
-  const runs: Pick<HatchetClient['runs'], 'list'> = {
+  const runs: Pick<HatchetClient['runs'], 'cancel' | 'list'> = {
     list: (options) => {
       runsListOptions = options
-      return Promise.resolve({ pagination: {}, rows: [] })
+      return Promise.resolve({ pagination: {}, rows: listRows })
+    },
+    cancel: (options) => {
+      runsCancelOptions = options
+      return Promise.resolve({ data: { ids: options.ids } } as Awaited<ReturnType<HatchetClient['runs']['cancel']>>)
     },
   }
   const stub: Pick<HatchetClient, 'config' | 'durableTask' | 'task' | 'worker'> = {
@@ -79,6 +87,7 @@ function fakeHatchetClient(): FakeHatchetClient {
     capturedDurableOptions: () => durableOptions,
     capturedWorkerOptions: () => workerOptions,
     capturedRunsListOptions: () => runsListOptions,
+    capturedRunsCancelOptions: () => runsCancelOptions,
     workerCallCount: () => workerCalls,
   }
 }
@@ -140,7 +149,17 @@ describe('createKyu', () => {
     const kyu = createKyu({ hatchet: client, source: 'shop-service' })
 
     expect(Object.keys(kyu).sort()).toEqual(
-      ['durable', 'onceById', 'publish', 'runs', 'startRelay', 'subscribe', 'worker'].sort(),
+      [
+        'durable',
+        'onceById',
+        'publish',
+        'runs',
+        'scheduleRunner',
+        'schedules',
+        'startRelay',
+        'subscribe',
+        'worker',
+      ].sort(),
     )
   })
 
@@ -200,6 +219,35 @@ describe('createKyu', () => {
 
     expect(outcomes).toEqual([])
     expect(capturedRunsListOptions()?.additionalMetadata).toEqual({ envelopeId })
+  })
+
+  it('runs.cancelForEnvelope forwards to the engine’s cancel with the bound client', async () => {
+    const runId = '018f0000-0000-7000-8000-000000000011'
+    const row: EngineRunRow = {
+      metadata: { id: runId, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      createdAt: '2026-01-01T00:00:00.000Z',
+      displayName: 'sample-run',
+      input: {},
+      numSpawnedChildren: 0,
+      output: {},
+      status: 'RUNNING' as EngineRunRow['status'],
+      taskExternalId: runId,
+      taskId: 1,
+      taskInsertedAt: '2026-01-01T00:00:00.000Z',
+      tenantId: '018f0000-0000-7000-8000-000000000003',
+      type: 'TASK' as EngineRunRow['type'],
+      workflowId: '018f0000-0000-7000-8000-000000000004',
+      workflowRunExternalId: '018f0000-0000-7000-8000-000000000005',
+      workflowName: 'shop_follow-up',
+    }
+    const { client, capturedRunsCancelOptions } = fakeHatchetClient([row])
+    const kyu = createKyu({ hatchet: client, source: 'shop-service' })
+    const envelopeId = uuidv7()
+
+    const cancelled = await kyu.runs.cancelForEnvelope(envelopeId)
+
+    expect(cancelled.map((outcome) => outcome.runId)).toEqual([runId])
+    expect(capturedRunsCancelOptions()).toEqual({ ids: [runId] })
   })
 
   it('worker forwards to the underlying function with the bound client', async () => {

@@ -333,6 +333,12 @@ Durable handlers use `sleepFor` for delays and `waitFor(definition, { where, sco
 
 A handler that must re-check several facts passes the last matched envelope back as `afterMessage`: it wakes on every message for the subject, re-reads the project's own data and parks again, and the SDK evaluates no business predicate of its own. Envelope ids are uuid v7, so "after this message" is publish order, and each park is one durable wait counted by position.
 
+### 9.6 Cancelling a run
+
+A run is cancelled through the SDK, never through the engine client: `kyu.runs.cancelForEnvelope(envelopeId)` for one message, `kyu.runs.cancelForCorrelation(correlationId)` for a whole workflow run — the durable run and the command runs it published. Both look the runs up by the engine's own metadata and cancel them by run id, so they never reach a run in another namespace or under another correlation id. Both return the runs they cancelled, and both are safe to call twice: the engine ignores a cancel for a run that has already finished.
+
+A cancelled run ends as `cancelled`, not `failed`, and is not retried, so it never joins the dead-letter set. A durable run parked in `sleepFor` or `waitFor` has that wait rejected as soon as the cancel reaches its worker; a handler between two steps is not interrupted and finishes the step it is in, which is what keeps a cancel from landing inside an `onceById` transaction. The engine drops that late result.
+
 ## 10. SDK surface
 
 Working shape; names to be finalised in review.
@@ -382,6 +388,7 @@ const relay = kyu.startRelay({ db: pool, workerId: 'shop-api-1' });
 // Alerting: a run's outcome by envelope id, without the engine client
 const outcomes = await kyu.runs.forEnvelope(envelope.id);
 const deadLetters = outcomes.filter((o) => o.status === 'failed');
+await kyu.runs.cancelForCorrelation(envelope.correlationId); // stop a workflow run and everything it started
 ```
 
 Durable handlers set `executionTimeout` above the total of their sleeps and waits; the SDK defaults it to 24 hours.
@@ -435,7 +442,7 @@ A consumer's workflow engine moves onto durable handlers: each run becomes one d
 |---|---|
 | Trigger job from a service seam | Subscription on the trigger's event name with a CEL filter |
 | One job per step with a claim token | Steps inside one durable handler; Hatchet checkpoints them |
-| Duration wait and a due sweep | `sleepFor` |
+| Duration wait and a due sweep | `sleepFor` for a short wait; above the hand-off threshold, `publish()` with `publishAt` at the wake time and a fresh run |
 | Wait-for-completion and a resumption table | `waitForEvent` with a CEL filter on the awaited id |
 | Schedule and `next_run_at` | Cron handlers |
 | One active run per owner unique index | Concurrency key on owner id with `CANCEL_NEWEST` |

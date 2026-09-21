@@ -185,6 +185,13 @@ async function runDurableHandler<S extends MessageSchema>(
  * `sleepFor`, `waitFor` and the engine's `now()` replay from the durable log.
  * Side effects before a wait must be idempotent — that is what `onceById()` is for.
  *
+ * A run cannot outlast `executionTimeout`, which defaults to 24 hours here:
+ * the engine cancels a run whose sleeps and waits pass it, mid-wait. For a
+ * wait longer than that, do not sleep. Record where the run got to and
+ * publish the handler's own trigger message again with `publishAt` set to
+ * the wake time and a field saying where to continue, in one transaction,
+ * then return. `examples/shop/src/handlers/runWorkflow.ts` does this.
+ *
  * A worker stopping mid-run is handled in two halves. A run already parked in
  * `sleepFor`/`waitFor` is evicted by the engine and continues on the next
  * worker. A body that reaches its first wait *after* its worker began stopping
@@ -212,6 +219,16 @@ async function runDurableHandler<S extends MessageSchema>(
  *       afterMessage = result.envelope
  *       if (await readyInOurOwnDatabase(leadId)) break
  *     }
+ *
+ * A run cancelled through `kyu.runs.cancelForEnvelope`/`cancelForCorrelation`
+ * ends `cancelled` by itself: the engine aborts a parked `sleepFor`/`waitFor`,
+ * and the rejection should be left to propagate rather than caught. A body
+ * between two steps is not interrupted — it finishes the step it is in and
+ * the engine drops the result — which is what keeps a cancel out of the
+ * middle of an `onceById()` transaction. Do not use `ctx.signal` to detect a
+ * cancellation: the engine SDK aborts the same controller, with the same
+ * generic `AbortError`, when it evicts a run to move it to another worker,
+ * and an evicted run is not a cancelled one.
  */
 export function durable<S extends MessageSchema>(
   hatchet: HatchetClient,

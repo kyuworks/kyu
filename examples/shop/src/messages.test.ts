@@ -60,6 +60,29 @@ describe('messages', () => {
     ).rejects.toThrow()
   })
 
+  it('accepts workflowTriggered data with a resumeStepId and rejects an invalid one (#113)', async () => {
+    await expect(
+      createEnvelope(
+        workflowTriggered,
+        { runId: uuidv7(), definitionId: uuidv7(), versionId: uuidv7(), orderId: uuidv7(), resumeStepId: 'nudge' },
+        { tenantId: uuidv7(), source: 'test' },
+      ),
+    ).resolves.toBeDefined()
+    await expect(
+      createEnvelope(
+        workflowTriggered,
+        {
+          runId: uuidv7(),
+          definitionId: uuidv7(),
+          versionId: uuidv7(),
+          orderId: uuidv7(),
+          resumeStepId: 'NOT A STEP',
+        },
+        { tenantId: uuidv7(), source: 'test' },
+      ),
+    ).rejects.toThrow()
+  })
+
   it('rejects data that fails its schema for notifyStaff', async () => {
     await expect(
       createEnvelope(

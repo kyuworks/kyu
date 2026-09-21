@@ -1,0 +1,232 @@
+import { randomBytes } from 'node:crypto'
+import { createEnvelope, defineCommand, defineEvent, toEnvelopeMetadata, uuidv7 } from '@kyuworks/schemas'
+import type { Envelope, MessageData, MessageDefinition, MessageSchema } from '@kyuworks/schemas'
+import { z } from 'zod'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { eventScope } from '../eventScope.js'
+import { createHatchetClient } from '../hatchet.js'
+import type { HatchetClient } from '../hatchet.js'
+import { cancelRunsFor } from './cancelRuns.js'
+import { durable } from './durable.js'
+import type { DurableHandlerContext } from './durable.js'
+import type { HandlerContext } from './handlerContext.js'
+import { readRunOutcomes } from './runOutcomes.js'
+import type { RunOutcome } from './runOutcomes.js'
+import { subscribe } from './subscribe.js'
+import { createWorker } from './worker.js'
+import type { KyuWorker } from './worker.js'
+
+// Envelopes go straight to `hatchet.events.push` — no relay or outbox — the
+// same pattern as runOutcomes.integration.test.ts. Namespaced per run.
+
+const namespace = `lane99${randomBytes(3).toString('hex')}_`
+const hatchet: HatchetClient = createHatchetClient({ namespace })
+
+function sleep(ms: number): Promise<void> {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
+// Resolves early when `signal` aborts, so the command handler stops instead
+// of holding a worker slot for the full 120s once the engine has already
+// recorded the run cancelled — mirrors subscribe.integration.test.ts's own
+// sleepAbortable.
+function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (signal.aborted) {
+      resolve()
+      return
+    }
+    const timer = setTimeout(resolve, ms)
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        resolve()
+      },
+      { once: true },
+    )
+  })
+}
+
+async function push<S extends MessageSchema>(
+  definition: MessageDefinition<S>,
+  data: MessageData<MessageDefinition<S>>,
+  correlationId?: string,
+): Promise<Envelope<MessageData<MessageDefinition<S>>>> {
+  const options: Parameters<typeof createEnvelope>[2] = { tenantId: null, source: 'sdk.test' }
+  if (correlationId !== undefined) options.correlationId = correlationId
+  const envelope = await createEnvelope(definition, data, options)
+  await hatchet.events.push(definition.name, envelope, {
+    additionalMetadata: toEnvelopeMetadata(envelope),
+    scope: eventScope(envelope),
+  })
+  return envelope
+}
+
+// The engine's own status update lags a run's local completion; a single
+// snapshot read is flaky, so every flow polls through readRunOutcomes itself.
+async function waitForOutcomes(
+  envelopeId: string,
+  predicate: (outcomes: readonly RunOutcome[]) => boolean,
+  timeoutMs: number,
+): Promise<readonly RunOutcome[]> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const outcomes = await readRunOutcomes(hatchet, envelopeId)
+    if (predicate(outcomes)) return outcomes
+    if (Date.now() >= deadline) {
+      throw new Error(`waitForOutcomes: timed out waiting for envelope ${envelopeId} to satisfy the predicate`)
+    }
+    await sleep(200)
+  }
+}
+
+describe('cancelRunsFor: durable and command runs', () => {
+  const sleeperTrigger = defineEvent({
+    name: 'kyu.cancelruns.sleeper',
+    version: 1,
+    data: z.object({ seq: z.number() }),
+  })
+  const waiterTrigger = defineEvent({
+    name: 'kyu.cancelruns.waiter',
+    version: 1,
+    data: z.object({ seq: z.number() }),
+  })
+  const waiterResume = defineEvent({
+    name: 'kyu.cancelruns.waiter_resume',
+    version: 1,
+    data: z.object({ seq: z.number() }),
+  })
+  const command = defineCommand({
+    name: 'kyu.cancelruns.command',
+    version: 1,
+    data: z.object({ seq: z.number() }),
+  })
+
+  let worker: KyuWorker | undefined
+
+  beforeAll(async () => {
+    const sleeper = durable(hatchet, sleeperTrigger, {
+      name: 'cancel-sleeper',
+      handler: async (ctx: DurableHandlerContext<{ seq: number }>) => {
+        await ctx.sleepFor('120s')
+      },
+    })
+    const waiter = durable(hatchet, waiterTrigger, {
+      name: 'cancel-waiter',
+      handler: async (ctx: DurableHandlerContext<{ seq: number }>) => {
+        await ctx.waitFor(waiterResume, {
+          where: { field: 'data.seq', equals: '0' },
+          timeout: '120s',
+        })
+      },
+    })
+    const commandSubscription = subscribe(hatchet, command, {
+      name: 'cancel-command',
+      handler: (ctx: HandlerContext<{ seq: number }>) => sleepAbortable(120_000, ctx.signal),
+    })
+    worker = await createWorker(hatchet, 'cancel-runs-worker', {
+      subscriptions: [sleeper, waiter, commandSubscription],
+      durableSlots: 5,
+      slots: 5,
+      stopTimeoutMs: 10_000,
+    })
+    void worker.start()
+    await worker.waitUntilReady()
+  }, 60_000)
+
+  afterAll(async () => {
+    await worker?.stop()
+  })
+
+  it('flow 1: a run parked in sleepFor ends cancelled within 10s and is never replayed', async () => {
+    const envelope = await push(sleeperTrigger, { seq: 1 })
+    await waitForOutcomes(envelope.id, (o) => o.at(0)?.status === 'running', 30_000)
+
+    const startedCancelAt = Date.now()
+    const cancelled = await cancelRunsFor(hatchet, {
+      key: 'envelopeId',
+      id: envelope.id,
+      caller: 'runs.cancelForEnvelope',
+    })
+    expect(cancelled).toHaveLength(1)
+
+    await waitForOutcomes(envelope.id, (o) => o.at(0)?.status === 'cancelled', 20_000)
+    expect(Date.now() - startedCancelAt).toBeLessThanOrEqual(10_000)
+
+    await sleep(5_000)
+    const settled = await readRunOutcomes(hatchet, envelope.id)
+    expect(settled).toHaveLength(1)
+    expect(settled[0]?.status).toBe('cancelled')
+    expect(settled[0]?.attempts).toBe(1)
+  }, 90_000)
+
+  it('flow 2: a run parked in waitFor also ends cancelled', async () => {
+    const envelope = await push(waiterTrigger, { seq: 1 })
+    await waitForOutcomes(envelope.id, (o) => o.at(0)?.status === 'running', 30_000)
+
+    const cancelled = await cancelRunsFor(hatchet, {
+      key: 'envelopeId',
+      id: envelope.id,
+      caller: 'runs.cancelForEnvelope',
+    })
+    expect(cancelled).toHaveLength(1)
+
+    const settled = await waitForOutcomes(envelope.id, (o) => o.at(0)?.status === 'cancelled', 20_000)
+    expect(settled.at(0)?.status).toBe('cancelled')
+  }, 60_000)
+
+  it('flow 3: cancel by correlation id takes every run under that id and leaves another correlation alone', async () => {
+    const correlationId = uuidv7()
+    const sleeperEnvelope = await push(sleeperTrigger, { seq: 1 }, correlationId)
+    const commandEnvelope = await push(command, { seq: 1 }, correlationId)
+    const otherEnvelope = await push(sleeperTrigger, { seq: 2 })
+
+    await Promise.all([
+      waitForOutcomes(sleeperEnvelope.id, (o) => o.at(0)?.status === 'running', 30_000),
+      waitForOutcomes(commandEnvelope.id, (o) => o.at(0)?.status === 'running', 30_000),
+      waitForOutcomes(otherEnvelope.id, (o) => o.at(0)?.status === 'running', 30_000),
+    ])
+
+    const cancelled = await cancelRunsFor(hatchet, {
+      key: 'correlationId',
+      id: correlationId,
+      caller: 'runs.cancelForCorrelation',
+    })
+    expect(cancelled.map((outcome) => outcome.subscription).sort()).toEqual(['cancel-command', 'cancel-sleeper'])
+
+    await waitForOutcomes(sleeperEnvelope.id, (o) => o.at(0)?.status === 'cancelled', 20_000)
+    await waitForOutcomes(commandEnvelope.id, (o) => o.at(0)?.status === 'cancelled', 20_000)
+
+    const untouched = await readRunOutcomes(hatchet, otherEnvelope.id)
+    expect(untouched.at(0)?.status).toBe('running')
+
+    // Cancel the third run too, so worker.stop() has nothing left to evict.
+    await cancelRunsFor(hatchet, { key: 'envelopeId', id: otherEnvelope.id, caller: 'runs.cancelForEnvelope' })
+    await waitForOutcomes(otherEnvelope.id, (o) => o.at(0)?.status === 'cancelled', 20_000)
+  }, 90_000)
+
+  it('flow 4: cancelling twice raises nothing', async () => {
+    const envelope = await push(waiterTrigger, { seq: 2 })
+    await waitForOutcomes(envelope.id, (o) => o.at(0)?.status === 'running', 30_000)
+    await cancelRunsFor(hatchet, { key: 'envelopeId', id: envelope.id, caller: 'runs.cancelForEnvelope' })
+    await waitForOutcomes(envelope.id, (o) => o.at(0)?.status === 'cancelled', 20_000)
+
+    const cancelledAgain = await cancelRunsFor(hatchet, {
+      key: 'envelopeId',
+      id: envelope.id,
+      caller: 'runs.cancelForEnvelope',
+    })
+    expect(cancelledAgain).toHaveLength(1)
+    expect(cancelledAgain[0]?.status).toBe('cancelled')
+  }, 60_000)
+
+  it('flow 5: an envelope id the engine never saw returns []', async () => {
+    const cancelled = await cancelRunsFor(hatchet, {
+      key: 'envelopeId',
+      id: uuidv7(),
+      caller: 'runs.cancelForEnvelope',
+    })
+    expect(cancelled).toEqual([])
+  })
+})

@@ -26,7 +26,15 @@ export const sendInvoice = defineCommand({
 export const workflowTriggered = defineEvent({
   name: 'shop.workflow.triggered',
   version: 1,
-  data: z.object({ runId: z.uuidv7(), definitionId: z.uuid(), versionId: z.uuid(), orderId: z.uuid() }),
+  data: z.object({
+    runId: z.uuidv7(),
+    definitionId: z.uuid(),
+    versionId: z.uuid(),
+    orderId: z.uuid(),
+    // Set only on a continuation the interpreter scheduled for itself at a long
+    // delay's wake time: the step the new run walks from (#113).
+    resumeStepId: stepIdSchema.optional(),
+  }),
 })
 
 // Published by one notify step. The text lives in the pinned

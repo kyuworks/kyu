@@ -63,7 +63,7 @@ The SDK already gives a durable handler what a run needs: `sleepFor`, `waitFor` 
   - a progress view rolled up by `correlationId` — [#100](https://github.com/Camba-nz/kyu/issues/100)
   - fan-out child steps — [#101](https://github.com/Camba-nz/kyu/issues/101)
   - a wait over several fields, re-checked on any event for the subject — [#102](https://github.com/Camba-nz/kyu/issues/102)
-  - delays that outlast the execution timeout, such as 30 days against the 24-hour default in `durable()` — [#113](https://github.com/Camba-nz/kyu/issues/113)
+  - delays that outlast the execution timeout, such as 30 days against the 24-hour default in `durable()` — [#113](https://github.com/Camba-nz/kyu/issues/113), answered in the addendum below
 
 ---
 
@@ -82,3 +82,19 @@ The SDK already gives a durable handler what a run needs: `sleepFor`, `waitFor` 
 
 - Hatchet can build a workflow from data at runtime, with no worker restart.
 - A definition needs a step the interpreter cannot express without code written for that one definition.
+
+---
+
+## Addendum — 22 September 2026: how a long delay waits (#113)
+
+A delay step under 60 seconds is `sleepFor`, as decision 5 says: the run parks and the engine holds it.
+
+A delay step of 60 seconds or more is a hand-off. In one transaction, under the step's own `onceById` guard, the interpreter writes the step's ledger row and publishes the trigger message again with `publishAt` set to the wake time, the same run id, the same tenant id, and the step to continue at. The run then ends and holds nothing. At the wake time the relay ships that row and a new run loads the version this run pinned and walks on. A delay of any length is legal, including 30 days.
+
+The threshold exists because a run's total sleep must stay under its execution timeout, which `durable()` sets to 24 hours and `run-workflow` to 1 hour. A definition has at most 20 steps, each below the 60-second hand-off boundary, so the worst run sleeps in process for just under 20 minutes.
+
+The continuation keeps the trigger's message name, so it queues in the same concurrency group (`input.data.orderId`, `maxRuns: 1`): two runs of one order still never run at once. Its place in that order is its wake time, not its publish time.
+
+A run waiting for its continuation is an outbox row with a future `publish_at`. `runs.forEnvelope` reports the run that handed off as `completed`, and the run's `finished_at` is still empty.
+
+Not solved here: cancelling a run, or disabling a definition, between the two runs. A scheduled outbox row cannot be recalled today. That is [#99](https://github.com/Camba-nz/kyu/issues/99).

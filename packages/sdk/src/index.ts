@@ -72,6 +72,8 @@ export {
   MessageDefinitionError,
   RelayConnectionLostError,
   KyuError,
+  ScheduleAlreadyExistsError,
+  ScheduleMessageUnknownError,
   SubscriptionAlreadyBoundError,
   WorkerStoppingError,
 } from './errors.js'
@@ -98,3 +100,10 @@ export type { KyuRuns, ReadRunOutcomesOptions, RunOutcome, RunStatus } from './c
 
 export { createWorker } from './consume/worker.js'
 export type { CreateWorkerOptions, KyuWorker } from './consume/worker.js'
+
+// createSchedules/createScheduleRunner/SchedulesEngine/SCHEDULE_WORKFLOW_NAME/
+// ScheduleTrigger are not exported: a consumer reaches them through
+// kyu.schedules and kyu.scheduleRunner, never the Hatchet engine directly.
+export type { ScheduleRunnerOptions } from './schedule/scheduleRunner.js'
+
+export type { CreateScheduleOptions, KyuSchedules, Schedule } from './schedule/schedules.js'

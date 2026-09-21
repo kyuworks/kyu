@@ -71,7 +71,12 @@ function fakeKyu(publishes: RecordedPublish[], runOutcomes: Readonly<Record<stri
     publishes.push({ name, tenantId: options.tenantId })
     return createEnvelope(definition, data, { tenantId: options.tenantId, source: 'test' })
   }
-  const runs: Kyu['runs'] = { forEnvelope: (envelopeId: string) => Promise.resolve(runOutcomes[envelopeId] ?? []) }
+  const forId = (id: string) => Promise.resolve(runOutcomes[id] ?? [])
+  const runs: Kyu['runs'] = {
+    forEnvelope: forId,
+    cancelForEnvelope: forId,
+    cancelForCorrelation: forId,
+  }
   const stub: Pick<Kyu, 'publish' | 'runs'> = { publish, runs }
   return stub as Kyu
 }

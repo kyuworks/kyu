@@ -1,4 +1,5 @@
 import type { MessageData, MessageDefinition, MessageSchema } from '@kyuworks/schemas'
+import { cancelRunsFor } from './consume/cancelRuns.js'
 import { durable } from './consume/durable.js'
 import type { DurableOptions } from './consume/durable.js'
 import { readRunOutcomes } from './consume/runOutcomes.js'
@@ -13,6 +14,10 @@ import { createPublisher } from './outbox/publish.js'
 import type { Publisher } from './outbox/publish.js'
 import { startRelay } from './relay/index.js'
 import type { Relay, RelayOptions } from './relay/index.js'
+import { createScheduleRunner } from './schedule/scheduleRunner.js'
+import type { ScheduleRunnerOptions } from './schedule/scheduleRunner.js'
+import { createSchedules } from './schedule/schedules.js'
+import type { KyuSchedules } from './schedule/schedules.js'
 
 export interface CreateKyuOptions {
   hatchet: HatchetClient
@@ -40,6 +45,9 @@ export interface Kyu {
   runs: KyuRuns
   worker(name: string, options: CreateWorkerOptions): Promise<KyuWorker>
   startRelay(options: KyuRelayOptions): Relay
+  schedules: KyuSchedules
+  /** Registers the one task every `schedules.create` cron fires. Pass the result to `worker`'s `subscriptions` like any other. */
+  scheduleRunner(options: ScheduleRunnerOptions): Subscription
 }
 
 export function createKyu(options: CreateKyuOptions): Kyu {
@@ -51,8 +59,20 @@ export function createKyu(options: CreateKyuOptions): Kyu {
     onceById,
     subscribe: (definition, subscribeOptions) => subscribe(hatchet, definition, subscribeOptions),
     durable: (definition, durableOptions) => durable(hatchet, definition, durableOptions),
-    runs: { forEnvelope: (envelopeId, runOptions) => readRunOutcomes(hatchet, envelopeId, runOptions) },
+    runs: {
+      forEnvelope: (envelopeId, runOptions) => readRunOutcomes(hatchet, envelopeId, runOptions),
+      cancelForEnvelope: (envelopeId, runOptions) =>
+        cancelRunsFor(hatchet, { key: 'envelopeId', id: envelopeId, caller: 'runs.cancelForEnvelope' }, runOptions),
+      cancelForCorrelation: (correlationId, runOptions) =>
+        cancelRunsFor(
+          hatchet,
+          { key: 'correlationId', id: correlationId, caller: 'runs.cancelForCorrelation' },
+          runOptions,
+        ),
+    },
     worker: (name, workerOptions) => createWorker(hatchet, name, workerOptions),
     startRelay: (relayOptions) => startRelay({ ...relayOptions, hatchet }),
+    schedules: createSchedules(hatchet),
+    scheduleRunner: (scheduleRunnerOptions) => createScheduleRunner(hatchet, { ...scheduleRunnerOptions, source }),
   }
 }

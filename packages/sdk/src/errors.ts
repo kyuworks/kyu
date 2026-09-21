@@ -77,6 +77,34 @@ export class WorkerStoppingError extends KyuError {
   }
 }
 
+/** `schedules.create` refuses a name a cron already carries: remove it first to change its expression. */
+export class ScheduleAlreadyExistsError extends KyuError {
+  readonly scheduleName: string
+
+  constructor(scheduleName: string) {
+    super(`schedule "${scheduleName}" already exists: remove it first to change its cron`)
+    this.name = 'ScheduleAlreadyExistsError'
+    this.scheduleName = scheduleName
+  }
+}
+
+/**
+ * A schedule tick named a message the runner's `definitions` list does not
+ * carry. Non-retryable: the runner will not suddenly know the message on a
+ * redelivery.
+ */
+export class ScheduleMessageUnknownError extends NonRetryableError {
+  readonly messageName: string
+  readonly messageVersion: number
+
+  constructor(messageName: string, messageVersion: number) {
+    super(`schedule tick names ${messageName} v${messageVersion}, which this runner has no definition for`)
+    this.name = 'ScheduleMessageUnknownError'
+    this.messageName = messageName
+    this.messageVersion = messageVersion
+  }
+}
+
 /**
  * The relay's database handle will never serve another query: a `pg.Client`
  * whose connection dropped, or a client or pool the process already ended.

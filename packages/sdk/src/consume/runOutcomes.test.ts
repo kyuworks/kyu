@@ -2,7 +2,7 @@ import { uuidv7 } from '@kyuworks/schemas'
 import { describe, expect, it } from 'vitest'
 import { KyuError } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
-import { readRunOutcomes, toRunOutcome } from './runOutcomes.js'
+import { readRunOutcomes, readRunOutcomesFor, toRunOutcome } from './runOutcomes.js'
 import type { RunsReader } from './runOutcomes.js'
 
 type EngineRunRow = Awaited<ReturnType<HatchetClient['runs']['list']>>['rows'][number]
@@ -227,6 +227,24 @@ function fakeRunsReader(namespace: string, rows: EngineRunRow[], listError?: Err
   return { reader, listCalls: () => calls }
 }
 
+// One call's rows per page, in call order; `pagination.num_pages` is fixed
+// at the page count so a fake that stops at page N above the ceiling proves
+// the production code never asks for the pages that would follow it.
+function fakePagedRunsReader(namespace: string, pages: EngineRunRow[][]): FakeRunsReaderCalls {
+  const calls: Array<Parameters<HatchetClient['runs']['list']>[0]> = []
+  const reader: RunsReader = {
+    config: { namespace },
+    runs: {
+      list: async (opts) => {
+        const rows = pages[calls.length] ?? []
+        calls.push(opts)
+        return { pagination: { num_pages: pages.length }, rows }
+      },
+    },
+  }
+  return { reader, listCalls: () => calls }
+}
+
 describe('readRunOutcomes', () => {
   it('returns an empty array when the engine returns zero rows', async () => {
     const { reader } = fakeRunsReader('ns_', [])
@@ -270,19 +288,34 @@ describe('readRunOutcomes', () => {
     expect(call?.additionalMetadata).toEqual({ envelopeId })
   })
 
-  it('throws KyuError when the engine reports more than one page', async () => {
-    const calls: Array<unknown> = []
-    const reader: RunsReader = {
-      config: { namespace: 'ns_' },
-      runs: {
-        list: async (opts) => {
-          calls.push(opts)
-          return { pagination: { num_pages: 2 }, rows: [] }
-        },
-      },
-    }
+  it('pages through every row when the engine reports more than one page', async () => {
+    const rowsPage1 = [fixtureRow({ workflowName: 'ns_first', taskExternalId: '018f0000-0000-7000-8000-000000000011' })]
+    const rowsPage2 = [
+      fixtureRow({ workflowName: 'ns_second', taskExternalId: '018f0000-0000-7000-8000-000000000012' }),
+    ]
+    const { reader, listCalls } = fakePagedRunsReader('ns_', [rowsPage1, rowsPage2])
 
-    await expect(readRunOutcomes(reader, uuidv7())).rejects.toThrow(KyuError)
+    const outcomes = await readRunOutcomes(reader, uuidv7())
+
+    expect(outcomes.map((o) => o.subscription)).toEqual(['first', 'second'])
+    expect(listCalls().map((call) => call?.offset)).toEqual([0, 100])
+  })
+
+  it('throws KyuError naming the id and stops paging when the engine reports more pages than the ceiling', async () => {
+    const envelopeId = uuidv7()
+    const { reader, listCalls } = fakePagedRunsReader(
+      'ns_',
+      Array.from({ length: 11 }, () => []),
+    )
+
+    expect.assertions(3)
+    try {
+      await readRunOutcomes(reader, envelopeId)
+    } catch (error) {
+      expect(error).toBeInstanceOf(KyuError)
+      expect(error).toHaveProperty('message', expect.stringContaining(envelopeId))
+    }
+    expect(listCalls()).toHaveLength(1)
   })
 
   it('throws KyuError and never calls runs.list for a malformed envelope id', async () => {
@@ -310,6 +343,15 @@ describe('readRunOutcomes', () => {
       expect(error).toBeInstanceOf(KyuError)
       expect(error).toHaveProperty('cause', cause)
     }
+  })
+
+  it('defaults since to 5 minutes before the correlation id’s own uuid v7 timestamp', async () => {
+    const correlationId = '018cc251-f400-7000-8000-000000000000'
+    const { reader, listCalls } = fakeRunsReader('ns_', [])
+    await readRunOutcomesFor(reader, { key: 'correlationId', id: correlationId, caller: 'runs.cancelForCorrelation' })
+
+    expect(listCalls()[0]?.additionalMetadata).toEqual({ correlationId })
+    expect(listCalls()[0]?.since?.getTime()).toBe(Date.UTC(2024, 0, 1, 0, 0, 0, 0) - 5 * 60_000)
   })
 
   it('keeps only rows from this namespace, in the engine’s own order', async () => {
