@@ -8,12 +8,17 @@ import type {
 } from '@kyuworks/schemas'
 import { envelopeSchema } from '@kyuworks/schemas'
 import { KyuError } from '../errors.js'
-import { eventScope } from '../eventScope.js'
-import { Or, SleepCondition, UserEventCondition, durationToMs } from '../hatchet.js'
+import { Or, SleepCondition } from '../hatchet.js'
 import type { DurableContext, Duration, JsonObject, OrCondition } from '../hatchet.js'
 import { readRunOutcomes } from './runOutcomes.js'
 import type { RunsReader } from './runOutcomes.js'
-import { celEquals, decodeMatchedEnvelope, isJsonObject, readEnvelopeField } from './waitMatch.js'
+import {
+  buildMessageCondition,
+  buildWaitWindow,
+  decodeMatchedEnvelope,
+  isJsonObject,
+  readEnvelopeField,
+} from './waitMatch.js'
 
 export interface WaitForChildrenOptions {
   where: {
@@ -68,23 +73,17 @@ export function buildChildConditions(
   options: WaitForChildrenOptions,
   now: Date,
 ): OrCondition[] {
-  const lookback = options.lookback ?? '5m'
-  const scope = options.scope ?? eventScope(handlerEnvelope)
-  const considerEventsSince = new Date(now.getTime() - durationToMs(lookback)).toISOString()
-
+  const window = buildWaitWindow(handlerEnvelope, options.scope, options.lookback, now)
   return options.where.envelopeIds.map((envelopeId, index) => {
-    const keyMatch = celEquals('waitForChildren', options.where.field, envelopeId)
-    const expression = `${keyMatch} && input.version == ${definition.version}`
-    const reply = new UserEventCondition(
-      definition.name,
-      expression,
-      `child-${index}`,
-      undefined,
-      scope,
-      considerEventsSince,
-    )
-    const timeout = new SleepCondition(options.timeout, `timeout-${index}`)
-    return Or(reply, timeout)
+    const reply = buildMessageCondition({
+      caller: 'waitForChildren',
+      definition,
+      where: { field: options.where.field, equals: envelopeId },
+      readableDataKey: `child-${index}`,
+      window,
+      afterMessageId: undefined,
+    })
+    return Or(reply, new SleepCondition(options.timeout, `timeout-${index}`))
   })
 }
 

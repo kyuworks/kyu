@@ -99,6 +99,12 @@ export type { DurableHandlerContext, DurableOptions, WaitForOptions, WaitForResu
 // a consumer cannot hold. Reach this through ctx.waitForChildren instead.
 export type { ChildOutcome, WaitForChildrenOptions } from './consume/fanOut.js'
 
+// MAX_WAIT_FOR_ANY_MESSAGES/buildAnyWaitConditions/waitForAnyMessage stay
+// internal for the same reason fan-out's do: they need a DurableContext a
+// consumer cannot hold. Reach this through ctx.waitForAny instead.
+export type { MessageWait, WaitForAnyOptions, WaitForAnyResult } from './consume/waitAny.js'
+export type { FieldMatch } from './consume/waitMatch.js'
+
 // readRunOutcomes/toRunOutcome are not exported: their RunsReader parameter
 // type is derived from HatchetClient and not exported either, so a consumer
 // could not name it. Reach this through kyu.runs.forEnvelope instead.

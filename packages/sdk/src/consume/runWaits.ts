@@ -6,6 +6,8 @@ import type { RunLookup } from './runOutcomes.js'
 export type RunWait =
   | { kind: 'sleep'; until: Date }
   | { kind: 'message'; name: string; match?: { field: string; equals: string } }
+  /** A `waitForAny`: every name it is parked on, with the field match when the label decodes. */
+  | { kind: 'anyMessage'; waits: readonly { name: string; match?: { field: string; equals: string } }[] }
 
 // Narrowed to what this file actually needs, the same way RunsReader
 // (runOutcomes.ts) is, so the unit test's fake is a plain object.
@@ -38,6 +40,41 @@ function parseWaitLabel(label: string | undefined): { field: string; equals: str
   return result.success ? result.data : undefined
 }
 
+/** One branch of a multi-name wait as the label records it. Flat, not a `MessageWait`, so `waitAny.ts` can import this file without a cycle. */
+export interface WaitLabelEntry {
+  name: string
+  field: string
+  equals: string
+}
+
+const ANY_WAIT_LABEL_PREFIX = 'kyu:2:'
+
+/** The only channel a multi-name wait's field matches reach the read side by: the durable log has one event key per branch and no CEL. */
+export function toAnyWaitLabel(entries: readonly WaitLabelEntry[]): string {
+  return `${ANY_WAIT_LABEL_PREFIX}${JSON.stringify(entries)}`
+}
+
+const anyWaitLabelSchema = z
+  .array(z.object({ name: z.string().min(1), field: z.string().min(1), equals: z.string() }))
+  .min(1)
+
+function parseAnyWaitLabel(label: string | undefined): WaitLabelEntry[] | undefined {
+  if (label === undefined || !label.startsWith(ANY_WAIT_LABEL_PREFIX)) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(label.slice(ANY_WAIT_LABEL_PREFIX.length))
+  } catch {
+    return undefined
+  }
+  const result = anyWaitLabelSchema.safeParse(parsed)
+  return result.success ? result.data : undefined
+}
+
+function toMessageName(eventKey: string | undefined, namespace: string): string {
+  const key = eventKey ?? ''
+  return key.startsWith(namespace) ? key.slice(namespace.length) : key
+}
+
 // One page of the durable log; the log has no pagination metadata like
 // runs.list does, so a page that came back full is the only signal that more
 // might follow, and a page that came back short is the only signal that it
@@ -67,10 +104,30 @@ function flattenConditions(entry: DurableLogEntry): DurableLogCondition[] {
 function toRunWait(entry: DurableLogEntry, namespace: string): RunWait | undefined {
   const conditions = flattenConditions(entry)
 
-  const userEvent = conditions.find((condition) => condition.kind === 'USER_EVENT')
+  const userEvents = conditions.filter((condition) => condition.kind === 'USER_EVENT')
+
+  // Several user events in one entry can be a waitForAny, or a
+  // waitForChildren fan-out registering one Or group per child with the same
+  // reply name and no label; only a decodable label or genuinely different
+  // names makes it a waitForAny. The label is this SDK's own record of the
+  // registration, the engine's condition list the fallback.
+  if (userEvents.length > 1) {
+    const label = parseAnyWaitLabel(entry.userMessage)
+    const distinctNames = new Set(userEvents.map((condition) => toMessageName(condition.eventKey, namespace)))
+    if (label !== undefined || distinctNames.size > 1) {
+      // A label whose entry count disagrees with the engine's own condition
+      // count cannot be trusted to pair correctly with them.
+      const waits =
+        label === undefined || label.length !== userEvents.length
+          ? userEvents.map((condition) => ({ name: toMessageName(condition.eventKey, namespace) }))
+          : label.map((item) => ({ name: item.name, match: { field: item.field, equals: item.equals } }))
+      return { kind: 'anyMessage', waits }
+    }
+  }
+
+  const userEvent = userEvents[0]
   if (userEvent !== undefined) {
-    const eventKey = userEvent.eventKey ?? ''
-    const name = eventKey.startsWith(namespace) ? eventKey.slice(namespace.length) : eventKey
+    const name = toMessageName(userEvent.eventKey, namespace)
     // A run parked by a worker on an older SDK, or one whose label a future
     // SDK cannot decode, carries no match rather than failing the whole read.
     const label = parseWaitLabel(entry.userMessage)
