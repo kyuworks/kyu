@@ -24,7 +24,8 @@
 | Word | Meaning |
 | --- | --- |
 | outbox | The `kyu_outbox` table in a producer's own database. `publish()` writes there inside the caller's transaction. |
-| relay | The loop in the producer process that ships outbox rows to the engine and marks them published. |
+| relay | The process that ships outbox rows to the engine and marks them published. One per project per environment, beside the worker. |
+| sidecar | A process that runs beside a project's own processes and does one job for them; the relay is one. |
 | at-least-once | The only delivery guarantee. A handler may see the same envelope id twice. |
 | processed table | `kyu_processed` in a consumer's database. `onceById()` records handled ids there, inside the handler's transaction. |
 | concurrency key | A CEL expression on the payload or metadata that groups runs. `maxRuns: 1` per key gives FIFO per key. |
