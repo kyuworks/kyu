@@ -68,12 +68,14 @@ export function toRunOutcome(row: EngineRunRow, namespace: string): RunOutcome |
   if (workflowName === undefined || !workflowName.startsWith(namespace)) return undefined
 
   let status = RUN_STATUS[row.status]
-  // The engine writes the terminal status before it writes startedAt/finishedAt;
-  // a terminal row still missing either one is not settled, so it reads running.
-  if (
-    (status === 'completed' || status === 'failed') &&
-    (row.startedAt === undefined || row.finishedAt === undefined)
-  ) {
+  // The engine writes the terminal status before it writes startedAt/finishedAt,
+  // so an unsettled completed row reads running. A failed row is different: a
+  // run can fail before any worker starts it (scheduling timeout, could-not-
+  // send-to-worker, rate limit) and never gets a startedAt, so only a missing
+  // finishedAt — not a missing startedAt — holds a failed row back.
+  if (status === 'completed' && (row.startedAt === undefined || row.finishedAt === undefined)) {
+    status = 'running'
+  } else if (status === 'failed' && row.finishedAt === undefined) {
     status = 'running'
   }
 
