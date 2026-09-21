@@ -1,4 +1,4 @@
-import { CommandHasTwoSubscribersError } from '../errors.js'
+import { CommandHasTwoSubscribersError, SubscriptionAlreadyBoundError } from '../errors.js'
 import type { CreateWorkerOpts, HatchetClient } from '../hatchet.js'
 import type { Subscription } from './subscribe.js'
 
@@ -55,6 +55,25 @@ function assertValidStopTimeoutMs(stopTimeoutMs: number): void {
   }
 }
 
+// stopDurableWaits is one-way, so a second worker sharing the object would
+// fail every durable wait on it. Weak: a subscription dropped with its worker
+// does not stay reachable here.
+const boundDurableSubscriptions = new WeakSet<Subscription>()
+
+// Checked and marked in one synchronous pass, before createWorker's first
+// await, so two concurrent calls cannot both pass. Marks nothing when any
+// subscription is refused.
+function bindDurableSubscriptionsOnce(subscriptions: readonly Subscription[], workerName: string): void {
+  for (const subscription of subscriptions) {
+    if (subscription.stopDurableWaits !== undefined && boundDurableSubscriptions.has(subscription)) {
+      throw new SubscriptionAlreadyBoundError(subscription.name, workerName)
+    }
+  }
+  for (const subscription of subscriptions) {
+    if (subscription.stopDurableWaits !== undefined) boundDurableSubscriptions.add(subscription)
+  }
+}
+
 // The engine SDK's graceful exit evicts each parked durable run and waits a
 // fixed 30s per run for the ack (EVICTION_ACK_TIMEOUT_MS in its
 // durable-listener-client); it exposes no way to shorten that, so the bound
@@ -83,6 +102,7 @@ export async function createWorker(
 ): Promise<KyuWorker> {
   assertSingleCommandSubscriber(options.subscriptions)
   if (options.stopTimeoutMs !== undefined) assertValidStopTimeoutMs(options.stopTimeoutMs)
+  bindDurableSubscriptionsOnce(options.subscriptions, name)
 
   const workerOptions: CreateWorkerOpts = {
     workflows: options.subscriptions.map((subscription) => subscription.workflow),
