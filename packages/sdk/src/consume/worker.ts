@@ -1,4 +1,4 @@
-import { CommandHasTwoSubscribersError, SubscriptionAlreadyBoundError } from '../errors.js'
+import { CommandHasTwoSubscribersError, KyuError, SubscriptionAlreadyBoundError } from '../errors.js'
 import type { CreateWorkerOpts, HatchetClient, Worker } from '../hatchet.js'
 import type { Subscription } from './subscribe.js'
 
@@ -21,6 +21,13 @@ export interface KyuWorker {
 
 export interface CreateWorkerOptions {
   subscriptions: Subscription[]
+  /**
+   * The names of the subscriptions this worker registers; the others are left
+   * alone, so a second process can serve them. Unset: all of them. One bus
+   * tenant, separate worker pools by subscription name — a pool that calls a
+   * slow third party cannot hold up the pool that runs durable handlers.
+   */
+  serves?: readonly string[]
   slots?: number
   durableSlots?: number
   /** The engine's own SIGTERM/SIGINT handlers, which call `process.exit(0)`. Defaults to false: `stop()` is the shutdown path; set true only to opt into the engine's handlers. */
@@ -47,6 +54,29 @@ export function assertSingleCommandSubscriber(subscriptions: readonly Subscripti
     }
     firstSubscriberByCommand.set(subscription.messageName, subscription.name)
   }
+}
+
+// A name that matches nothing is a deployment typo, and a worker that quietly
+// serves less than the deployer asked for takes no work and raises nothing.
+export function selectServedSubscriptions(
+  subscriptions: readonly Subscription[],
+  serves: readonly string[] | undefined,
+  workerName: string,
+): readonly Subscription[] {
+  if (serves === undefined) return subscriptions
+  if (serves.length === 0) {
+    throw new KyuError(`worker "${workerName}" serves no subscription: leave serves unset to serve them all`)
+  }
+  const available = new Set(subscriptions.map((subscription) => subscription.name))
+  for (const name of serves) {
+    if (!available.has(name)) {
+      throw new KyuError(
+        `worker "${workerName}" serves "${name}", which is not one of its subscriptions: ${[...available].join(', ')}`,
+      )
+    }
+  }
+  const wanted = new Set(serves)
+  return subscriptions.filter((subscription) => wanted.has(subscription.name))
 }
 
 function assertValidStopTimeoutMs(stopTimeoutMs: number): void {
@@ -108,12 +138,13 @@ export async function createWorker(
   name: string,
   options: CreateWorkerOptions,
 ): Promise<KyuWorker> {
-  assertSingleCommandSubscriber(options.subscriptions)
+  const served = selectServedSubscriptions(options.subscriptions, options.serves, name)
+  assertSingleCommandSubscriber(served)
   if (options.stopTimeoutMs !== undefined) assertValidStopTimeoutMs(options.stopTimeoutMs)
-  bindDurableSubscriptionsOnce(options.subscriptions, name)
+  bindDurableSubscriptionsOnce(served, name)
 
   const workerOptions: CreateWorkerOpts = {
-    workflows: options.subscriptions.map((subscription) => subscription.workflow),
+    workflows: served.map((subscription) => subscription.workflow),
     handleKill: options.handleKill ?? false,
   }
   if (options.slots !== undefined) workerOptions.slots = options.slots
@@ -123,7 +154,7 @@ export async function createWorker(
   try {
     worker = await hatchet.worker(name, workerOptions)
   } catch (cause) {
-    releaseDurableSubscriptions(options.subscriptions)
+    releaseDurableSubscriptions(served)
     throw cause
   }
 
@@ -149,7 +180,7 @@ export async function createWorker(
       // Before the engine's own stop: it stops the durable listener early, and
       // a wait registered after that never settles (durable-listener-client
       // sendEvent), which would hold this stop open forever.
-      for (const subscription of options.subscriptions) subscription.stopDurableWaits?.()
+      for (const subscription of served) subscription.stopDurableWaits?.()
       return stopWithinBound(worker.stop(), options.stopTimeoutMs)
     },
     waitUntilReady: (timeoutMs?: number): Promise<void> =>

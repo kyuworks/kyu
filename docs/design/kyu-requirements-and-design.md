@@ -325,7 +325,7 @@ Subscriptions declare `retries` and `backoff: { factor, maxSeconds }`. Handlers 
 
 ### 9.4 Priority and rate limits
 
-Priority is 1 to 3, default 1, and only orders runs within one workflow. Lanes that must not compete, such as interactive sends versus bulk sweeps, are separate workflows rather than priorities. Rate limits are declared per subscription with a dynamic key, for example `'mailer:' + additional_metadata.tenantId` at the tenant's quota with the mail provider; Hatchet re-queues rather than fails when a limit is hit.
+Priority is 1 to 3, default 1, and only orders runs within one workflow. Lanes that must not compete, such as interactive sends versus bulk sweeps, are separate workflows rather than priorities. Rate limits are declared per subscription as `rateLimits: [{ key, limit, period }]`, where `key` is a CEL expression over the event: `'mailer:' + additional_metadata.tenantId` gives each business tenant its own bucket at its quota with the provider, and a constant such as `'marketplace'` gives every run one shared bucket. A run that would pass the limit is queued and starts in a later period; the engine never fails it.
 
 ### 9.5 Timers and correlation
 
@@ -362,6 +362,7 @@ export const sendInvoice = kyu.subscribe(orderPlaced, {
   concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'cancel_in_progress' },
   retries: 5,
   backoff: { factor: 2, maxSeconds: 600 },
+  rateLimits: [{ key: "'invoices:' + additional_metadata.tenantId", limit: 50, period: 'minute' }],
   handler: (ctx) => { /* open tenant-scoped tx with ctx.envelope.tenantId */ },
 });
 
@@ -379,6 +380,7 @@ export const followUpOrder = kyu.durable(orderPlaced, {
 // Worker
 const worker = await kyu.worker('shop-api', { subscriptions: [sendInvoice, followUpOrder], slots: 10 });
 await worker.start();
+const marketplaceWorker = await kyu.worker('shop-marketplace', { subscriptions: [sendInvoice, followUpOrder], serves: ['send-invoice'], slots: 2 });
 
 // Relay, started once per producer process
 const relay = kyu.startRelay({ db: pool, workerId: 'shop-api-1' });
@@ -413,6 +415,8 @@ Commands use the same `publish` and `subscribe` calls with `kind: 'command'`; th
 | Retention | Configure run and event retention to 30 days in production, 7 in dev |
 | Monitoring | Hatchet failure alerts to Slack; scrape engine metrics if exposed; outbox-lag alert from each producer |
 | Scaling path | Compose or Helm topology with separate engine replicas and RabbitMQ when N4 is exceeded; no code change |
+
+**Worker pools.** One bus tenant per project per environment, and separate worker pools by subscription name inside it. A consumer builds its whole subscription list once and starts one process per pool, each with `kyu.worker(name, { subscriptions, serves: [...] })` naming the subscriptions that pool serves. A pool whose subscriptions call a slow third party runs on its own machine with its own rate limit, so it cannot hold up the pool that runs durable workflow handlers. How the pools are laid out for a real integration is a second ADR, deferred until a marketplace integration is scheduled.
 
 ## 13. Adoption plan
 

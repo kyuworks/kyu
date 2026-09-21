@@ -130,27 +130,32 @@ describe('decodeIncomingEnvelope', () => {
 })
 
 describe('toHatchetRateLimit', () => {
-  it('maps a static rate limit', () => {
-    expect(toHatchetRateLimit({ staticKey: 'shop-api', units: 3 })).toEqual({
-      staticKey: 'shop-api',
-      units: 3,
-    })
-  })
-
-  it('defaults units to 1 for a static rate limit when the caller gives none', () => {
-    expect(toHatchetRateLimit({ staticKey: 'shop-api' })).toEqual({
-      staticKey: 'shop-api',
+  it('maps a per-tenant rate limit onto one dynamic engine rate limit', () => {
+    expect(
+      toHatchetRateLimit({ key: "'marketplace:' + additional_metadata.tenantId", limit: 50, period: 'minute' }),
+    ).toEqual({
+      dynamicKey: "'marketplace:' + additional_metadata.tenantId",
       units: 1,
-    })
-  })
-
-  it('maps a dynamic rate limit, translating the duration to the engine enum', () => {
-    expect(toHatchetRateLimit({ dynamicKey: 'input.data.tenantId', limit: 10, duration: 'MINUTE' })).toEqual({
-      dynamicKey: 'input.data.tenantId',
-      units: 1,
-      limit: 10,
+      limit: 50,
       duration: RateLimitDuration.MINUTE,
     })
+  })
+
+  it('maps a constant key, which gives every run one shared bucket', () => {
+    expect(toHatchetRateLimit({ key: "'marketplace'", limit: 2, period: 'second' })).toEqual({
+      dynamicKey: "'marketplace'",
+      units: 1,
+      limit: 2,
+      duration: RateLimitDuration.SECOND,
+    })
+  })
+
+  it('refuses a limit below one, which the engine would read as a static-key lookup', () => {
+    expect(() => toHatchetRateLimit({ key: "'marketplace'", limit: 0, period: 'minute' })).toThrow(KyuError)
+  })
+
+  it('refuses an empty key', () => {
+    expect(() => toHatchetRateLimit({ key: '   ', limit: 1, period: 'minute' })).toThrow(KyuError)
   })
 })
 
@@ -187,10 +192,7 @@ describe('subscribe: option wiring', () => {
       ],
       retries: 4,
       backoff: { factor: 2, maxSeconds: 600 },
-      rateLimits: [
-        { staticKey: 'shop-api', units: 2 },
-        { dynamicKey: 'input.data.tenantId', limit: 5, duration: 'HOUR' },
-      ],
+      rateLimits: [{ key: "'shop-api'", limit: 5, period: 'hour' }],
       executionTimeout: '30s',
       priority: 'high',
     })
@@ -203,8 +205,7 @@ describe('subscribe: option wiring', () => {
     expect(options?.retries).toBe(4)
     expect(options?.backoff).toEqual({ factor: 2, maxSeconds: 600 })
     expect(options?.rateLimits).toEqual([
-      { staticKey: 'shop-api', units: 2 },
-      { dynamicKey: 'input.data.tenantId', units: 1, limit: 5, duration: RateLimitDuration.HOUR },
+      { dynamicKey: "'shop-api'", units: 1, limit: 5, duration: RateLimitDuration.HOUR },
     ])
     expect(options?.executionTimeout).toBe('30s')
     expect(options?.defaultPriority).toBe(Priority.HIGH)
