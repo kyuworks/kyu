@@ -23,6 +23,12 @@ A worker stopped while `watch-shipping`'s body is still executing fails that att
 engine retries it on the next worker to start. A worker stopped once the run is parked in its
 wait hands the wait to the next worker directly, with no failed attempt in between.
 
+`worker` also runs `run-workflow`, a durable handler that reads a workflow definition from the
+shop's own tables (below) and walks its steps — a delay, a branch on whether the order has
+shipped, and a staff notification — and `notify-staff`, a plain command handler that reads the
+wording for that notification from the pinned version and writes a `shop_handler_log` row, the
+same way every other handler here records what it did.
+
 The relay runs on a `pg.Pool` of one connection, not a bare `pg.Client`: the relay never opens a
 transaction, so a pool is safe here. The normal path when Postgres drops the connection is a
 `db-connection-dropped` log line, then pg reconnecting by itself on the relay's next poll — no
@@ -80,17 +86,34 @@ matching `shop_invoice` row, the simulated fault that gives the Bus page a dead 
 `shop_workflow_definition` (one row per definition, at most one `enabled` per tenant),
 `shop_workflow_version` (one row per saved version, its steps stored as JSON against
 `src/workflow/definition.ts`'s schema), `shop_workflow_run` (one row per run, pinned to the version
-it started with) and `shop_workflow_step_log` (one row per step a run has finished). The schema is
-in place but nothing reads a version's steps yet; the interpreter in the next pull request parses
-them against it on every read, so a stored definition that has drifted from the schema is caught
-there, not here.
+it started with) and `shop_workflow_step_log` (one row per step a run has finished).
+`migrations/0005_shop.sql` seeds one enabled definition for the demo tenant, so placing an order on
+the shop's checkout page starts a run, visible on the Bus page under `run-workflow` and
+`notify-staff`.
 
 When an order is placed, `placeOrder` looks for the one workflow enabled for that tenant. If there
 is one, it publishes `shop.workflow.triggered` in the same transaction as the order, carrying a new
 run id, the definition id, the pinned version id and the order id — ids only, never a step's
 authored text. The run id is a uuid v7 minted at that point and is also the message's correlation
-id. Nothing consumes this message yet: `run-workflow`, the durable handler that reads the pinned
-version and walks its steps, is the next pull request.
+id.
+
+`run-workflow`, a durable handler, subscribes to that one message and walks the pinned version's
+steps: `src/workflow/definition.ts`'s `parseWorkflowDefinition` is the trust edge, run every time a
+version is loaded, never cached, so a stored definition that has drifted from the schema is caught
+there. A delay step is `ctx.sleepFor`. A branch step reads whether the order has shipped — the one
+condition this interpreter knows — and writes the exit it chose to `shop_workflow_step_log` in the
+same transaction as the decision; a replay reads that exit back instead of asking the order again,
+because only `sleepFor` itself replays from the durable log, not an ordinary database read. A
+notify step publishes `shop.staff.notify` (ids only) for `notify-staff` to pick up, which reads the
+wording out of the pinned version by step id and writes a `shop_handler_log` row. Every step's
+effect — the ledger row, and for a notify step the published command — runs inside
+`kyu.onceById`, keyed on the run id and the step id, so a step that runs a second time after a
+restart changes nothing. `run-workflow` fixes `executionTimeout` at one hour, and
+`workflow/definition.ts` rejects a definition whose delays sum past 50 minutes (#113), so a run can
+never be evicted mid-sleep. Pinning the version also keeps two workers' recorded sleeps identical,
+which the durable engine requires. See
+`docs/architecture/adr/20260920-workflow-definitions-run-through-one-interpreter.md` for the design
+this follows.
 
 ## Web page
 

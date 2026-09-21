@@ -1,0 +1,87 @@
+import { randomUUID } from 'node:crypto'
+import type { Client } from 'pg'
+
+export interface WorkflowFixtureSteps {
+  waitSeconds: number
+  settleSeconds: number
+  notifyText: string
+}
+
+const DEFAULT_STEPS: WorkflowFixtureSteps = {
+  waitSeconds: 3,
+  settleSeconds: 5,
+  notifyText: 'Order has not shipped yet — please chase the warehouse.',
+}
+
+// workflow/definition.ts's schema, inline: wait-a-bit delay -> shipped-yet
+// branch -> (false) settle delay -> nudge notify -> finish; (true) finish.
+function buildDefinition(steps: WorkflowFixtureSteps) {
+  return {
+    schemaVersion: 1,
+    start: 'wait-a-bit',
+    steps: [
+      { id: 'wait-a-bit', kind: 'delay', input: { seconds: steps.waitSeconds }, next: 'shipped-yet' },
+      {
+        id: 'shipped-yet',
+        kind: 'branch',
+        input: { condition: 'order-shipped' },
+        whenTrue: 'finish',
+        whenFalse: 'settle',
+      },
+      { id: 'settle', kind: 'delay', input: { seconds: steps.settleSeconds }, next: 'nudge' },
+      { id: 'nudge', kind: 'notify', input: { text: steps.notifyText }, next: 'finish' },
+      { id: 'finish', kind: 'end' },
+    ],
+  }
+}
+
+export interface InsertedDefinition {
+  definitionId: string
+  versionId: string
+}
+
+// The smallest fixture that makes run-workflow find something to walk: one
+// enabled definition, one version, for a fresh random tenant.
+// shop_workflow_definition and shop_workflow_version are never truncated
+// (vitest.integration.setup.ts), so this grows both tables by one row per test.
+export async function insertWorkflowDefinition(
+  admin: Client,
+  tenantId: string,
+  steps: WorkflowFixtureSteps = DEFAULT_STEPS,
+): Promise<InsertedDefinition> {
+  const definitionId = randomUUID()
+  const versionId = randomUUID()
+  await admin.query(
+    'INSERT INTO shop_workflow_definition (id, tenant_id, name, enabled, current_version_id) VALUES ($1, $2, $3, false, NULL)',
+    [definitionId, tenantId, 'proof-workflow'],
+  )
+  await admin.query(
+    'INSERT INTO shop_workflow_version (id, definition_id, tenant_id, version, steps) VALUES ($1, $2, $3, 1, $4)',
+    [versionId, definitionId, tenantId, JSON.stringify(buildDefinition(steps))],
+  )
+  await admin.query('UPDATE shop_workflow_definition SET enabled = true, current_version_id = $2 WHERE id = $1', [
+    definitionId,
+    versionId,
+  ])
+  return { definitionId, versionId }
+}
+
+// A second saved version, repointed as current: proves a parked run keeps
+// walking the version it pinned at the start, not this one (version-pin-holds).
+export async function insertNewVersion(
+  admin: Client,
+  definition: InsertedDefinition,
+  tenantId: string,
+  steps: WorkflowFixtureSteps,
+): Promise<string> {
+  const versionId = randomUUID()
+  await admin.query(
+    'INSERT INTO shop_workflow_version (id, definition_id, tenant_id, version, steps) VALUES ($1, $2, $3, 2, $4)',
+    [versionId, definition.definitionId, tenantId, JSON.stringify(buildDefinition(steps))],
+  )
+  await admin.query('UPDATE shop_workflow_definition SET current_version_id = $2 WHERE id = $1', [
+    definition.definitionId,
+    versionId,
+  ])
+  return versionId
+}

@@ -51,13 +51,14 @@ describe('applyPending', () => {
       '0002_shop.sql',
       '0003_shop.sql',
       '0004_shop.sql',
+      '0005_shop.sql',
     ])
 
     const second = await applyPending(client, [MIGRATIONS_DIRECTORY, APP_MIGRATIONS_DIRECTORY])
     expect(second).toEqual([])
 
     const ledger = await client.query('SELECT name FROM shop_migrations')
-    expect(ledger.rows).toHaveLength(6)
+    expect(ledger.rows).toHaveLength(7)
 
     for (const table of TABLES) {
       const exists = await client.query('SELECT 1 FROM information_schema.tables WHERE table_name = $1', [table])
