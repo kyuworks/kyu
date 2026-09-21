@@ -53,7 +53,9 @@ export async function postJsonOutcome(path: string, body: string): Promise<JsonF
 
 // Never rejects: an offline browser, a refused connection or an abort becomes
 // an outcome too, so a polling loop folds every refresh into state through one
-// path instead of a second .catch that repeats the message format.
+// path instead of a second .catch that repeats the message format. An abort
+// is a status-0 outcome like any other network failure — a caller must check
+// the signal itself and drop the outcome instead of showing its message.
 export async function getJsonOutcome(path: string, signal: AbortSignal): Promise<JsonFetchOutcome> {
   try {
     const response = await fetch(path, { signal })

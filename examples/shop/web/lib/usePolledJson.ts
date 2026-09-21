@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getJsonOutcome } from './fetchJson'
 import type { JsonFetchOutcome } from './fetchJson'
 
@@ -42,8 +42,8 @@ export function startJsonPolling<TState>(
   }
 }
 
-// `reduce` is an effect dependency: pass a module-level function, never one
-// built during render, or every render restarts the loop.
+// reduceRef always holds the latest `reduce`, so a new inline function each
+// render does not restart the polling loop: only path or intervalMs does.
 /** The state `reduce` builds from `path`, refreshed every `intervalMs` until the page unmounts. */
 export function usePolledJson<TState>(
   path: string,
@@ -52,6 +52,13 @@ export function usePolledJson<TState>(
   reduce: PolledJsonReducer<TState>,
 ): TState {
   const [state, setState] = useState<TState>(initialState)
-  useEffect(() => startJsonPolling(path, intervalMs, reduce, setState), [path, intervalMs, reduce])
+  const reduceRef = useRef(reduce)
+  useEffect(() => {
+    reduceRef.current = reduce
+  })
+  useEffect(
+    () => startJsonPolling(path, intervalMs, (previous, outcome) => reduceRef.current(previous, outcome), setState),
+    [path, intervalMs],
+  )
   return state
 }

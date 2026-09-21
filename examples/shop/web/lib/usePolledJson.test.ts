@@ -47,6 +47,7 @@ beforeEach(() => {
   calls.length = 0
   state = EMPTY_STATE
   applies = 0
+  respond = () => Promise.resolve(new Response('count:1'))
   vi.stubGlobal('fetch', (path: string, init: RequestInit) => {
     calls.push({ path, signal: init.signal ?? new AbortController().signal })
     return respond(calls.length - 1)
