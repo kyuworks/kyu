@@ -101,11 +101,9 @@ export type { KyuRuns, ReadRunOutcomesOptions, RunOutcome, RunStatus } from './c
 export { createWorker } from './consume/worker.js'
 export type { CreateWorkerOptions, KyuWorker } from './consume/worker.js'
 
-export { SCHEDULE_WORKFLOW_NAME } from './schedule/scheduleTrigger.js'
-export type { ScheduleTrigger } from './schedule/scheduleTrigger.js'
-
-export { createScheduleRunner } from './schedule/scheduleRunner.js'
+// createSchedules/createScheduleRunner/SchedulesEngine/SCHEDULE_WORKFLOW_NAME/
+// ScheduleTrigger are not exported: a consumer reaches them through
+// kyu.schedules and kyu.scheduleRunner, never the Hatchet engine directly.
 export type { ScheduleRunnerOptions } from './schedule/scheduleRunner.js'
 
-export { createSchedules } from './schedule/schedules.js'
-export type { CreateScheduleOptions, KyuSchedules, Schedule, SchedulesEngine } from './schedule/schedules.js'
+export type { CreateScheduleOptions, KyuSchedules, Schedule } from './schedule/schedules.js'

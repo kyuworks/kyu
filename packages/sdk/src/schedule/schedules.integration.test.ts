@@ -9,10 +9,10 @@ import { createHatchetClient } from '../hatchet.js'
 import type { KyuWorker } from '../consume/worker.js'
 
 // Namespaced per run so parallel worktrees sharing one engine do not see
-// each other's cron ticks (relay.integration.test.ts's own convention). Only
-// the runner's *workflow* name is namespaced by the engine — a cron's own
-// name is not (plan proof 27) — so the schedule name itself carries the lane
-// prefix instead, to stay identifiable and collision-free.
+// each other's cron ticks (relay.integration.test.ts's own convention). A
+// cron hangs off this run's own namespaced runner workflow, so its name is
+// already unique to this test run; the lane98b- prefix on the schedule name
+// below is for operator identification in the dashboard, not collision-avoidance.
 const namespace = `sched${randomBytes(3).toString('hex')}_`
 const hatchet = createHatchetClient({ namespace })
 const kyu: Kyu = createKyu({ hatchet, source: 'schedule-test' })
@@ -51,10 +51,11 @@ describe('kyu.schedules: a cron tick publishes through the outbox', () => {
   }, 60_000)
 
   afterAll(async () => {
+    // Cleanup only — no assertions here. An expectation that throws would
+    // skip client.end() and the outbox delete below it, so the pass/fail
+    // check on the schedule's removal lives in the test body instead.
     await worker?.stop()
     await kyu.schedules.remove(scheduleName)
-    const remaining = await kyu.schedules.list()
-    expect(remaining.some((s) => s.name === scheduleName)).toBe(false)
     await client.query('DELETE FROM kyu_outbox WHERE name = $1', [ticked.name])
     await client.end()
   }, 60_000)
@@ -71,11 +72,21 @@ describe('kyu.schedules: a cron tick publishes through the outbox', () => {
     }, 70_000)
     expect(found).toBe(true)
 
-    const result = await client.query('SELECT id, tenant_id FROM kyu_outbox WHERE name = $1', [ticked.name])
+    const result = await client.query(
+      "SELECT id, tenant_id, envelope->>'correlationId' AS correlation_id FROM kyu_outbox WHERE name = $1",
+      [ticked.name],
+    )
     expect(result.rows).toHaveLength(1)
     const row = result.rows[0]
     expect(row?.tenant_id).toBe(tenantId)
     // The 15th character of a uuid v7 string is always '7'.
     expect(String(row?.id).charAt(14)).toBe('7')
+    // The runner does not pass a correlationId to createEnvelope, so it
+    // defaults to the envelope's own fresh id, not null.
+    expect(row?.correlation_id).toBe(row?.id)
+
+    await kyu.schedules.remove(scheduleName)
+    const remaining = await kyu.schedules.list()
+    expect(remaining.some((s) => s.name === scheduleName)).toBe(false)
   }, 90_000)
 })

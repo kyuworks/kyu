@@ -56,6 +56,22 @@ describe('createSchedules().create', () => {
       input: { kyuSchedule: 'nightly-report', name: ticked.name, version: ticked.version, tenantId, data: { n: 5 } },
     })
   })
+
+  it('rejects a tenant id that is not a uuid before the cron is created', async () => {
+    const { engine, create } = fakeEngine()
+    const schedules = createSchedules(engine)
+
+    await expect(
+      schedules.create({
+        name: 'nightly-report',
+        cron: '0 9 * * *',
+        definition: ticked,
+        data: { n: 1 },
+        tenantId: 'tenant-42',
+      }),
+    ).rejects.toThrow(KyuError)
+    expect(create).not.toHaveBeenCalled()
+  })
 })
 
 describe('createSchedules().remove', () => {
@@ -74,5 +90,39 @@ describe('createSchedules().remove', () => {
 
     await expect(schedules.remove('nightly-report')).resolves.toBe(true)
     expect(del).toHaveBeenCalledWith(row)
+  })
+
+  it('deletes every row that carries the name when the engine allows duplicates', async () => {
+    const rowA = { name: 'nightly-report', cron: '0 9 * * *' }
+    const rowB = { name: 'nightly-report', cron: '0 9 * * *' }
+    const { engine, del } = fakeEngine([rowA, rowB])
+    const schedules = createSchedules(engine)
+
+    await expect(schedules.remove('nightly-report')).resolves.toBe(true)
+    expect(del).toHaveBeenCalledTimes(2)
+    expect(del).toHaveBeenCalledWith(rowA)
+    expect(del).toHaveBeenCalledWith(rowB)
+  })
+})
+
+describe('createSchedules().list', () => {
+  it('refuses once the engine reports more than one page of crons', async () => {
+    const list = vi.fn().mockResolvedValue({ rows: [], pagination: { num_pages: 2 } })
+    const engine: SchedulesEngine = { crons: { create: vi.fn(), delete: vi.fn(), list } }
+    const schedules = createSchedules(engine)
+
+    await expect(schedules.list()).rejects.toThrow(KyuError)
+  })
+})
+
+describe('createSchedules() when no worker has registered the runner', () => {
+  it("rejects with a KyuError naming kyu.scheduleRunner instead of the engine's bare error", async () => {
+    const list = vi.fn().mockRejectedValue(new Error('Workflow with name sched123_kyu-schedule-publisher not found'))
+    const engine: SchedulesEngine = { crons: { create: vi.fn(), delete: vi.fn(), list } }
+    const schedules = createSchedules(engine)
+
+    await expect(schedules.list()).rejects.toThrow(
+      'schedules need a running worker with kyu.scheduleRunner(...) registered before create, remove or list',
+    )
   })
 })

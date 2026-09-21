@@ -51,7 +51,8 @@ export async function runScheduleTick(
 /**
  * The one worker-registrable task every `kyu.schedules.create` cron fires.
  * `retries: 0`: a failed tick is the dead letter, never a second publish of
- * the same tick.
+ * the same tick — a transient failure, such as the outbox insert erroring,
+ * drops that tick as a failed run too, replayable from the engine.
  */
 export function createScheduleRunner(hatchet: HatchetClient, options: CreateScheduleRunnerOptions): Subscription {
   const taskOptions: CreateTaskWorkflowOpts<JsonObject, void> = {
