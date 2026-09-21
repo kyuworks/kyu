@@ -13,10 +13,11 @@ import { EnvelopeRejectedError } from '../errors.js'
 import type { Context, CreateTaskWorkflowOpts, HatchetClient, JsonObject, TaskWorkflowDeclaration } from '../hatchet.js'
 import { buildHandlerContext } from './handlerContext.js'
 import type { HandlerContext } from './handlerContext.js'
-import { applySharedTaskOptions } from './taskOptions.js'
+import { applySharedTaskOptions, assertSubscriptionName } from './taskOptions.js'
 import type { SharedTaskOptions } from './taskOptions.js'
 
 export interface SubscribeOptions<TData extends MessageDataShape> extends SharedTaskOptions {
+  /** Lowercase letters, digits, `-` or `_`, starting with a letter: the engine lowercases anything else. */
   name: string
   handler: (ctx: HandlerContext<TData>) => Promise<void> | void
 }
@@ -112,6 +113,8 @@ export function subscribe<S extends MessageSchema>(
   definition: MessageDefinition<S>,
   options: SubscribeOptions<MessageData<MessageDefinition<S>>>,
 ): Subscription {
+  assertSubscriptionName(options.name)
+
   const taskOptions: CreateTaskWorkflowOpts<JsonObject, void> = {
     name: options.name,
     onEvents: [definition.name],

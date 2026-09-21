@@ -1,4 +1,4 @@
-import { Priority, RateLimitDuration } from '../hatchet.js'
+import { KyuError, Priority, RateLimitDuration } from '../hatchet.js'
 import type { Concurrency, CreateTaskWorkflowOpts, Duration, JsonObject } from '../hatchet.js'
 import { toHatchetConcurrency } from './concurrency.js'
 import type { ConcurrencyOption } from './concurrency.js'
@@ -25,6 +25,19 @@ export interface SharedTaskOptions {
   rateLimits?: RateLimitOption[]
   executionTimeout?: Extract<Duration, string>
   priority?: 'low' | 'medium' | 'high'
+}
+
+// The engine registers a workflow as the namespace plus this name, lowercased
+// (Hatchet SDK v1 workflow-proto.ts, normalizeWorkflowDefinition). Anything it
+// would change reads back from runs.forEnvelope() as a name the caller never chose.
+const SUBSCRIPTION_NAME_PATTERN = /^[a-z][a-z0-9_-]*$/
+
+export function assertSubscriptionName(name: string): void {
+  if (!SUBSCRIPTION_NAME_PATTERN.test(name)) {
+    throw new KyuError(
+      `subscription name "${name}" is not registrable: use lowercase letters, digits, "-" or "_", starting with a letter`,
+    )
+  }
 }
 
 const RATE_LIMIT_DURATION = {
