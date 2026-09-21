@@ -382,11 +382,12 @@ describe('waitForChildMessages', () => {
     const envelope = await handlerEnvelope(null)
     const runs = fakeRunsReader('ns_', new Map())
 
-    await expect(
-      waitForChildMessages(context, runs, envelope, childReplied, {
-        where: { field: 'data.childEnvelopeId', envelopeIds: [id0, id1] },
-        timeout: '30s',
-      }),
-    ).rejects.toThrow(new RegExp(`${id0}.*${id1}|${id1}.*${id0}`))
+    const rejection = waitForChildMessages(context, runs, envelope, childReplied, {
+      where: { field: 'data.childEnvelopeId', envelopeIds: [id0, id1] },
+      timeout: '30s',
+    })
+
+    await expect(rejection).rejects.toBeInstanceOf(KyuError)
+    await expect(rejection).rejects.toThrow(new RegExp(`${id0}.*${id1}|${id1}.*${id0}`))
   })
 })

@@ -13,7 +13,7 @@ import { Or, SleepCondition, UserEventCondition, durationToMs } from '../hatchet
 import type { DurableContext, Duration, JsonObject, OrCondition } from '../hatchet.js'
 import { readRunOutcomes } from './runOutcomes.js'
 import type { RunsReader } from './runOutcomes.js'
-import { celEquals, decodeMatchedEnvelope, readEnvelopeField } from './waitMatch.js'
+import { celEquals, decodeMatchedEnvelope, isJsonObject, readEnvelopeField } from './waitMatch.js'
 
 export interface WaitForChildrenOptions {
   where: {
@@ -148,8 +148,13 @@ export async function waitForChildMessages<S extends MessageSchema>(
       )
       // The CEL condition already filtered on this field, but a replay that
       // pairs child-<i> with the wrong engine result would otherwise
-      // misattribute a reply to the wrong child; check it again here.
-      const actualId = readEnvelopeField(envelope, options.where.field)
+      // misattribute a reply to the wrong child; check it again here. Read
+      // off the raw matched payload the engine handed back — a reply
+      // schema's zod transform on this field would otherwise make the
+      // decoded envelope's value disagree with what CEL matched.
+      const rawMatch = matches[0]
+      const actualId =
+        rawMatch !== undefined && isJsonObject(rawMatch) ? readEnvelopeField(rawMatch, options.where.field) : undefined
       if (actualId !== expectedId) {
         throw new KyuError(
           `waitForChildren: child-${index}'s reply carries envelope id ${JSON.stringify(actualId)} at "${options.where.field}", expected ${expectedId}`,

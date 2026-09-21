@@ -45,18 +45,18 @@ export async function decodeMatchedEnvelope<S extends MessageSchema>(
   return envelope
 }
 
-function isJsonObject(value: JsonValue): value is JsonObject {
+export function isJsonObject(value: JsonValue): value is JsonObject {
   return value !== null && !Array.isArray(value) && value instanceof Object
 }
 
 /**
- * Dotted-path read of a value on an already-decoded envelope, the same
- * segment convention `celEquals` compiles into CEL. Round-trips through JSON
- * first — the same conversion `fanOut.test.ts`'s `asIncoming` uses — so the
- * walk narrows `JsonValue` without a runtime `typeof` check.
+ * Dotted-path read of a value on a JSON object, the same segment convention
+ * `celEquals` compiles into CEL. Takes an already-decoded envelope
+ * (`Envelope<MessageDataShape>` is assignable to `JsonObject`) or a raw
+ * matched payload already narrowed with `isJsonObject`.
  */
-export function readEnvelopeField(envelope: Envelope<MessageDataShape>, path: string): JsonValue | undefined {
-  const plain = JSON.parse(JSON.stringify(envelope)) as JsonValue
+export function readEnvelopeField(envelope: JsonObject, path: string): JsonValue | undefined {
+  const plain: JsonObject = envelope
   return path.split('.').reduce<JsonValue | undefined>((current, key) => {
     return current !== undefined && isJsonObject(current) ? current[key] : undefined
   }, plain)
