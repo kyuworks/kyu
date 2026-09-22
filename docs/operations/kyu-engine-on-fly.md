@@ -26,7 +26,11 @@ Today there is one environment: dev, app `<engine-app>`, org `<fly-org>`, region
    gRPC port refuses connections, check the `SERVER_GRPC_INSECURE` note in `fly.toml` first —
    Fly terminates TLS at the edge, so the engine's own setting may need to flip.
 6. The CTO runs `fly ssh issue` once for the org, if that has not already been done.
-7. Mint a worker token from this machine: `export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/fly/token.sh -a <engine-app>)"`
+7. Mint a worker token from this machine: `export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/fly/token.sh -a <engine-app>)"`.
+   `token.sh` defaults to the tenant id the local stack seeds
+   (`707d0855-80ab-4e1f-a156-f1c4546cbf52`); a fresh Fly instance is not confirmed to seed the
+   same id. Read the real id off the dashboard's tenant settings first, and pass it with
+   `--tenant-id` if it differs.
 8. Register one worker against it (see `examples/shop/README.md`, "Against the deployed dev
    engine") and confirm it shows up in the dashboard.
 
