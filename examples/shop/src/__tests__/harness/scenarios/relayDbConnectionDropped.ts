@@ -1,9 +1,9 @@
 // Scenario: relay-db-connection-dropped. The real relay's Postgres backend
 // (its own `db` handle, examples/shop/src/relay.ts) is terminated mid-flight
 // with pg_terminate_backend. The relay logs "db-connection-dropped"
-// (relay.ts's `db.on('error', ...)`) and keeps polling; pg replaces the
-// connection on the next tick (relay.ts's own comment on why a pool, not a
-// bare Client, is used). No Docker, no process restart.
+// (`logDroppedConnections` in src/db/pool.ts) and keeps polling; pg replaces
+// the connection on the next tick (relay.ts's own comment on why a pool, not
+// a bare Client, is used). No Docker, no process restart.
 import type { Pool } from 'pg'
 import {
   assertNoDoubleEffect,
