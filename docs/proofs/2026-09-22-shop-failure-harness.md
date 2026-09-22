@@ -82,6 +82,8 @@ The plan's own throughput estimate (~16 minutes for 5,000 events, extrapolated l
 
 **The issue's numbers are not being shrunk here.** This scenario was run once, at the full 5,000-event size the issue names, and it failed. That failure, and the diagnosis above, is the honest result of running it at that size.
 
+**Update:** the SDK now exposes this as `scheduleTimeout` on a subscription (issue #149). This scenario has not been re-run. Raising the timeout stops the dead-lettering, but at 5,000 orders the queue is roughly 20,000 runs against the five runs per second this machine managed, so the scenario would then miss its own 20-minute window instead. Re-running it, with that window and the shop's own `scheduleTimeout` values chosen together, is its own change.
+
 ### long-delay-handoff
 
 What was injected: a 48-hour workflow delay, which the interpreter hands off to a scheduled continuation instead of parking in-process (issue #113's `DELAY_HANDOFF_SECONDS`). The worker is restarted between the first run ending and the continuation being due, then the continuation's `publish_at` is fast-forwarded to now, the same technique `workflowLongDelay.integration.test.ts` uses.

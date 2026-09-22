@@ -466,6 +466,16 @@ describe('durable: option wiring', () => {
     durable(explicit.client, orderPlaced, { name: 'follow-up', handler: () => undefined, retries: 0 })
     expect(explicit.capturedOptions()?.retries).toBe(0)
   })
+
+  it('carries scheduleTimeout and invents no default of its own', () => {
+    const { client, capturedOptions } = fakeHatchetClient()
+    durable(client, orderPlaced, { name: 'follow-up', handler: () => undefined, scheduleTimeout: '30m' })
+    expect(capturedOptions()?.scheduleTimeout).toBe('30m')
+
+    const bare = fakeHatchetClient()
+    durable(bare.client, orderPlaced, { name: 'follow-up', handler: () => undefined })
+    expect(bare.capturedOptions()?.scheduleTimeout).toBeUndefined()
+  })
 })
 
 describe('durable: name validation', () => {
