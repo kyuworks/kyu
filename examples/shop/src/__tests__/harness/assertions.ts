@@ -159,6 +159,22 @@ export function assertNoFailedRun(rows: readonly EnvelopeRunOutcomes[]): readonl
   return failures
 }
 
+/** Every run the engine holds for these envelopes has ended: a `queued` or `running` run means the scenario declared PASS over work still in flight. */
+export function assertNoUnsettledRun(rows: readonly EnvelopeRunOutcomes[]): readonly AssertionFailure[] {
+  const failures: AssertionFailure[] = []
+  for (const row of rows) {
+    for (const outcome of row.outcomes) {
+      if (outcome.status === 'queued' || outcome.status === 'running') {
+        failures.push({
+          check: 'no-unsettled-run',
+          detail: `envelope ${row.envelopeId} run ${outcome.runId} (${outcome.subscription}) is still ${outcome.status}`,
+        })
+      }
+    }
+  }
+  return failures
+}
+
 /** Per order, per handler, rows are in publish order (ascending seq for each key). */
 export function assertPerKeyOrdering(rows: readonly OrderingRow[]): readonly AssertionFailure[] {
   const failures: AssertionFailure[] = []

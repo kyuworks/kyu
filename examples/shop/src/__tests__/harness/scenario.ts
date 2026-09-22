@@ -13,6 +13,7 @@ import type { InsertedDefinition } from '../workflowFixtures.js'
 import type { AssertionFailure } from './assertions.js'
 import { laneEnv } from './children.js'
 import type { HarnessChild } from './children.js'
+import { waitUntil } from './common.js'
 
 export type HarnessSize = 'smoke' | 'report'
 
@@ -179,6 +180,30 @@ function assertChildExited(child: HarnessChild): readonly AssertionFailure[] {
   return []
 }
 
+// Engine-side leftovers are not covered by the table truncate: a scenario's
+// own namespace can still hold queued or running runs no worker will ever
+// serve, because every scenario run mints a fresh namespace.
+async function cancelLeftoverRuns(kyu: Kyu, namespace: string, since: Date): Promise<readonly AssertionFailure[]> {
+  try {
+    await kyu.runs.cancelUnsettledInNamespace({ since })
+    const settled = await waitUntil(async () => (await kyu.runs.unsettledInNamespace({ since })).length === 0, 30_000)
+    if (!settled) {
+      const left = await kyu.runs.unsettledInNamespace({ since })
+      return [
+        {
+          check: 'harness-leaves-nothing',
+          detail: `the engine still holds ${String(left.length)} queued or running run(s) in namespace ${namespace}`,
+        },
+      ]
+    }
+  } catch (caught) {
+    return [
+      { check: 'harness-leaves-nothing', detail: `cancelling leftover engine runs failed: ${describeError(caught)}` },
+    ]
+  }
+  return []
+}
+
 export interface ScenarioRunDeps {
   pool: Pool
   config: ShopConfig
@@ -261,6 +286,8 @@ export async function runScenario(deps: ScenarioRunDeps, scenario: Scenario): Pr
     })
   }
   for (const child of children()) failures.push(...assertChildExited(child))
+
+  failures.push(...(await cancelLeftoverRuns(kyu, namespace, new Date(startedAt - 5 * 60_000))))
 
   failures.push(...(await truncateLaneTables(deps.pool)))
   try {

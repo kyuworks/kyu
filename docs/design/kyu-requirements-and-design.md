@@ -349,6 +349,8 @@ A durable handler waits on several message names at once with `waitForAny([{ def
 
 A run is cancelled through the SDK, never through the engine client: `kyu.runs.cancelForEnvelope(envelopeId)` for one message, `kyu.runs.cancelForCorrelation(correlationId)` for a whole workflow run — the durable run and the command runs it published. Both look the runs up by the engine's own metadata and cancel them by run id, so they never reach a run in another namespace or under another correlation id. Both return the runs they cancelled, and both are safe to call twice: the engine ignores a cancel for a run that has already finished.
 
+A whole namespace is cancelled with `kyu.runs.cancelUnsettledInNamespace({ since })` — every run it still holds queued or running. This is an operational broom for a namespace nothing will serve again, such as a test lane; it is not part of normal delivery.
+
 A cancelled run ends as `cancelled`, not `failed`, and is not retried, so it never joins the dead-letter set. A durable run parked in `sleepFor` or `waitFor` has that wait rejected as soon as the cancel reaches its worker; a handler between two steps is not interrupted and finishes the step it is in, which is what keeps a cancel from landing inside an `onceById` transaction. The engine drops that late result.
 
 ## 10. SDK surface

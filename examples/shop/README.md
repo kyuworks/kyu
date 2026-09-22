@@ -298,7 +298,9 @@ processes and never touches Docker.
 The harness is not run by CI. It is run by hand to produce the proof under `docs/proofs/`. Every
 scenario run gets its own namespace (the lane's namespace, the scenario's own name, and a random
 suffix), so a durable run left parked by one scenario, or by an earlier invocation of the same
-scenario, can never be picked up by a later worker.
+scenario, can never be picked up by a later worker. After every scenario the harness also cancels
+any run the engine still holds queued or running in that scenario's namespace, and fails the
+scenario if any remain.
 
 Ten scenarios, run with `--scenario <name>` or `--scenario all`:
 
@@ -314,8 +316,10 @@ Ten scenarios, run with `--scenario <name>` or `--scenario all`:
   reopened; the relay must back off and stay alive, and the backlog must drain once the proxy
   reopens. No Docker is touched; the proxy only fronts traffic the harness itself started.
 - `tenant-load` — twenty tenants publish at once, one large and nineteen small, against a worker
-  sized up with `KYU_SHOP_SLOTS`/`KYU_SHOP_DURABLE_SLOTS`. At the report size (5,000 events) the
-  run-outcome check samples rather than reading every envelope; the written report says so.
+  sized up with `KYU_SHOP_SLOTS`/`KYU_SHOP_DURABLE_SLOTS`. It waits for every order's durable
+  `watch-shipping` run to reach its terminal row as well as the three plain handlers, and reports
+  the two timings separately. At the report size (5,000 events) the run-outcome check samples
+  rather than reading every envelope; the written report says so.
 - `long-delay-handoff` — a 48-hour workflow delay hands off to a scheduled continuation instead of
   parking; the worker is restarted during that hand-off and the continuation is fast-forwarded.
 - `cancel-parked` — a genuinely parked `watch-shipping` run is cancelled through
