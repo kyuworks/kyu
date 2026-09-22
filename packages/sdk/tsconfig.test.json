@@ -7,6 +7,11 @@
     "declarationMap": false,
     "rootDir": "."
   },
-  "include": ["src/**/*.test.ts", "vitest.integration.setup.ts", "vitest.integration.clearBusTables.ts"],
+  "include": [
+    "src/**/*.test.ts",
+    "src/**/__tests__/**/*.ts",
+    "vitest.integration.setup.ts",
+    "vitest.integration.clearBusTables.ts"
+  ],
   "references": [{ "path": "../schemas" }]
 }
