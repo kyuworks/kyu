@@ -232,6 +232,8 @@ Tracked across issue #81 (Tailwind v4, HeroUI v3, Heroicons), `pnpm --filter @ky
 | `KYU_SHOP_UI_PORT`            | no                             | `3333`            | Read only by `ui`; the local port the web page binds to.                                                                 |
 | `HATCHET_CLIENT_TOKEN`        | for `relay`, `worker` and `ui` | —                 | Read by the engine client directly, same as the SDK's own integration lane. `migrate` and `publish-cli` never build one. |
 | `HATCHET_CLIENT_TLS_STRATEGY` | for `relay`, `worker` and `ui` | —                 | Read by the engine client directly.                                                                                      |
+| `HATCHET_CLIENT_API_URL`      | no                              | from the token     | Read by the engine client directly. Point the shop at a different engine's dashboard API.                               |
+| `HATCHET_CLIENT_HOST_PORT`    | no                              | from the token     | Read by the engine client directly. Point the shop at a different engine's gRPC address.                                |
 
 The namespace is a prefix; the engine lowercases it and gives it a trailing underscore if one
 is missing.
@@ -258,6 +260,22 @@ pnpm --filter @kyuworks/shop publish-cli place-order --tenant <uuid>
 
 `HATCHET_CLIENT_TOKEN` and `HATCHET_CLIENT_TLS_STRATEGY` are needed by `relay`, `worker` and `ui`,
 not by `migrate` and not by `publish-cli`.
+
+### Against the deployed dev engine
+
+Point the same processes at the deployed dev engine (`infra/hatchet/fly/fly.toml`, issue #162)
+instead of the local stack, using its own worker-token bootstrap:
+
+```bash
+export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/fly/token.sh -a <engine-app>)"
+export HATCHET_CLIENT_API_URL=https://<engine-app>.fly.dev
+export HATCHET_CLIENT_HOST_PORT=<engine-app>.fly.dev:7077
+pnpm --filter @kyuworks/shop relay
+```
+
+Leave `HATCHET_CLIENT_TLS_STRATEGY` **unset** here — the client defaults to `tls`, which is what
+the deployed engine expects on its public address. The local lane sets it to `none`; do not carry
+that setting over.
 
 To see the retired bucket move, insert a row the relay cannot read. `envelope` here is missing
 every field but `name`; `name` must match `envelope->>'name'` (the table checks it). A retired
