@@ -18,16 +18,23 @@ database cluster `<engine-db>` (cluster id `<engine-cluster-id>`).
 
 1. Create the app: `fly apps create <engine-app> -o <fly-org>`
 2. Create the managed Postgres cluster: `fly mpg create -o <fly-org> -n <engine-db> -r syd --plan Basic --pg-major-version 17 --volume-size 10`
-3. The CTO opens the cluster's page in the Fly dashboard, copies the **direct** connection
+3. Create the config volume, **before** the secrets step and before the first deploy —
+   `fly deploy` does not create the volume `fly.toml` mounts, so it must exist first:
+   `fly volumes create kyu_hatchet_config -r syd -a <engine-app>` (size per the plan, or 1 GB
+   if none is set). It must be created in `syd`; a volume in another region cannot attach to a
+   machine in `syd`. This has to come before the engine ever starts: the engine generates its own
+   encryption keysets and cookie secrets into `/config` on first boot, so with no volume attached
+   those keys land on the machine's ephemeral disk and every worker token minted against them
+   dies with that machine.
+4. The CTO opens the cluster's page in the Fly dashboard, copies the **direct** connection
    string (not the pooler — Hatchet needs a session-mode connection for LISTEN/NOTIFY,
    prepared statements and advisory locks, all of which a transaction pooler breaks), then runs
    `infra/hatchet/fly/secrets.sh` to see every command, fills in each placeholder — including
    `DATABASE_URL` with that string — from 1Password, and runs the `fly secrets set --stage ...`
-   commands it prints. There is no `fly mpg attach` step here.
-4. Create the config volume — `fly deploy` does not create the volume `fly.toml` mounts, so it
-   must exist first: `fly volumes create kyu_hatchet_config -r syd -a <engine-app>` (size per
-   the plan, or 1 GB if none is set). It must be created in `syd`; a volume in another region
-   cannot attach to a machine in `syd`.
+   commands it prints. There is no `fly mpg attach` step here. Only three secrets are required
+   (`DATABASE_URL`, `SERVER_AUTH_ADMIN_EMAIL`, `SERVER_AUTH_ADMIN_PASSWORD`); the script's
+   `Optional overrides` block covers the four keyset and cookie secrets, which the engine
+   otherwise generates itself into the volume created in step 3.
 5. Deploy: `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`
 6. Check health: `curl -s https://<engine-app>.fly.dev/api/ready` should return 200. If the
    gRPC port refuses connections, check the `SERVER_GRPC_INSECURE` note in `fly.toml` first —
@@ -71,10 +78,16 @@ cluster, what was checked._
 Work through these in order:
 
 1. `fly status -a <engine-app>` — is a machine running at all, and how long has it been up?
-   The JWT signing keys come from the `SERVER_ENCRYPTION_JWT_PRIVATE_KEYSET` /
-   `SERVER_ENCRYPTION_JWT_PUBLIC_KEYSET` secrets, not from `/config`, so a restart alone should
-   not invalidate a previously minted worker token — confirm this after the first deploy rather
-   than assuming it.
+   The engine generates its encryption keysets and cookie secrets into `/config/server.yaml` on
+   first boot and reuses them from there while the `kyu_hatchet_config` volume stays attached, so
+   a restart of the same machine keeps previously minted worker tokens working. A machine
+   replacement with that volume attached keeps working the same way; a machine replacement with
+   the volume missing or in the wrong region does not, because the engine generates a fresh set
+   of keys with nothing there to read back. The alternative is setting the
+   `SERVER_ENCRYPTION_MASTER_KEYSET` / `SERVER_ENCRYPTION_JWT_PRIVATE_KEYSET` /
+   `SERVER_ENCRYPTION_JWT_PUBLIC_KEYSET` / `SERVER_AUTH_COOKIE_SECRETS` secrets so the keys live
+   in the environment instead of the volume — see `secrets.sh`'s optional block. They are not set
+   on dev.
 2. `fly logs -a <engine-app>` — look for a crash loop, a database connection error, or a
    migration failure at start.
 3. `curl -s https://<engine-app>.fly.dev/api/ready` — is the API answering at all?
