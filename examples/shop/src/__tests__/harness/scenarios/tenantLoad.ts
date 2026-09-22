@@ -1,14 +1,16 @@
 // Scenario: tenant-load. Twenty tenants publish at once — one large tenant
 // and nineteen small ones — through a worker sized up with the two slot
 // knobs this pull request's sibling change added to ShopConfig
-// (KYU_SHOP_SLOTS, KYU_SHOP_DURABLE_SLOTS). Re-measured for #149's PR B: at
-// smoke size (200 orders), 50 plain slots with 200 durable slots took 65.1s
-// and logged a DurableEvictionManager eviction-ack timeout; 50 durable slots
-// took 2.7s with no such timeout — a high durable-slot count was the
-// bottleneck, not the fix, because watch-shipping holds a durable slot for
-// its whole wait. At report size (5,000 orders) with 50/50 and every
-// subscription's scheduleTimeout raised to 30m (#149), this scenario
-// completed in 42.0s. Full numbers: docs/proofs/2026-09-22-shop-failure-harness.md.
+// (KYU_SHOP_SLOTS, KYU_SHOP_DURABLE_SLOTS). Re-measured for #149's PR B:
+// raising every subscription's scheduleTimeout to 30m is what turned the
+// original failure into a pass — at report size (5,000 orders), the
+// original KYU_SHOP_DURABLE_SLOTS=200 passed in 115s with zero failures.
+// Lowering it to 50 cut that to 42s; most of the difference is the worker's
+// shutdown with durable runs still in flight (durationMs covers the
+// pre-run truncate through child stop and the post-run truncate), not
+// handler throughput — a larger durable-slot count completes more durable
+// work, not less, and simply costs more at shutdown. Full numbers:
+// docs/proofs/2026-09-22-shop-failure-harness.md.
 import type { Pool } from 'pg'
 import { z } from 'zod'
 import {
