@@ -19,7 +19,7 @@
 // on this laptop (plan-144.md's throughput.sh): ~1,770 rows/sec with no
 // worker registered, so 50,000 rows is roughly 30s of push.
 import { randomUUID } from 'node:crypto'
-import { uuidv7 } from '@kyuworks/sdk'
+import { envelopeSchema, uuidv7 } from '@kyuworks/sdk'
 import type { Pool } from 'pg'
 import { z } from 'zod'
 import { shipOrder } from '../../../producer/shipOrder.js'
@@ -38,10 +38,10 @@ const SAMPLE_INTERVAL_MS = 1_000
 // query's own array literal a reasonable size.
 const INSERT_CHUNK_SIZE = 5_000
 
-// Matches @kyuworks/schemas's own envelopeSchema shape for `data` (a JSON
-// record); mirrored here rather than imported, since examples/* may only
-// import @kyuworks/sdk (check-package-boundaries.sh).
-const templateRowSchema = z.object({ tenant_id: z.uuid().nullable(), envelope: z.record(z.string(), z.json()) })
+// @kyuworks/sdk re-exports envelopeSchema, so the template row's own
+// `envelope` column is parsed with the same schema the relay itself uses,
+// not a re-declared parallel shape.
+const templateRowSchema = z.object({ tenant_id: z.uuid().nullable(), envelope: envelopeSchema })
 
 interface TemplateRow {
   tenantId: string | null
@@ -144,6 +144,10 @@ export const outboxBacklog: Scenario = {
       peakPending,
       peakOldestSeconds,
       sampleCount: samples.length,
+      // The peaks above are one number each; this is the full once-a-second
+      // series they were drawn from (ScenarioObservationValue has no array
+      // case, so it travels as JSON text).
+      lagSeriesJson: JSON.stringify(samples),
     }
   },
 }

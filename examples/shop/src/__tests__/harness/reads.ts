@@ -145,9 +145,14 @@ const orderingRowSchema = z.object({
   seq: z.coerce.number().int(),
 })
 
+// Reads in arrival order (`at`, the wall-clock write time), not by `seq`
+// (the bigserial insertion sequence) — `assertPerKeyOrdering` checks that
+// `seq` still comes back monotonic per key in that order. Ordering by `seq`
+// itself would make that check vacuous: any subsequence of an already
+// seq-sorted result is trivially seq-sorted too.
 export async function readOrdering(db: HarnessDb, orderIds: readonly string[]): Promise<readonly OrderingRow[]> {
   const result = await db.query(
-    'SELECT order_id, handler, seq FROM shop_handler_log WHERE order_id = ANY($1::uuid[]) ORDER BY seq',
+    'SELECT order_id, handler, seq FROM shop_handler_log WHERE order_id = ANY($1::uuid[]) ORDER BY at, seq',
     [uuidArrayLiteral(orderIds)],
   )
   const rows: OrderingRow[] = []

@@ -79,6 +79,13 @@ async function main(): Promise<void> {
   const options = parseHarnessOptions(nodeProcess.argv.slice(2))
   const config = readConfig()
   const pool = createPool(config.databaseUrl)
+  // Without a listener, an 'error' event on the pool (a dropped connection
+  // between scenarios) is an uncaught exception in Node's own EventEmitter
+  // convention; log it and let the scenario's own assertions report the
+  // fallout instead of the harness dying before it writes a report.
+  pool.on('error', (error) => {
+    log('harness', 'pool-error', { message: error instanceof Error ? error.message : String(error) })
+  })
 
   const selected =
     options.scenario === 'all' ? SCENARIOS : SCENARIOS.filter((scenario) => scenario.name === options.scenario)
@@ -120,7 +127,10 @@ nodeProcess.once('SIGINT', () => {
   log('harness', 'signal', { signal: 'SIGINT' })
   stopSpawnedThenExit(1)
 })
-nodeProcess.once('uncaughtException', (error) => {
+// `on`, not `once`: a second uncaught exception (e.g. a pg error event with
+// no listener) must still stop spawned children instead of crashing raw
+// once the first listener has already fired and detached itself.
+nodeProcess.on('uncaughtException', (error) => {
   log('harness', 'uncaught-exception', { message: error instanceof Error ? error.message : String(error) })
   stopSpawnedThenExit(1)
 })
