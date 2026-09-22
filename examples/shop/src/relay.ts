@@ -2,7 +2,7 @@ import nodeProcess from 'node:process'
 import type { KyuRelayOptions, Relay } from '@kyuworks/sdk'
 import type { Pool } from 'pg'
 import { readConfig } from './config.js'
-import { createPool } from './db/pool.js'
+import { createPool, logDroppedConnections } from './db/pool.js'
 import { createShopKyu } from './kyu.js'
 import { describeError, exitAfterLog, log } from './log.js'
 
@@ -26,12 +26,8 @@ async function main(): Promise<void> {
   // A pool of one, not a bare Client: the SDK's relay seam takes a pool, and
   // pg replaces a dropped connection on the next tick. A Client cannot.
   const db = createPool(config.databaseUrl, { max: 1 })
-  // A connection dropped while idle surfaces here; the relay reconnects on
-  // its next tick, so this logs rather than exits. Without a listener pg
-  // would take the process down.
-  db.on('error', (error) => {
-    log('relay', 'db-connection-dropped', { message: describeError(error) })
-  })
+  // A connection dropped while idle is logged, not fatal: the relay reconnects on its next tick.
+  logDroppedConnections(db, 'relay')
   // Keeps today's fail-fast: an unreachable database fails before `ready`.
   await db.query('SELECT 1')
 

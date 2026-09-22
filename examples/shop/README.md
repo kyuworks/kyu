@@ -10,6 +10,8 @@ Four processes share one Postgres database and one Hatchet engine:
 - **worker** — runs the event and command handlers.
 - **ui** — the web app on `KYU_SHOP_UI_PORT`; serves the pages and the JSON routes, and reads run outcomes from the engine.
 
+Every long-lived process attaches the pool's `error` listener (`logDroppedConnections`, `src/db/pool.ts`): a connection dropped while it was idle is logged as `db-connection-dropped` and pg replaces it on the next query, instead of taking the process down.
+
 `worker` runs `record-order` and `audit-order` (two subscribers on `shop.order.placed`),
 `send-invoice` (a FIFO-per-order command handler, `shop.invoice.send`), `watch-shipping`, a
 durable handler that sleeps five seconds and then waits for the correlated `shop.order.shipped`

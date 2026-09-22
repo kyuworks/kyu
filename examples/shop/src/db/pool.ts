@@ -1,8 +1,18 @@
 import { Pool } from 'pg'
 import type { PoolClient, PoolConfig } from 'pg'
+import { describeError, log } from '../log.js'
 
 export function createPool(databaseUrl: string, options?: Pick<PoolConfig, 'max'>): Pool {
   return new Pool({ connectionString: databaseUrl, ...options })
+}
+
+// pg emits this only for an idle client (pg-pool's idleListener); with no
+// listener EventEmitter throws and the process dies. pg replaces the
+// connection on the next query, so logging is the whole fix.
+export function logDroppedConnections(pool: Pool, proc: string): void {
+  pool.on('error', (error) => {
+    log(proc, 'db-connection-dropped', { message: describeError(error) })
+  })
 }
 
 // pg.PoolClient satisfies @kyuworks/sdk's Queryable, so the client handed to
