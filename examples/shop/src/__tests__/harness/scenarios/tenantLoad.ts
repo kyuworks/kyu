@@ -1,10 +1,14 @@
 // Scenario: tenant-load. Twenty tenants publish at once — one large tenant
 // and nineteen small ones — through a worker sized up with the two slot
 // knobs this pull request's sibling change added to ShopConfig
-// (KYU_SHOP_SLOTS, KYU_SHOP_DURABLE_SLOTS). Measured on this laptop (plan-144.md):
-// 100 orders at slots:5/durableSlots:5 took 180s (0.56 events/s); the same
-// 100 at slots:50/durableSlots:200 took 19s (5.19 events/s). Without the
-// wider worker this scenario cannot finish at the issue's numbers.
+// (KYU_SHOP_SLOTS, KYU_SHOP_DURABLE_SLOTS). Re-measured for #149's PR B: at
+// smoke size (200 orders), 50 plain slots with 200 durable slots took 65.1s
+// and logged a DurableEvictionManager eviction-ack timeout; 50 durable slots
+// took 2.7s with no such timeout — a high durable-slot count was the
+// bottleneck, not the fix, because watch-shipping holds a durable slot for
+// its whole wait. At report size (5,000 orders) with 50/50 and every
+// subscription's scheduleTimeout raised to 30m (#149), this scenario
+// completed in 42.0s. Full numbers: docs/proofs/2026-09-22-shop-failure-harness.md.
 import type { Pool } from 'pg'
 import { z } from 'zod'
 import {
@@ -73,7 +77,7 @@ export const tenantLoad: Scenario = {
   async run(ctx): Promise<ScenarioObservation> {
     const env = ctx.env({
       KYU_SHOP_SLOTS: '50',
-      KYU_SHOP_DURABLE_SLOTS: '200',
+      KYU_SHOP_DURABLE_SLOTS: '50',
       // watch-shipping holds a durable slot for its whole wait; none of
       // these orders ever ship, so a short timeout is what makes the
       // measured throughput above reachable at all.

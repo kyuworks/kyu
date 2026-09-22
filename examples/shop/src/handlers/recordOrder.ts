@@ -22,6 +22,8 @@ async function recordOrder(pool: Pool, kyu: Kyu, ctx: OrderPlacedContext): Promi
 export function recordOrderSubscription(kyu: Kyu, pool: Pool): Subscription {
   return kyu.subscribe(orderPlaced, {
     name: 'record-order',
+    // Above the tenant-load harness's own report-size window; the engine's default is 5 minutes (#149).
+    scheduleTimeout: '30m',
     handler: (ctx) => recordOrder(pool, kyu, ctx),
   })
 }
