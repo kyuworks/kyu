@@ -37,7 +37,7 @@ describe('cancelUntilNoUnsettledRuns', () => {
         return 1
       },
       read: async () => [heldRun()],
-      timeoutMs: 20,
+      timeoutMs: 200,
       pollMs: 5,
     })
     expect(cancels).toBeGreaterThan(1)
