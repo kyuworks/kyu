@@ -50,6 +50,7 @@ export const longDelayHandoff: Scenario = {
     try {
       const tenantId = newTenantId()
       definition = await insertLongDelayDefinition(admin, tenantId, LONG_DELAY_SECONDS)
+      ctx.trackWorkflowRows(definition)
 
       const env = ctx.env({ KYU_SHOP_WATCH_TIMEOUT: '3s' })
       const relay = await startRelayChild(env)

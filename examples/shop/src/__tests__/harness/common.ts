@@ -3,6 +3,7 @@
 // (its own waitUntil) rather than adding a second copy of the SDK's polling idiom.
 import { randomUUID } from 'node:crypto'
 import type { Kyu, RunOutcome } from '@kyuworks/sdk'
+import { KyuError } from '@kyuworks/sdk'
 import { Client } from 'pg'
 import type { Pool } from 'pg'
 import { z } from 'zod'
@@ -125,8 +126,9 @@ async function readRunOutcomesWithRetry(kyu: Kyu, envelopeId: string): Promise<r
       if (attempt < RUN_OUTCOME_READ_ATTEMPTS) await sleep(RUN_OUTCOME_READ_BACKOFF_MS * attempt)
     }
   }
-  throw new Error(
+  throw new KyuError(
     `runs.forEnvelope for ${envelopeId} failed after ${String(RUN_OUTCOME_READ_ATTEMPTS)} attempts: ${describeError(lastError)}`,
+    { cause: lastError instanceof Error ? lastError : new Error(String(lastError)) },
   )
 }
 

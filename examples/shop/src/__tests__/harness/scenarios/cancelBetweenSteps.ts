@@ -44,6 +44,7 @@ export const cancelBetweenSteps: Scenario = {
     try {
       const tenantId = newTenantId()
       definition = await insertTwoDelayWorkflowDefinition(admin, tenantId, FIRST_DELAY_SECONDS, SECOND_DELAY_SECONDS)
+      ctx.trackWorkflowRows(definition)
 
       const env = ctx.env({ KYU_SHOP_WATCH_TIMEOUT: '5s' })
       const relay = await startRelayChild(env)

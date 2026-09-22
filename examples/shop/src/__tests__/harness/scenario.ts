@@ -8,8 +8,8 @@ import type { Pool } from 'pg'
 import type { ShopConfig } from '../../config.js'
 import { createShopKyu } from '../../kyu.js'
 import { describeError } from '../../log.js'
-import { DEMO_TENANT_ID } from '../../shop.js'
 import { stopAllSpawnedProcesses } from '../processes.js'
+import type { InsertedDefinition } from '../workflowFixtures.js'
 import type { AssertionFailure } from './assertions.js'
 import { laneEnv } from './children.js'
 import type { HarnessChild } from './children.js'
@@ -46,6 +46,8 @@ export interface ScenarioContext {
   env: typeof laneEnv
   track(child: HarnessChild): void
   track(closable: HarnessClosable): void
+  /** Records a workflow definition/version pair the scenario inserted, so teardown can check the scenario removed exactly those ids. */
+  trackWorkflowRows(inserted: InsertedDefinition): void
 }
 
 export type ScenarioObservationValue = string | number | boolean | null
@@ -119,15 +121,24 @@ async function assertLaneTablesEmpty(pool: Pool): Promise<readonly AssertionFail
 // they are not in LANE_TABLES. A scenario that inserts its own definition
 // and version (long-delay-handoff, cancel-between-steps) must delete them
 // itself, by the ids insertLongDelayDefinition/insertTwoDelayWorkflowDefinition
-// returned, in its own teardown. This is the check that catches one that does
-// not: every fixture uses a fresh random tenant, so any row whose tenant is
-// not the seeded demo tenant is a leak.
-async function assertNoStrayWorkflowRows(pool: Pool): Promise<readonly AssertionFailure[]> {
+// returned, in its own teardown, and must have handed those ids to
+// ctx.trackWorkflowRows when it inserted them. This checks only that the
+// ids this scenario itself recorded are gone: the shop's own integration
+// suite deliberately leaves rows in these two tables for other tenants
+// (vitest.integration.clearTables.ts), so a check over every non-demo row
+// would fail a scenario on leaks it never made.
+async function assertNoStrayWorkflowRows(
+  pool: Pool,
+  inserted: readonly InsertedDefinition[],
+): Promise<readonly AssertionFailure[]> {
+  if (inserted.length === 0) return []
+  const definitionIds = inserted.map((row) => row.definitionId)
+  const versionIds = inserted.map((row) => row.versionId)
   const result = await pool.query(
     `SELECT
-       (SELECT count(*) FROM shop_workflow_definition WHERE tenant_id <> $1) AS definitions,
-       (SELECT count(*) FROM shop_workflow_version WHERE tenant_id <> $1) AS versions`,
-    [DEMO_TENANT_ID],
+       (SELECT count(*) FROM shop_workflow_definition WHERE id = ANY($1)) AS definitions,
+       (SELECT count(*) FROM shop_workflow_version WHERE id = ANY($2)) AS versions`,
+    [definitionIds, versionIds],
   )
   const definitions = Number(result.rows[0]?.['definitions'] ?? -1)
   const versions = Number(result.rows[0]?.['versions'] ?? -1)
@@ -135,7 +146,7 @@ async function assertNoStrayWorkflowRows(pool: Pool): Promise<readonly Assertion
     return [
       {
         check: 'harness-leaves-nothing',
-        detail: `workflow tables still hold ${String(definitions)} definition row(s) and ${String(versions)} version row(s) beyond the seeded demo tenant after teardown`,
+        detail: `scenario inserted ${String(inserted.length)} workflow definition/version pair(s) but ${String(definitions)} definition row(s) and ${String(versions)} version row(s) it inserted are still present after teardown`,
       },
     ]
   }
@@ -198,6 +209,7 @@ export async function runScenario(deps: ScenarioRunDeps, scenario: Scenario): Pr
   const env: typeof laneEnv = (overrides) => laneEnv({ KYU_SHOP_NAMESPACE: namespace, ...overrides })
 
   const tracked: (HarnessChild | HarnessClosable)[] = []
+  const insertedWorkflowRows: InsertedDefinition[] = []
   const ctx: ScenarioContext = {
     pool: deps.pool,
     kyu,
@@ -205,6 +217,9 @@ export async function runScenario(deps: ScenarioRunDeps, scenario: Scenario): Pr
     env,
     track: (item: HarnessChild | HarnessClosable) => {
       tracked.push(item)
+    },
+    trackWorkflowRows: (inserted: InsertedDefinition) => {
+      insertedWorkflowRows.push(inserted)
     },
   }
   const children = (): readonly HarnessChild[] => tracked.filter(isHarnessChild)
@@ -250,7 +265,7 @@ export async function runScenario(deps: ScenarioRunDeps, scenario: Scenario): Pr
   failures.push(...(await truncateLaneTables(deps.pool)))
   try {
     failures.push(...(await assertLaneTablesEmpty(deps.pool)))
-    failures.push(...(await assertNoStrayWorkflowRows(deps.pool)))
+    failures.push(...(await assertNoStrayWorkflowRows(deps.pool, insertedWorkflowRows)))
   } catch (caught) {
     failures.push({
       check: 'harness-leaves-nothing',
