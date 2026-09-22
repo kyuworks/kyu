@@ -2,6 +2,7 @@
 // `@hatchet-dev/typescript-sdk/v1` does not resolve under NodeNext; the file
 // path below does. The root barrel loads the removed v0 modules and prints
 // two `HATCHET_V0_REMOVED` deprecation warnings per process — never import it.
+import { V1TaskStatus } from '@hatchet-dev/typescript-sdk/clients/rest/generated/data-contracts.js'
 import {
   ConcurrencyLimitStrategy,
   HatchetClient,
@@ -36,6 +37,7 @@ export {
   RateLimitDuration,
   SleepCondition,
   UserEventCondition,
+  V1TaskStatus,
   durationToMs,
 }
 export type {

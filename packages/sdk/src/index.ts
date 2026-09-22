@@ -110,6 +110,9 @@ export type { FieldMatch } from './consume/waitMatch.js'
 // could not name it. Reach this through kyu.runs.forEnvelope instead.
 export type { KyuRuns, ReadRunOutcomesOptions, RunOutcome, RunStatus } from './consume/runOutcomes.js'
 
+// readUnsettledRunsInNamespace/cancelUnsettledRunsInNamespace are reached through kyu.runs.unsettledInNamespace/cancelUnsettledInNamespace.
+export type { NamespaceRunsOptions } from './consume/namespaceRuns.js'
+
 // readRunProgressForCorrelation/readRunWait are not exported for the same
 // reason: reach this through kyu.runs.forCorrelation instead.
 export type { RunProgress } from './consume/runProgress.js'

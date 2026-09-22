@@ -6,24 +6,36 @@ import {
   assertNoDoubleEffect,
   assertNoFailedRun,
   assertNoLostEffect,
+  assertNoUnsettledRun,
   assertOutboxSettled,
   assertPerKeyOrdering,
   assertTenantUnchanged,
 } from '../assertions.js'
 import type { AssertionFailure } from '../assertions.js'
 import { startRelayChild, startWorkerChild } from '../children.js'
-import { newTenantId, placeOrders, readEnvelopeRunOutcomes, waitForExpectedEffects } from '../common.js'
+import { newTenantId, placeOrders, waitForExpectedEffects, waitForSettledRunOutcomes } from '../common.js'
 import { readEffectCounts, readOrdering, readOutboxState, readTenantIds } from '../reads.js'
 import type { HarnessSize, Scenario, ScenarioObservation } from '../scenario.js'
 import { ScenarioAssertionError } from '../scenario.js'
+import { WATCH_SHIPPING_TIMEOUT } from '../../../handlers/watchShipping.js'
 
 const SMALL_TENANT_COUNT = 19
 const SMALL_TENANT_ORDERS = 5
 
+const PLAIN_SLOTS = 50
+// Sized against the slot-count table in docs/proofs/2026-09-22-shop-failure-harness.md.
+const DURABLE_SLOTS = 200
+
 const TOTAL_ORDERS = { smoke: 200, report: 5_000 } satisfies Record<HarnessSize, number>
 const EFFECTS_TIMEOUT_MS = { smoke: 180_000, report: 20 * 60_000 } satisfies Record<HarnessSize, number>
+// A durable run holds its slot for its whole sleep and wait, at report size,
+// with 200 durable slots, that drains in about 220s; docs/proofs/2026-09-22-shop-failure-harness.md
+// has the measured slot-count table.
+const DURABLE_EFFECTS_TIMEOUT_MS = { smoke: 180_000, report: 15 * 60_000 } satisfies Record<HarnessSize, number>
 
-const EXPECTED_HANDLERS = ['record-order', 'audit-order']
+const PLAIN_HANDLERS = ['record-order', 'audit-order']
+// Nothing in this scenario ever ships, so watch-shipping's terminal row is always the timeout row.
+const DURABLE_HANDLERS = [WATCH_SHIPPING_TIMEOUT]
 
 // A per-envelope engine read for every one of 5,000 envelopes is too slow
 // even batched (common.ts's readEnvelopeRunOutcomes); the doubled/lost
@@ -67,8 +79,8 @@ export const tenantLoad: Scenario = {
   describe: 'twenty tenants publish at once — one large, nineteen small — against a worker sized up for load',
   async run(ctx): Promise<ScenarioObservation> {
     const env = ctx.env({
-      KYU_SHOP_SLOTS: '50',
-      KYU_SHOP_DURABLE_SLOTS: '50',
+      KYU_SHOP_SLOTS: String(PLAIN_SLOTS),
+      KYU_SHOP_DURABLE_SLOTS: String(DURABLE_SLOTS),
       // watch-shipping holds a durable slot for its whole wait; none of
       // these orders ever ship, so a short timeout is what makes the
       // measured throughput above reachable at all.
@@ -92,6 +104,7 @@ export const tenantLoad: Scenario = {
     // Each tenant places its own orders sequentially (publish order matters
     // for per-key-ordering); the twenty tenants run concurrently, which is
     // what "twenty tenants publish at once" means here.
+    const placedAt = Date.now()
     const placedByTenant = await Promise.all(
       tenantPlans.map((plan) => placeOrders(ctx.pool, ctx.kyu, plan.tenantId, plan.orders)),
     )
@@ -104,11 +117,20 @@ export const tenantLoad: Scenario = {
       ctx.pool,
       { tenantIds },
       [
-        { envelopeIds: orderPlacedIds, handlers: EXPECTED_HANDLERS },
+        { envelopeIds: orderPlacedIds, handlers: PLAIN_HANDLERS },
         { envelopeIds: sendInvoiceIds, handlers: ['send-invoice'] },
       ],
       EFFECTS_TIMEOUT_MS[ctx.size],
     )
+    const plainEffectsMs = Date.now() - placedAt
+
+    const durableSettledInTime = await waitForExpectedEffects(
+      ctx.pool,
+      { tenantIds },
+      [{ envelopeIds: orderPlacedIds, handlers: DURABLE_HANDLERS }],
+      DURABLE_EFFECTS_TIMEOUT_MS[ctx.size],
+    )
+    const durableEffectsMs = Date.now() - placedAt
 
     const orderIds = allOrders.map((order) => order.orderId)
     const [counts, ordering, outboxRows, tenantLastHandled] = await Promise.all([
@@ -119,7 +141,7 @@ export const tenantLoad: Scenario = {
     ])
 
     const sampledIds = sampleEvenly(orderPlacedIds, RUN_OUTCOME_SAMPLE_SIZE)
-    const runOutcomes = await readEnvelopeRunOutcomes(ctx.kyu, sampledIds)
+    const runOutcomes = await waitForSettledRunOutcomes(ctx.kyu, sampledIds, 60_000)
 
     // Twenty tenants each publish their own envelopes, so tenant-unchanged
     // is checked per tenant — readTenantIds assumes one publishing tenant.
@@ -140,8 +162,10 @@ export const tenantLoad: Scenario = {
     const failures: AssertionFailure[] = [
       ...assertNoDoubleEffect(counts),
       ...assertNoFailedRun(runOutcomes),
-      ...assertNoLostEffect(counts, { envelopeIds: orderPlacedIds, handlers: EXPECTED_HANDLERS }),
+      ...assertNoUnsettledRun(runOutcomes),
+      ...assertNoLostEffect(counts, { envelopeIds: orderPlacedIds, handlers: PLAIN_HANDLERS }),
       ...assertNoLostEffect(counts, { envelopeIds: sendInvoiceIds, handlers: ['send-invoice'] }),
+      ...assertNoLostEffect(counts, { envelopeIds: orderPlacedIds, handlers: DURABLE_HANDLERS }),
       ...assertOutboxSettled(outboxRows),
       ...assertPerKeyOrdering(ordering),
       ...perTenantTenantRows.flatMap((rows) => assertTenantUnchanged(rows)),
@@ -150,6 +174,12 @@ export const tenantLoad: Scenario = {
       failures.push({
         check: 'no-effect-lost',
         detail: `expected handler effects for ${String(totalOrders)} orders never settled within ${String(EFFECTS_TIMEOUT_MS[ctx.size])}ms`,
+      })
+    }
+    if (!durableSettledInTime) {
+      failures.push({
+        check: 'no-effect-lost',
+        detail: `watch-shipping never reached a terminal row for ${String(totalOrders)} orders within ${String(DURABLE_EFFECTS_TIMEOUT_MS[ctx.size])}ms`,
       })
     }
     if (tenantsWithNoHandledRow > 0) {
@@ -166,6 +196,12 @@ export const tenantLoad: Scenario = {
       largeTenantOrders: largeOrders,
       smallTenantOrders: SMALL_TENANT_ORDERS,
       effectsSettledInTime,
+      plainEffectsMs,
+      durableSettledInTime,
+      durableEffectsMs,
+      durableSlots: DURABLE_SLOTS,
+      plainSlots: PLAIN_SLOTS,
+      watchShippingTerminalRows: counts.handlerRows.filter((row) => row.handler === WATCH_SHIPPING_TIMEOUT).length,
       runOutcomeSampleSize: sampledIds.length,
       runOutcomeSampledOfTotal: orderPlacedIds.length,
       handlerRowCount: counts.handlerRows.reduce((total, row) => total + row.count, 0),

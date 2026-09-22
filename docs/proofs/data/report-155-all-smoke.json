@@ -1,0 +1,165 @@
+{
+  "commitSha": "979d6dfe8f9ca204987aaa4f8dd0df8fcbfc5fec-dirty",
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpuCount": 10,
+    "totalMemBytes": 34359738368
+  },
+  "engineVersion": "hatchet-lite:latest",
+  "startedAt": "2026-09-22T07:49:45.258Z",
+  "scenarios": [
+    {
+      "name": "relay-killed-before-mark",
+      "passed": true,
+      "durationMs": 39503,
+      "observation": {
+        "ordersPlaced": 3,
+        "envelopesPublished": 6,
+        "killedIds": "01a0c813-aeb0-7000-b6a4-0beb0ea2e9d6,01a0c813-aeb2-7000-b843-2fcc82b92011,01a0c813-aeb5-7000-9d15-ea27538cbff3,01a0c813-aeb5-7001-a0dc-b3f0af6847b4,01a0c813-aeb8-7000-8bc6-177c41fc07fa,01a0c813-aeb8-7001-8347-1eeef50feeaf",
+        "reclaimDelayMs": 30150,
+        "staleClaimMs": 30000,
+        "engineDuplicateCountForOrderPlaced": 6,
+        "effectsSettledInTime": true,
+        "handlerRowCount": 15
+      },
+      "failures": []
+    },
+    {
+      "name": "worker-killed-mid-step",
+      "passed": true,
+      "durationMs": 39439,
+      "observation": {
+        "envelopeId": "01a0c814-4900-7000-b190-7398d5d52e80",
+        "workerAExitSignal": "SIGKILL",
+        "workerBPid": 64737,
+        "terminalHandler": "watch-shipping:timeout"
+      },
+      "failures": []
+    },
+    {
+      "name": "worker-killed-while-parked",
+      "passed": true,
+      "durationMs": 39643,
+      "observation": {
+        "envelopeId": "01a0c814-e30a-7000-b69b-49ff35464092",
+        "workerBPid": 64749,
+        "carrier": "ups"
+      },
+      "failures": []
+    },
+    {
+      "name": "relay-db-connection-dropped",
+      "passed": true,
+      "durationMs": 9411,
+      "observation": {
+        "ordersPlaced": 3,
+        "envelopesPublished": 6,
+        "terminatedBackendCount": 1,
+        "sawDbConnectionDropped": true,
+        "relayStayedAlive": true,
+        "effectsSettledInTime": true,
+        "handlerRowCount": 12
+      },
+      "failures": []
+    },
+    {
+      "name": "engine-outage",
+      "passed": true,
+      "durationMs": 65006,
+      "observation": {
+        "ordersBeforeOutage": 3,
+        "ordersDuringOutage": 3,
+        "sawRelayError": true,
+        "backlogObserved": true,
+        "relayStayedAliveDuringCut": true,
+        "relayAliveAtEnd": true,
+        "workerAliveAtEnd": true,
+        "drainAfterReopenMs": 24107,
+        "effectsSettledInTime": true,
+        "handlerRowCount": 27
+      },
+      "failures": []
+    },
+    {
+      "name": "tenant-load",
+      "passed": true,
+      "durationMs": 9744,
+      "observation": {
+        "tenantCount": 20,
+        "totalOrders": 200,
+        "largeTenantOrders": 105,
+        "smallTenantOrders": 5,
+        "effectsSettledInTime": true,
+        "plainEffectsMs": 4427,
+        "durableSettledInTime": true,
+        "durableEffectsMs": 8975,
+        "durableSlots": 200,
+        "plainSlots": 50,
+        "watchShippingTerminalRows": 200,
+        "runOutcomeSampleSize": 200,
+        "runOutcomeSampledOfTotal": 200,
+        "handlerRowCount": 1000,
+        "maxLastHandledAgoMs": 1197,
+        "minLastHandledAgoMs": 245
+      },
+      "failures": []
+    },
+    {
+      "name": "long-delay-handoff",
+      "passed": true,
+      "durationMs": 11634,
+      "observation": {
+        "runId": "01a0c816-c6b1-7000-979f-fd46496ba8ce",
+        "triggerEnvelopeId": "01a0c816-c6b1-7001-a024-7c273277f870",
+        "continuationId": "01a0c816-c787-7000-8736-bf1879f8a28b",
+        "finished": true,
+        "engineRunCount": 2,
+        "notifyCount": 1,
+        "workerBPid": 64774
+      },
+      "failures": []
+    },
+    {
+      "name": "cancel-parked",
+      "passed": true,
+      "durationMs": 24906,
+      "observation": {
+        "envelopeId": "01a0c816-f423-7000-b596-a855e636796b",
+        "cancelledRunCount": 3,
+        "watchShippingFinalStatus": "cancelled",
+        "waitingRowCount": 1
+      },
+      "failures": []
+    },
+    {
+      "name": "cancel-between-steps",
+      "passed": true,
+      "durationMs": 14962,
+      "observation": {
+        "runId": "01a0c817-5577-7000-9dad-5a3a9aef722f",
+        "triggerEnvelopeId": "01a0c817-5577-7001-92e1-1d6815457dd6",
+        "cancelledRunCount": 1,
+        "stepLogRowCount": 1,
+        "notifyCount": 0
+      },
+      "failures": []
+    },
+    {
+      "name": "outbox-backlog",
+      "passed": true,
+      "durationMs": 3264,
+      "observation": {
+        "backlogSize": 5000,
+        "drained": true,
+        "drainMs": 3008,
+        "ratePerSecond": 1662,
+        "peakPending": 5000,
+        "peakOldestSeconds": 2.187125,
+        "sampleCount": 4,
+        "lagSeriesJson": "[{\"atMs\":2,\"pending\":5000,\"oldestSeconds\":0.203076},{\"atMs\":1005,\"pending\":2900,\"oldestSeconds\":1.183077},{\"atMs\":2006,\"pending\":900,\"oldestSeconds\":2.187125},{\"atMs\":3008,\"pending\":0,\"oldestSeconds\":0}]"
+      },
+      "failures": []
+    }
+  ]
+}

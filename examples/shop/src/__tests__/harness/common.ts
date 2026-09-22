@@ -11,7 +11,7 @@ import { readConfig } from '../../config.js'
 import { describeError } from '../../log.js'
 import type { PlacedOrder } from '../../producer/placeOrder.js'
 import { placeOrder } from '../../producer/placeOrder.js'
-import { assertNoLostEffect } from './assertions.js'
+import { assertNoLostEffect, assertNoUnsettledRun } from './assertions.js'
 import type { EnvelopeRunOutcomes, ExpectedEffects } from './assertions.js'
 import { readEffectCounts } from './reads.js'
 import type { EffectWindow } from './reads.js'
@@ -147,6 +147,20 @@ export async function readEnvelopeRunOutcomes(
     envelopeId,
     outcomes: await readRunOutcomesWithRetry(kyu, envelopeId),
   }))
+}
+
+/** Re-reads the sampled envelopes until no run is still queued or running, or the timeout; returns the last read either way. */
+export async function waitForSettledRunOutcomes(
+  kyu: Kyu,
+  envelopeIds: readonly string[],
+  timeoutMs: number,
+): Promise<readonly EnvelopeRunOutcomes[]> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const outcomes = await readEnvelopeRunOutcomes(kyu, envelopeIds)
+    if (assertNoUnsettledRun(outcomes).length === 0 || Date.now() >= deadline) return outcomes
+    await sleep(2000)
+  }
 }
 
 /** A direct pg connection for fixtures that need one (`Client`, not `Pool`): workflow fixtures under src/__tests__/. */

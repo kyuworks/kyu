@@ -1,0 +1,37 @@
+{
+  "commitSha": "8ea29354f77a38cd3d40d3ebca5a5977f55cb069-dirty",
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpuCount": 10,
+    "totalMemBytes": 34359738368
+  },
+  "engineVersion": "hatchet-lite:latest",
+  "startedAt": "2026-09-22T06:51:00.906Z",
+  "scenarios": [
+    {
+      "name": "tenant-load",
+      "passed": true,
+      "durationMs": 221426,
+      "observation": {
+        "tenantCount": 20,
+        "totalOrders": 5000,
+        "largeTenantOrders": 4905,
+        "smallTenantOrders": 5,
+        "effectsSettledInTime": true,
+        "plainEffectsMs": 49879,
+        "durableSettledInTime": true,
+        "durableEffectsMs": 220545,
+        "durableSlots": 200,
+        "plainSlots": 50,
+        "watchShippingTerminalRows": 5000,
+        "runOutcomeSampleSize": 200,
+        "runOutcomeSampledOfTotal": 5000,
+        "handlerRowCount": 25000,
+        "maxLastHandledAgoMs": 211913,
+        "minLastHandledAgoMs": 629
+      },
+      "failures": []
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import { envelopeSchema } from '@kyuworks/schemas'
 import { KyuError } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
+import type { NamespaceRunsOptions } from './namespaceRuns.js'
 import type { RunProgress } from './runProgress.js'
 
 // A durable run parked in `sleepFor`/`waitFor` reads as `running`: the
@@ -48,6 +49,10 @@ export interface KyuRuns {
   cancelForEnvelope(envelopeId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
   /** Cancels every run that shares this correlation id — a durable run and the command runs it published — and returns them as they read just before the cancel. An unknown id returns an empty array. */
   cancelForCorrelation(correlationId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
+  /** Every run in this client's own namespace the engine still holds queued or running. Needs a `since`: a namespace has no id to date itself from. */
+  unsettledInNamespace(options: NamespaceRunsOptions): Promise<readonly RunOutcome[]>
+  /** Cancels every run in this client's own namespace that is still queued or running, and returns how many the engine cancelled. A namespace with no registered workflow cancels nothing. */
+  cancelUnsettledInNamespace(options: NamespaceRunsOptions): Promise<number>
 }
 
 type EngineRunRow = Awaited<ReturnType<HatchetClient['runs']['list']>>['rows'][number]

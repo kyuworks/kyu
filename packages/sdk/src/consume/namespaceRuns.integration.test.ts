@@ -1,0 +1,98 @@
+import { randomBytes } from 'node:crypto'
+import { createEnvelope, defineEvent, toEnvelopeMetadata } from '@kyuworks/schemas'
+import type { Envelope, MessageData, MessageDefinition, MessageSchema } from '@kyuworks/schemas'
+import { z } from 'zod'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { eventScope } from '../eventScope.js'
+import { createHatchetClient } from '../hatchet.js'
+import type { HatchetClient } from '../hatchet.js'
+import { cancelUnsettledRunsInNamespace, readUnsettledRunsInNamespace } from './namespaceRuns.js'
+import { subscribe } from './subscribe.js'
+import type { HandlerContext } from './handlerContext.js'
+import { createWorker } from './worker.js'
+import type { KyuWorker } from './worker.js'
+
+// Envelopes go straight to `hatchet.events.push` — no relay or outbox — the
+// same pattern as cancelRuns.integration.test.ts. Namespaced per run.
+
+const namespace = `nrit${randomBytes(3).toString('hex')}_`
+const hatchet: HatchetClient = createHatchetClient({ namespace })
+
+function sleep(ms: number): Promise<void> {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
+async function push<S extends MessageSchema>(
+  definition: MessageDefinition<S>,
+  data: MessageData<MessageDefinition<S>>,
+): Promise<Envelope<MessageData<MessageDefinition<S>>>> {
+  const envelope = await createEnvelope(definition, data, { tenantId: null, source: 'sdk.test' })
+  await hatchet.events.push(definition.name, envelope, {
+    additionalMetadata: toEnvelopeMetadata(envelope),
+    scope: eventScope(envelope),
+  })
+  return envelope
+}
+
+async function pollUntil<T>(read: () => Promise<T>, predicate: (value: T) => boolean, timeoutMs: number): Promise<T> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const value = await read()
+    if (predicate(value)) return value
+    if (Date.now() >= deadline) throw new Error('pollUntil: timed out waiting for the predicate')
+    await sleep(500)
+  }
+}
+
+describe('cancelUnsettledRunsInNamespace: leftover engine runs', () => {
+  const trigger = defineEvent({
+    name: 'kyu.namespaceruns.sleeper',
+    version: 1,
+    data: z.object({ seq: z.number() }),
+  })
+
+  let worker: KyuWorker | undefined
+
+  beforeAll(async () => {
+    const sleeper = subscribe(hatchet, trigger, {
+      name: 'namespaceruns-sleeper',
+      handler: async (_ctx: HandlerContext<{ seq: number }>) => {
+        await sleep(120_000)
+      },
+    })
+    worker = await createWorker(hatchet, 'namespaceruns-worker', {
+      subscriptions: [sleeper],
+      slots: 1,
+      stopTimeoutMs: 5_000,
+    })
+    void worker.start()
+    await worker.waitUntilReady()
+  }, 60_000)
+
+  afterAll(async () => {
+    await worker?.stop()
+  })
+
+  it('cancels every queued run in the namespace and leaves none behind', async () => {
+    const since = new Date(Date.now() - 5 * 60_000)
+    await Promise.all(Array.from({ length: 30 }, (_unused, seq) => push(trigger, { seq })))
+
+    await pollUntil(
+      () => readUnsettledRunsInNamespace(hatchet, { since }),
+      (rows) => rows.length > 1,
+      30_000,
+    )
+    await worker?.stop()
+    worker = undefined
+
+    const cancelled = await cancelUnsettledRunsInNamespace(hatchet, { since })
+    expect(cancelled).toBeGreaterThan(0)
+
+    const left = await pollUntil(
+      () => readUnsettledRunsInNamespace(hatchet, { since }),
+      (rows) => rows.length === 0,
+      30_000,
+    )
+    expect(left).toEqual([])
+  }, 90_000)
+})

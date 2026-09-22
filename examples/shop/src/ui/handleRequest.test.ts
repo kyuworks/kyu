@@ -77,6 +77,8 @@ function fakeKyu(publishes: RecordedPublish[], runOutcomes: Readonly<Record<stri
     forCorrelation: forId,
     cancelForEnvelope: forId,
     cancelForCorrelation: forId,
+    unsettledInNamespace: () => Promise.resolve([]),
+    cancelUnsettledInNamespace: () => Promise.resolve(0),
   }
   const stub: Pick<Kyu, 'publish' | 'runs'> = { publish, runs }
   return stub as Kyu

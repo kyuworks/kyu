@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assertNoDoubleEffect, assertNoFailedRun } from './assertions.js'
+import { assertNoDoubleEffect, assertNoFailedRun, assertNoUnsettledRun } from './assertions.js'
 
 const ENVELOPE = '01a0c900-0000-7000-8000-000000000001'
 const RUN = '01a0c901-0000-7000-8000-000000000001'
@@ -71,5 +71,48 @@ describe('assertNoFailedRun', () => {
     expect(failures[0]?.check).toBe('no-failed-run')
     expect(failures[0]?.detail).toContain(ENVELOPE)
     expect(failures[0]?.detail).toContain('shop_handler_log_once_idx')
+  })
+})
+
+describe('assertNoUnsettledRun', () => {
+  it('names a queued run as a failure', () => {
+    const failures = assertNoUnsettledRun([
+      {
+        envelopeId: ENVELOPE,
+        outcomes: [
+          { subscription: 'watch-shipping', status: 'queued', attempts: 1, runId: RUN, createdAt: new Date() },
+        ],
+      },
+    ])
+    expect(failures).toHaveLength(1)
+    expect(failures[0]?.check).toBe('no-unsettled-run')
+    expect(failures[0]?.detail).toContain('watch-shipping')
+  })
+
+  it('names a running run as a failure', () => {
+    const failures = assertNoUnsettledRun([
+      {
+        envelopeId: ENVELOPE,
+        outcomes: [
+          { subscription: 'watch-shipping', status: 'running', attempts: 1, runId: RUN, createdAt: new Date() },
+        ],
+      },
+    ])
+    expect(failures).toHaveLength(1)
+    expect(failures[0]?.check).toBe('no-unsettled-run')
+  })
+
+  it('passes completed, failed and cancelled runs', () => {
+    const failures = assertNoUnsettledRun([
+      {
+        envelopeId: ENVELOPE,
+        outcomes: [
+          { subscription: 'record-order', status: 'completed', attempts: 1, runId: RUN, createdAt: new Date() },
+          { subscription: 'audit-order', status: 'failed', attempts: 1, runId: RUN, createdAt: new Date() },
+          { subscription: 'watch-shipping', status: 'cancelled', attempts: 1, runId: RUN, createdAt: new Date() },
+        ],
+      },
+    ])
+    expect(failures).toEqual([])
   })
 })
