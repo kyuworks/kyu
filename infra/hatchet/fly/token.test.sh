@@ -11,6 +11,11 @@ chmod +x "${TMP}/bin/fly"
 mkdir -p "${TMP}/ok"
 printf '%s\n' '#!/usr/bin/env bash' 'printf "fake.worker.token\r\n"' > "${TMP}/ok/fly"
 chmod +x "${TMP}/ok/fly"
+mkdir -p "${TMP}/banner"
+printf '%s\n' '#!/usr/bin/env bash' \
+  'printf "Update available 0.4.1 -> 0.4.2.\r\n"' \
+  'printf "fake.worker.token\r\n"' > "${TMP}/banner/fly"
+chmod +x "${TMP}/banner/fly"
 
 echo "=== fly/token.sh tests ==="
 assert_exit "script exists" 0 test -f "${TOKEN}"
@@ -21,4 +26,6 @@ assert_exit "-a with no value is rejected" 2 env "PATH=${TMP}/bin:${PATH}" bash 
 gate_test_record "validation never invoked fly" "$([ -e "${TMP}/fly-was-called" ] && echo 1 || echo 0)"
 OUT="$(PATH="${TMP}/ok:${PATH}" bash "${TOKEN}" -a <engine-app>)"
 gate_test_record "stdout is exactly the token" "$([ "${OUT}" = "fake.worker.token" ] && echo 0 || echo 1)"
+BANNER_OUT="$(PATH="${TMP}/banner:${PATH}" bash "${TOKEN}" -a <engine-app>)"
+gate_test_record "a banner line before the token is dropped" "$([ "${BANNER_OUT}" = "fake.worker.token" ] && echo 0 || echo 1)"
 gate_test_finish

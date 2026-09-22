@@ -49,11 +49,12 @@ FAIL_TAIL_LINES=40
 FAIL_LINE_LIMIT=200
 
 # The pipeline skills keep their suites beside their scripts under
-# .agents/skills/, so scripts/ alone would leave them out of the nightly.
+# .agents/skills/, and the Fly deploy scripts keep theirs under infra/, so
+# scripts/ alone would leave both out of the nightly.
 if [ -n "${SELF_TESTS_DIR:-}" ]; then
   SEARCH_DIRS=("${SELF_TESTS_DIR}")
 else
-  SEARCH_DIRS=("${ROOT}/scripts" "${ROOT}/.agents/skills")
+  SEARCH_DIRS=("${ROOT}/scripts" "${ROOT}/.agents/skills" "${ROOT}/infra")
 fi
 
 # This runner's own suite drives the runner, so discovering it would recurse.

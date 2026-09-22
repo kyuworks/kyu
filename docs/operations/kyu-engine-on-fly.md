@@ -4,7 +4,8 @@ This page covers the deployed Hatchet engine for the Kyu message bus: `infra/hat
 (issue #162). It does not cover the local stack — see `infra/hatchet/compose.yaml` and
 `infra/hatchet/token.sh` for that.
 
-Today there is one environment: dev, app `<engine-app>`, org `<fly-org>`, region `syd`.
+Today there is one environment: dev, app `<engine-app>`, org `<fly-org>`, region `syd`,
+database cluster `<engine-db>` (cluster id `<engine-cluster-id>`).
 
 ## Who does what
 
@@ -17,27 +18,33 @@ Today there is one environment: dev, app `<engine-app>`, org `<fly-org>`, region
 
 1. Create the app: `fly apps create <engine-app> -o <fly-org>`
 2. Create the managed Postgres cluster: `fly mpg create -o <fly-org> -n <engine-db> -r syd --plan Basic --pg-major-version 17 --volume-size 10`
-3. The CTO attaches the cluster to the app (`fly mpg attach <cluster id> -a <engine-app>`,
-   which writes the `DATABASE_URL` secret) and runs `infra/hatchet/fly/secrets.sh` to see the
-   remaining commands, filling in each placeholder with a value from 1Password, then runs the
-   `fly secrets set --stage ...` commands it prints.
-4. Deploy: `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`
-5. Check health: `curl -s https://<engine-app>.fly.dev/api/ready` should return 200. If the
+3. The CTO opens the cluster's page in the Fly dashboard, copies the **direct** connection
+   string (not the pooler — Hatchet needs a session-mode connection for LISTEN/NOTIFY,
+   prepared statements and advisory locks, all of which a transaction pooler breaks), then runs
+   `infra/hatchet/fly/secrets.sh` to see every command, fills in each placeholder — including
+   `DATABASE_URL` with that string — from 1Password, and runs the `fly secrets set --stage ...`
+   commands it prints. There is no `fly mpg attach` step here.
+4. Create the config volume — `fly deploy` does not create the volume `fly.toml` mounts, so it
+   must exist first: `fly volumes create kyu_hatchet_config -r syd -a <engine-app>` (size per
+   the plan, or 1 GB if none is set). It must be created in `syd`; a volume in another region
+   cannot attach to a machine in `syd`.
+5. Deploy: `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`
+6. Check health: `curl -s https://<engine-app>.fly.dev/api/ready` should return 200. If the
    gRPC port refuses connections, check the `SERVER_GRPC_INSECURE` note in `fly.toml` first —
    Fly terminates TLS at the edge, so the engine's own setting may need to flip.
-6. The CTO runs `fly ssh issue` once for the org, if that has not already been done.
-7. Mint a worker token from this machine: `export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/fly/token.sh -a <engine-app>)"`.
+7. The CTO runs `fly ssh issue` once for the org, if that has not already been done.
+8. Mint a worker token from this machine: `export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/fly/token.sh -a <engine-app>)"`.
    `token.sh` defaults to the tenant id the local stack seeds
    (`707d0855-80ab-4e1f-a156-f1c4546cbf52`); a fresh Fly instance is not confirmed to seed the
    same id. Read the real id off the dashboard's tenant settings first, and pass it with
    `--tenant-id` if it differs.
-8. Register one worker against it (see `examples/shop/README.md`, "Against the deployed dev
+9. Register one worker against it (see `examples/shop/README.md`, "Against the deployed dev
    engine") and confirm it shows up in the dashboard.
 
 ## Upgrade
 
-1. Take a snapshot: `fly mpg backup list` and, if the platform does not do this automatically,
-   trigger one first.
+1. Take a snapshot: `fly mpg backup list <engine-cluster-id>` and, if the platform does not do
+   this automatically, trigger one first with `fly mpg backup create <engine-cluster-id>`.
 2. Bump the image tag in `infra/hatchet/fly/fly.toml` and `infra/hatchet/compose.yaml` together
    — they must always name the same tag.
 3. Deploy dev: `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`
@@ -46,8 +53,9 @@ Today there is one environment: dev, app `<engine-app>`, org `<fly-org>`, region
 
 ## Backup and restore rehearsal
 
-1. List available backups: `fly mpg backup list`
-2. Restore into a **new** cluster — never onto the live one: `fly mpg restore`, choosing a
+1. List available backups: `fly mpg backup list <engine-cluster-id>`
+2. Restore into a **new** cluster — never onto the live one:
+   `fly mpg restore <engine-cluster-id> --backup-id <id> -n <destination-name>`, choosing a
    destination cluster name that does not exist yet.
 3. Point a scratch app's `DATABASE_URL` at the restored cluster and confirm the engine starts
    and the dashboard shows the expected run history.
@@ -63,13 +71,17 @@ cluster, what was checked._
 Work through these in order:
 
 1. `fly status -a <engine-app>` — is a machine running at all, and how long has it been up?
-   A recent restart on a machine with no working `/config` volume means every previously minted
-   worker token has stopped verifying (the engine regenerated its signing keys).
+   The JWT signing keys come from the `SERVER_ENCRYPTION_JWT_PRIVATE_KEYSET` /
+   `SERVER_ENCRYPTION_JWT_PUBLIC_KEYSET` secrets, not from `/config`, so a restart alone should
+   not invalidate a previously minted worker token — confirm this after the first deploy rather
+   than assuming it.
 2. `fly logs -a <engine-app>` — look for a crash loop, a database connection error, or a
    migration failure at start.
 3. `curl -s https://<engine-app>.fly.dev/api/ready` — is the API answering at all?
-4. `fly mpg status -n <engine-db>` — is the database cluster itself healthy?
+4. `fly mpg status <engine-cluster-id>` — is the database cluster itself healthy? This prints
+   connection details, so the CTO runs it, not an agent.
 5. Check the volume: has the machine been replaced? A replacement with no volume attached, or a
-   volume in the wrong region, breaks the engine's signing keys the same way as point 1.
+   volume in the wrong region, means `/config` starts empty — confirm after first deploy what
+   that actually breaks.
 6. If nothing above explains it, re-read the first-deploy steps for anything skipped or done out
    of order, then ask the CTO to check the secrets are all set.

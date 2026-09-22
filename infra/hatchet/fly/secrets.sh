@@ -19,9 +19,11 @@ App: ${APP}
 
 Secrets this app needs, and where each value comes from:
   DATABASE_URL
-    The managed Postgres session-mode connection string, from
-    'fly mpg attach <cluster id> -a ${APP}' or read from the cluster's
-    connection details in the Fly dashboard.
+    The direct connection string from the cluster's page in the Fly
+    dashboard, not the pooler (Hatchet needs a session-mode connection for
+    LISTEN/NOTIFY, prepared statements and advisory locks; a transaction
+    pooler breaks all three). Assumption to verify on first deploy: whether
+    this string needs an sslmode parameter added.
   SERVER_AUTH_COOKIE_SECRETS
     Generated per the Hatchet self-hosting docs (a random cookie hashing
     and encryption key pair).

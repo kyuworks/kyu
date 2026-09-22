@@ -232,8 +232,8 @@ Tracked across issue #81 (Tailwind v4, HeroUI v3, Heroicons), `pnpm --filter @ky
 | `KYU_SHOP_UI_PORT`            | no                             | `3333`            | Read only by `ui`; the local port the web page binds to.                                                                 |
 | `HATCHET_CLIENT_TOKEN`        | for `relay`, `worker` and `ui` | —                 | Read by the engine client directly, same as the SDK's own integration lane. `migrate` and `publish-cli` never build one. |
 | `HATCHET_CLIENT_TLS_STRATEGY` | for `relay`, `worker` and `ui` | —                 | Read by the engine client directly.                                                                                      |
-| `HATCHET_CLIENT_API_URL`      | no                              | from the token     | Read by the engine client directly. Point the shop at a different engine's dashboard API.                               |
-| `HATCHET_CLIENT_HOST_PORT`    | no                              | from the token     | Read by the engine client directly. Point the shop at a different engine's gRPC address.                                |
+| `HATCHET_CLIENT_API_URL`      | no                             | from the token     | Read by the engine client directly. Point the shop at a different engine's dashboard API.                               |
+| `HATCHET_CLIENT_HOST_PORT`    | no                             | from the token     | Read by the engine client directly. Point the shop at a different engine's gRPC address.                                |
 
 The namespace is a prefix; the engine lowercases it and gives it a trailing underscore if one
 is missing.

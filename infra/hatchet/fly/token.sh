@@ -17,8 +17,8 @@ usage: token.sh -a|--app <name> [--tenant-id <uuid>]
 
   -a, --app <name>        Fly app name (default: $KYU_FLY_APP)
       --tenant-id <uuid>  Hatchet tenant id (default: $KYU_HATCHET_TENANT_ID
-                           or the seeded default 707d0855-80ab-4e1f-a156-f1c4546cbf52)
-  -h, --help               Show this help
+                          or the seeded default 707d0855-80ab-4e1f-a156-f1c4546cbf52)
+  -h, --help              Show this help
 EOF
 }
 
@@ -50,5 +50,5 @@ if [ -z "${APP}" ]; then
   exit 2
 fi
 
-fly ssh console -a "${APP}" -C "/hatchet-admin token create --config /config --tenant-id ${TENANT_ID}" | tr -d '\r\n'
+fly ssh console -a "${APP}" -C "/hatchet-admin token create --config /config --tenant-id ${TENANT_ID}" | tail -1 | tr -d '\r\n'
 echo

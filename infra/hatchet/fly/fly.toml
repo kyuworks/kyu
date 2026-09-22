@@ -18,8 +18,9 @@ primary_region = 'syd'
   SERVER_GRPC_BIND_ADDRESS = '0.0.0.0'
   SERVER_GRPC_PORT = '7077'
   # Fly's edge terminates TLS and forwards plaintext to the container, so
-  # this may need to be 't' — verify against /api/ready on first deploy.
-  SERVER_GRPC_INSECURE = 'f'
+  # the engine itself sees an insecure connection; the client still uses the
+  # 'tls' strategy to the edge. Verify against /api/ready on first deploy.
+  SERVER_GRPC_INSECURE = 't'
   SERVER_GRPC_BROADCAST_ADDRESS = '<engine-app>.fly.dev:7077'
   SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS = 'localhost:7077'
 
