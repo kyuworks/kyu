@@ -64,8 +64,10 @@ async function runWorkflow(pool: Pool, kyu: Kyu, ctx: TriggerContext): Promise<v
   }
 
   // A Camba flow (#157): same shape, walked from entryNodeId instead of start.
-  // cambaDefinition.ts's trust edge rejects a cycle-prone shape (a branch
-  // node) at parse time, so this bound holds the same way.
+  // Unlike definition.ts's workflowDefinitionSchema, cambaDefinition.ts's
+  // trust edge does not walk for a cycle (a two-action `next` cycle parses
+  // fine): this hop bound is what turns a cycle into a NonRetryableError,
+  // at run time instead of at parse time.
   let nodeId: string | undefined = resumeStepId ?? stored.flow.entryNodeId
   for (let hops = 0; hops <= Object.keys(stored.flow.nodes).length; hops += 1) {
     if (nodeId === undefined) return
@@ -258,10 +260,6 @@ async function walkFlowNode(
       return requireFlowExitTarget(node, 'next')
     }
     case 'wait': {
-      // The ledger first. A replay must reuse the exit this run already took.
-      const recorded = await readStepExit(pool, run.runId, node.id)
-      if (recorded.found) return branchExitStepId(run.runId, node.id, recorded.exitStepId)
-
       if (node.input.timeoutMinutes === null) {
         throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: wait ${node.id} of run ${run.runId} has no timeout`)
       }
@@ -271,6 +269,12 @@ async function walkFlowNode(
       const timeoutSeconds = node.input.timeoutMinutes * 60
 
       if (timeoutSeconds >= DELAY_HANDOFF_SECONDS) {
+        // Same shape as the delay hand-off above: no ledger-first read. The
+        // exit here is not a decision (`timed_out` is the only reachable
+        // exit, ADR decision 8) — it is a hand-off, so a redelivery of the
+        // trigger that reaches this node must publish the continuation at
+        // most once (onceById) and then end the run the same way, never read
+        // its own recorded exit back as "keep walking" (#157 review).
         await withTransaction(pool, (tx) =>
           kyu.onceById(tx, run.runId, stepKey(node.id), async () => {
             await kyu.publish(
@@ -301,6 +305,8 @@ async function walkFlowNode(
         )
         return undefined
       }
+      // sleepFor replays from the durable log; the duration comes from the
+      // PINNED version, so two workers always record the same wait.
       await ctx.sleepFor(`${timeoutSeconds}s`)
       await withTransaction(pool, (tx) =>
         kyu.onceById(tx, run.runId, stepKey(node.id), () =>
