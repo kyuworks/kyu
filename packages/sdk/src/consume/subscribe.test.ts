@@ -2,7 +2,14 @@ import { createEnvelope, defineCommand, defineEvent, toEnvelopeMetadata } from '
 import { z } from 'zod'
 import { describe, expect, it, vi } from 'vitest'
 import { EnvelopeRejectedError } from '../errors.js'
-import type { Context, CreateTaskWorkflowOpts, HatchetClient, JsonObject, TaskWorkflowDeclaration } from '../hatchet.js'
+import type {
+  Context,
+  CreateTaskWorkflowOpts,
+  Duration,
+  HatchetClient,
+  JsonObject,
+  TaskWorkflowDeclaration,
+} from '../hatchet.js'
 import { ConcurrencyLimitStrategy, KyuError, Priority, RateLimitDuration } from '../hatchet.js'
 import { decodeIncomingEnvelope, subscribe } from './subscribe.js'
 import { toHatchetRateLimit } from './taskOptions.js'
@@ -180,7 +187,7 @@ function fakeHatchetClient(): FakeHatchetClient {
 }
 
 describe('subscribe: option wiring', () => {
-  it('carries rate limits, priority, executionTimeout, backoff, retries and a concurrency array to the engine exactly', () => {
+  it('carries rate limits, priority, executionTimeout, scheduleTimeout, backoff, retries and a concurrency array to the engine exactly', () => {
     const { client, capturedOptions } = fakeHatchetClient()
 
     subscribe(client, orderPlaced, {
@@ -194,6 +201,7 @@ describe('subscribe: option wiring', () => {
       backoff: { factor: 2, maxSeconds: 600 },
       rateLimits: [{ key: "'shop-api'", limit: 5, period: 'hour' }],
       executionTimeout: '30s',
+      scheduleTimeout: '45s',
       priority: 'high',
     })
 
@@ -208,6 +216,7 @@ describe('subscribe: option wiring', () => {
       { dynamicKey: "'shop-api'", units: 1, limit: 5, duration: RateLimitDuration.HOUR },
     ])
     expect(options?.executionTimeout).toBe('30s')
+    expect(options?.scheduleTimeout).toBe('45s')
     expect(options?.defaultPriority).toBe(Priority.HIGH)
   })
 
@@ -219,6 +228,30 @@ describe('subscribe: option wiring', () => {
     subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined })
 
     expect(capturedOptions()?.executionTimeout).toBeUndefined()
+  })
+
+  // The engine applies its own 5-minute schedule timeout when the field is
+  // absent; neither helper may invent a default.
+  it('sets no scheduleTimeout when the caller gives none', () => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined })
+
+    expect(capturedOptions()?.scheduleTimeout).toBeUndefined()
+  })
+
+  it.each([
+    ['zero, which would fail every queued run at once', '0s'],
+    ['a fraction the engine grammar cannot read', '1.5s'],
+    ['a negative duration', '-30s'],
+    ['an empty string', '' as Extract<Duration, string>],
+  ] as const)('refuses a scheduleTimeout of %s before the engine', (_shape, value) => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    expect(() =>
+      subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined, scheduleTimeout: value }),
+    ).toThrow(KyuError)
+    expect(capturedOptions()).toBeUndefined()
   })
 })
 

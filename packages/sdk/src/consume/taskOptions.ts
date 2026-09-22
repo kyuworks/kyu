@@ -1,4 +1,4 @@
-import { KyuError, Priority, RateLimitDuration } from '../hatchet.js'
+import { KyuError, Priority, RateLimitDuration, durationToMs } from '../hatchet.js'
 import type { Concurrency, CreateTaskWorkflowOpts, Duration, JsonObject } from '../hatchet.js'
 import { toHatchetConcurrency } from './concurrency.js'
 import type { ConcurrencyOption } from './concurrency.js'
@@ -29,6 +29,12 @@ export interface SharedTaskOptions {
   backoff?: { factor?: number; maxSeconds?: number }
   rateLimits?: RateLimitOption[]
   executionTimeout?: Extract<Duration, string>
+  /**
+   * How long a run may wait in the queue for a free slot. The engine fails a
+   * run that waits longer without ever starting it; its own default is 5
+   * minutes, which the SDK leaves in place.
+   */
+  scheduleTimeout?: Extract<Duration, string>
   priority?: 'low' | 'medium' | 'high'
 }
 
@@ -77,6 +83,28 @@ export function toHatchetRateLimit(option: RateLimitOption): HatchetRateLimitInp
   }
 }
 
+// The Duration string type still admits '0s', '1.5s' and '-30s'. Proved on the
+// local engine: '0s' fails every queued run in about 20ms, with no start time
+// and no error message, so a bad value here dead-letters a whole subscription.
+function assertScheduleTimeout(value: Extract<Duration, string>): void {
+  let milliseconds: number
+  try {
+    milliseconds = durationToMs(value)
+  } catch (cause) {
+    throw new KyuError(
+      `scheduleTimeout "${value}" is not a duration the engine reads: use hours, minutes and seconds, for example "5m" or "1h30m"`,
+      { cause: cause instanceof Error ? cause : new Error(String(cause)) },
+    )
+  }
+  if (milliseconds <= 0) {
+    throw new KyuError(
+      value.length === 0
+        ? 'scheduleTimeout is empty: every run would fail before it started'
+        : `scheduleTimeout "${value}" is zero: every run would fail before it started`,
+    )
+  }
+}
+
 function toConcurrencyList(
   option: ConcurrencyOption | ConcurrencyOption[] | undefined,
 ): Concurrency | Concurrency[] | undefined {
@@ -92,5 +120,9 @@ export function applySharedTaskOptions(taskOptions: SharedTaskFields, options: S
   if (options.backoff !== undefined) taskOptions.backoff = options.backoff
   if (options.rateLimits !== undefined) taskOptions.rateLimits = options.rateLimits.map(toHatchetRateLimit)
   if (options.executionTimeout !== undefined) taskOptions.executionTimeout = options.executionTimeout
+  if (options.scheduleTimeout !== undefined) {
+    assertScheduleTimeout(options.scheduleTimeout)
+    taskOptions.scheduleTimeout = options.scheduleTimeout
+  }
   if (options.priority !== undefined) taskOptions.defaultPriority = PRIORITY_CODE[options.priority]
 }
