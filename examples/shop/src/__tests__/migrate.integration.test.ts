@@ -7,12 +7,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { readConfig } from '../config.js'
 import { APP_MIGRATIONS_DIRECTORY, applyPending } from '../db/migrate.js'
 
-// shop_order_line and shop_product are 0002_shop.sql's; shop_order_line
-// references shop_order, so both must drop in the same statement. The four
+// shop_order_line, shop_product and shop_lead_projection (0007_shop.sql) all
+// reference shop_order, so they must drop in the same statement. The four
 // shop_workflow_* tables are 0004_shop.sql's, in their own FK chain.
 const TABLES = [
   'shop_order_line',
   'shop_product',
+  'shop_lead_projection',
   'shop_order',
   'shop_invoice',
   'shop_handler_log',
@@ -54,13 +55,14 @@ describe('applyPending', () => {
       '0004_shop.sql',
       '0005_shop.sql',
       '0006_shop.sql',
+      '0007_shop.sql',
     ])
 
     const second = await applyPending(client, [MIGRATIONS_DIRECTORY, APP_MIGRATIONS_DIRECTORY])
     expect(second).toEqual([])
 
     const ledger = await client.query('SELECT name FROM shop_migrations')
-    expect(ledger.rows).toHaveLength(9)
+    expect(ledger.rows).toHaveLength(10)
 
     for (const table of TABLES) {
       const exists = await client.query('SELECT 1 FROM information_schema.tables WHERE table_name = $1', [table])

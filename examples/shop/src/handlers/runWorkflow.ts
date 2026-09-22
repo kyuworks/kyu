@@ -4,10 +4,18 @@ import type { Pool } from 'pg'
 import { withTransaction } from '../db/pool.js'
 import { notifyStaff, workflowTriggered } from '../messages.js'
 import type { FlowNode } from '../workflow/cambaDefinition.js'
-import { flowActionKey, flowExitTarget, flowNodeById } from '../workflow/cambaDefinition.js'
+import { flowActionKey, flowBranchExit, flowExitTarget, flowNodeById } from '../workflow/cambaDefinition.js'
 import type { WorkflowStep } from '../workflow/definition.js'
 import { stepById } from '../workflow/definition.js'
-import { finishRun, insertRun, isOrderShipped, loadPinnedVersion, readStepExit, recordStep } from '../workflow/store.js'
+import {
+  finishRun,
+  insertRun,
+  isOrderShipped,
+  loadPinnedVersion,
+  readLeadProjection,
+  readStepExit,
+  recordStep,
+} from '../workflow/store.js'
 import type { PinnedVersion } from '../workflow/store.js'
 import { requireTenant } from './tenant.js'
 
@@ -76,10 +84,11 @@ async function runWorkflow(pool: Pool, kyu: Kyu, ctx: TriggerContext): Promise<v
   throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: run ${runId} did not reach an end node`)
 }
 
-// A branch's exit is never null by construction (workflow/definition.ts's
-// whenTrue/whenFalse always name a step); only an `end` step's ledger row
-// legitimately carries a null exit. A null here would otherwise read as
-// "the run is finished" one level up and end it silently.
+// A branch's exit is never null: the shop's whenTrue/whenFalse always name a
+// step (workflow/definition.ts), and the Camba trust edge refuses a null
+// branch target at parse time (cambaFlowSchema's superRefine). Only an
+// `end` step's ledger row legitimately carries a null exit. A null here
+// would otherwise read as "the run is finished" one level up and end it silently.
 function branchExitStepId(runId: string, stepId: string, exitStepId: string | null): string {
   if (exitStepId === null) {
     throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: branch ${stepId} of run ${runId} recorded a null exit`)
@@ -259,7 +268,70 @@ async function walkFlowNode(
       )
       return requireFlowExitTarget(node, 'next')
     }
+    case 'branch': {
+      // Checkpointed the same way as the shop's own branch (ADR decision 7):
+      // the ledger first, so a replay reuses the exit this run already took.
+      const recorded = await readStepExit(pool, run.runId, node.id)
+      if (recorded.found) return branchExitStepId(run.runId, node.id, recorded.exitStepId)
+
+      await withTransaction(pool, (tx) =>
+        kyu.onceById(tx, run.runId, stepKey(node.id), async () => {
+          // Read and decision in the same transaction as the ledger row.
+          const projection = await readLeadProjection(tx, run.tenantId, run.orderId)
+          const { next: exitStepId } = flowBranchExit(node, projection)
+          await recordStep(tx, {
+            runId: run.runId,
+            stepId: node.id,
+            tenantId: run.tenantId,
+            kind: node.kind,
+            exitStepId,
+          })
+        }),
+      )
+      const settled = await readStepExit(pool, run.runId, node.id)
+      if (!settled.found) {
+        throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: branch ${node.id} of run ${run.runId} recorded no exit`)
+      }
+      return branchExitStepId(run.runId, node.id, settled.exitStepId)
+    }
     case 'wait': {
+      if (node.wait === 'duration') {
+        // The shortest Camba duration wait (1 minute) is exactly the shop's
+        // hand-off threshold, so every duration wait ends here; none parks
+        // in sleepFor (docs/proofs/2026-09-22-camba-flow-on-kyu.md).
+        const exitNodeId = requireFlowExitTarget(node, 'done')
+        const durationSeconds = node.input.minutes * 60
+
+        await withTransaction(pool, (tx) =>
+          kyu.onceById(tx, run.runId, stepKey(node.id), async () => {
+            await kyu.publish(
+              tx,
+              workflowTriggered,
+              {
+                runId: run.runId,
+                definitionId: run.pinned.definitionId,
+                versionId: run.pinned.versionId,
+                orderId: run.orderId,
+                resumeStepId: exitNodeId,
+              },
+              {
+                tenantId: run.tenantId,
+                correlationId: run.runId,
+                causationId: ctx.envelope.id,
+                publishAt: new Date(Date.now() + durationSeconds * 1000),
+              },
+            )
+            await recordStep(tx, {
+              runId: run.runId,
+              stepId: node.id,
+              tenantId: run.tenantId,
+              kind: 'wait_duration',
+              exitStepId: exitNodeId,
+            })
+          }),
+        )
+        return undefined
+      }
       if (node.input.timeoutMinutes === null) {
         throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: wait ${node.id} of run ${run.runId} has no timeout`)
       }

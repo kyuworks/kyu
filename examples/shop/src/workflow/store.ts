@@ -1,6 +1,8 @@
 import type { Queryable, RelayQueryable, Unparsed } from '@kyuworks/sdk'
 import { NonRetryableError } from '@kyuworks/sdk'
 import { z } from 'zod'
+import { shopLeadProjectionSchema } from './cambaConditions.js'
+import type { ShopLeadProjection } from './cambaConditions.js'
 import { flowActionKey, flowNodeById } from './cambaDefinition.js'
 import { parseStoredWorkflow, stepById } from './definition.js'
 import type { StoredWorkflow } from './definition.js'
@@ -33,6 +35,7 @@ export async function readEnabledDefinition(client: Queryable, tenantId: string)
 // unvalidated value through with no assertion.
 const rawStepsSchema = z.custom<Unparsed>()
 const versionRowSchema = z.object({ steps: rawStepsSchema })
+const leadProjectionRowSchema = z.object({ projection: rawStepsSchema })
 
 export interface PinnedVersion {
   definitionId: string
@@ -146,6 +149,27 @@ export async function isOrderShipped(client: RelayQueryable, tenantId: string, o
   }
   const row = shippedRowSchema.parse(result.rows[0])
   return row.shipped_at !== null
+}
+
+// The stub lead projection a Camba branch condition is evaluated against
+// (examples/shop/migrations/0007_shop.sql). A missing row is a
+// NonRetryableError, not a silent otherwise: unlike Camba's own
+// "no projection means take otherwise", a missing row here means the test —
+// or a caller — forgot to seed it.
+export async function readLeadProjection(
+  client: RelayQueryable,
+  tenantId: string,
+  orderId: string,
+): Promise<ShopLeadProjection> {
+  const result = await client.query(
+    'SELECT projection FROM shop_lead_projection WHERE tenant_id = $1 AND order_id = $2',
+    [tenantId, orderId],
+  )
+  if (result.rows.length === 0) {
+    throw new NonRetryableError(`no shop_lead_projection row for order ${orderId} in tenant ${tenantId}`)
+  }
+  const row = leadProjectionRowSchema.parse(result.rows[0])
+  return shopLeadProjectionSchema.parse(row.projection)
 }
 
 export interface ReadNotifyNoteInput {
