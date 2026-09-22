@@ -286,11 +286,34 @@ The harness empties the shop and bus tables in the database you point it at, bef
 every scenario. Point it at its own database. It starts and stops its own relay and worker
 processes and never touches Docker.
 
-The harness is not run by CI. It is run by hand to produce the proof under `docs/proofs/`. This
-first pull request ships the runner and four crash scenarios (a relay killed between pushing and
-marking a message published, a worker killed mid-step, a worker killed while parked, the relay's
-database connection dropped); a second pull request adds the engine outage, load, long-delay and
-cancel scenarios and the report.
+The harness is not run by CI. It is run by hand to produce the proof under `docs/proofs/`. Every
+scenario gets its own namespace (the lane's namespace plus the scenario's own name), so a durable
+run left parked by one scenario can never be picked up by the next scenario's worker.
+
+Ten scenarios, run with `--scenario <name>` or `--scenario all`:
+
+- `relay-killed-before-mark` — a relay is SIGKILLed between pushing a batch and marking it
+  published; a second relay reclaims the row once its claim goes stale.
+- `worker-killed-mid-step` — a worker is SIGKILLed while `watch-shipping` is still inside its 5s
+  sleep; a second worker finishes the run.
+- `worker-killed-while-parked` — a worker is SIGKILLed after `watch-shipping` is genuinely parked
+  in `waitFor`; a second worker delivers the shipment.
+- `relay-db-connection-dropped` — the relay's own Postgres connection is dropped mid-flight; it
+  logs the drop, stays alive and drains.
+- `engine-outage` — a harness-owned TCP proxy in front of the engine's two ports is cut, then
+  reopened; the relay must back off and stay alive, and the backlog must drain once the proxy
+  reopens. No Docker is touched; the proxy only fronts traffic the harness itself started.
+- `tenant-load` — twenty tenants publish at once, one large and nineteen small, against a worker
+  sized up with `KYU_SHOP_SLOTS`/`KYU_SHOP_DURABLE_SLOTS`. At the report size (5,000 events) the
+  run-outcome check samples rather than reading every envelope; the written report says so.
+- `long-delay-handoff` — a 48-hour workflow delay hands off to a scheduled continuation instead of
+  parking; the worker is restarted during that hand-off and the continuation is fast-forwarded.
+- `cancel-parked` — a genuinely parked `watch-shipping` run is cancelled through
+  `kyu.runs.cancelForEnvelope`.
+- `cancel-between-steps` — a workflow run is cancelled while genuinely parked between two delay
+  steps, before it ever reaches its notify step.
+- `outbox-backlog` — a large backlog (up to 50,000 rows at the report size) is inserted with the
+  relay stopped, then drained alone and sampled once a second.
 
 ## Engine hygiene
 

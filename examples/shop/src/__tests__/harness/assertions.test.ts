@@ -68,6 +68,7 @@ describe('assertNoFailedRun', () => {
       },
     ])
     expect(failures).toHaveLength(1)
+    expect(failures[0]?.check).toBe('no-failed-run')
     expect(failures[0]?.detail).toContain(ENVELOPE)
     expect(failures[0]?.detail).toContain('shop_handler_log_once_idx')
   })

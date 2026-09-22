@@ -6,25 +6,35 @@ import nodeProcess from 'node:process'
 import { parseArgs } from 'node:util'
 import { readConfig } from '../../config.js'
 import { createPool } from '../../db/pool.js'
-import { createShopKyu } from '../../kyu.js'
 import { log } from '../../log.js'
 import { stopAllSpawnedProcesses } from '../processes.js'
-import { laneEnv } from './children.js'
 import { buildReport, reportSummaryLines } from './report.js'
 import type { HarnessSize, Scenario, ScenarioResult } from './scenario.js'
 import { runScenario } from './scenario.js'
+import { cancelBetweenSteps } from './scenarios/cancelBetweenSteps.js'
+import { cancelParked } from './scenarios/cancelParked.js'
+import { engineOutage } from './scenarios/engineOutage.js'
+import { longDelayHandoff } from './scenarios/longDelayHandoff.js'
+import { outboxBacklog } from './scenarios/outboxBacklog.js'
 import { relayDbConnectionDropped } from './scenarios/relayDbConnectionDropped.js'
 import { relayKilledBeforeMark } from './scenarios/relayKilledBeforeMark.js'
+import { tenantLoad } from './scenarios/tenantLoad.js'
 import { workerKilledMidStep } from './scenarios/workerKilledMidStep.js'
 import { workerKilledWhileParked } from './scenarios/workerKilledWhileParked.js'
 
-// PR A's four crash scenarios. PR B adds engine-outage, load, long-delay,
-// the two cancels and the backlog scenario to this list.
+// PR A's four crash scenarios, plus PR B's engine outage, load, long-delay
+// handoff, the two cancels and the backlog drain.
 const SCENARIOS: readonly Scenario[] = [
   relayKilledBeforeMark,
   workerKilledMidStep,
   workerKilledWhileParked,
   relayDbConnectionDropped,
+  engineOutage,
+  tenantLoad,
+  longDelayHandoff,
+  cancelParked,
+  cancelBetweenSteps,
+  outboxBacklog,
 ]
 
 export interface HarnessOptions {
@@ -69,7 +79,6 @@ async function main(): Promise<void> {
   const options = parseHarnessOptions(nodeProcess.argv.slice(2))
   const config = readConfig()
   const pool = createPool(config.databaseUrl)
-  const kyu = createShopKyu(config)
 
   const selected =
     options.scenario === 'all' ? SCENARIOS : SCENARIOS.filter((scenario) => scenario.name === options.scenario)
@@ -78,7 +87,9 @@ async function main(): Promise<void> {
   try {
     for (const scenario of selected) {
       log('harness', 'scenario-start', { name: scenario.name, describe: scenario.describe })
-      const result = await runScenario({ pool, kyu, size: options.size, env: laneEnv }, scenario)
+      // Each scenario gets its own Kyu client, scoped to its own namespace
+      // (scenario.ts's runScenario); nothing here is reused across scenarios.
+      const result = await runScenario({ pool, config, size: options.size }, scenario)
       results.push(result)
       log('harness', 'scenario-done', { name: scenario.name, passed: result.passed, durationMs: result.durationMs })
     }

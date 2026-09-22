@@ -150,7 +150,7 @@ export function assertNoFailedRun(rows: readonly EnvelopeRunOutcomes[]): readonl
     for (const outcome of row.outcomes) {
       if (outcome.status === 'failed') {
         failures.push({
-          check: 'no-effect-doubled',
+          check: 'no-failed-run',
           detail: `envelope ${row.envelopeId} run ${outcome.runId} (${outcome.subscription}) failed: ${outcome.error ?? 'no error message'}`,
         })
       }

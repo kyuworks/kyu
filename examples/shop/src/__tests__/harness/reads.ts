@@ -104,6 +104,24 @@ export async function readOutboxState(db: HarnessDb): Promise<readonly OutboxSta
   return result.rows.map((row) => outboxStateRowSchema.parse(row))
 }
 
+export interface OutboxLag {
+  pending: number
+  oldestSeconds: number
+}
+
+const outboxLagRowSchema = z.object({ pending: z.coerce.number().int(), oldest_seconds: z.coerce.number().nullable() })
+
+/** The backlog scenario's sample: how many rows are still waiting, and how old the oldest one is. */
+export async function readOutboxLag(db: HarnessDb): Promise<OutboxLag> {
+  const result = await db.query(
+    `SELECT count(*)::int AS pending, extract(epoch from (now() - min(created_at)))::float AS oldest_seconds
+     FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL`,
+    [],
+  )
+  const parsed = outboxLagRowSchema.parse(result.rows[0])
+  return { pending: parsed.pending, oldestSeconds: parsed.oldest_seconds ?? 0 }
+}
+
 const tenantRowSchema = z.object({ tenant_id: z.uuid() })
 
 export interface TenantWindow {

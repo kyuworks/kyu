@@ -136,6 +136,45 @@ export async function insertLongDelayDefinition(
   return { definitionId, versionId }
 }
 
+// Two delay steps back to back: a short one, then a long one, then a notify
+// and an end. The harness's cancel-between-steps scenario waits for the
+// short step's ledger row (proof the run is past its first step) and cancels
+// while the run is genuinely parked in the second step's sleepFor, before it
+// ever reaches the notify.
+export async function insertTwoDelayWorkflowDefinition(
+  admin: Client,
+  tenantId: string,
+  firstDelaySeconds: number,
+  secondDelaySeconds: number,
+  notifyText = 'Order has not shipped yet — please chase the warehouse.',
+): Promise<InsertedDefinition> {
+  const definitionId = randomUUID()
+  const versionId = randomUUID()
+  const steps = {
+    schemaVersion: 1,
+    start: 'first',
+    steps: [
+      { id: 'first', kind: 'delay', input: { seconds: firstDelaySeconds }, next: 'hold' },
+      { id: 'hold', kind: 'delay', input: { seconds: secondDelaySeconds }, next: 'nudge' },
+      { id: 'nudge', kind: 'notify', input: { text: notifyText }, next: 'finish' },
+      { id: 'finish', kind: 'end' },
+    ],
+  }
+  await admin.query(
+    'INSERT INTO shop_workflow_definition (id, tenant_id, name, enabled, current_version_id) VALUES ($1, $2, $3, false, NULL)',
+    [definitionId, tenantId, 'two-delay'],
+  )
+  await admin.query(
+    'INSERT INTO shop_workflow_version (id, definition_id, tenant_id, version, steps) VALUES ($1, $2, $3, 1, $4)',
+    [versionId, definitionId, tenantId, JSON.stringify(steps)],
+  )
+  await admin.query('UPDATE shop_workflow_definition SET enabled = true, current_version_id = $2 WHERE id = $1', [
+    definitionId,
+    versionId,
+  ])
+  return { definitionId, versionId }
+}
+
 // A second saved version, repointed as current: proves a parked run keeps
 // walking the version it pinned at the start, not this one (version-pin-holds).
 export async function insertNewVersion(
