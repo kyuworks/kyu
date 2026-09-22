@@ -38,38 +38,191 @@ in the pull request's second commit.
 
 ## How this was produced
 
-_Filled in after the run (Step 2 of the plan)._
+```bash
+fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>
+export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/fly/token.sh -a <engine-app>)"
+export HATCHET_CLIENT_API_URL=https://<engine-app>.fly.dev
+export HATCHET_CLIENT_HOST_PORT=<engine-app>.fly.dev:7077
+export HATCHET_CLIENT_TLS_SERVER_NAME=<engine-app>.fly.dev
+unset HATCHET_CLIENT_TLS_STRATEGY
+export KYU_SHOP_NAMESPACE=fly162_
+export KYU_SHOP_SLOTS=50 KYU_SHOP_DURABLE_SLOTS=200 KYU_SHOP_WATCH_TIMEOUT=1s
+export KYU_SHOP_DATABASE_URL=postgresql://hatchet:hatchet@localhost:15432/kyu_shop_fly162
+pnpm --filter @kyuworks/shop harness --scenario engine-outage  --size report --out docs/proofs/data/report-162b-engine-outage.json
+pnpm --filter @kyuworks/shop harness --scenario outbox-backlog --size report --out docs/proofs/data/report-162b-outbox-backlog.json
+pnpm --filter @kyuworks/shop harness --scenario tenant-load    --size report --out docs/proofs/data/report-162b-tenant-load.json
+```
+
+- Commit: each run JSON's own `commitSha` reads `caa4dc155b382e08ba44062effdbeb7bc0ccb620-dirty` — the
+  working tree at run time, one commit past this branch's first (`caa4dc1`), dirty with the
+  `fly.toml` gRPC-port fix (found on first deploy, below) and the `LANE_TABLES` fix (also below),
+  both since committed to this branch.
+- Deployment: app `<engine-app>`, org `<fly-org>`, region `syd`, machine size `performance-1x`,
+  one machine, no autostop, image `ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.107.0` (the harness's
+  own `engineVersion` field reads `hatchet-lite:latest` — the same fallback the laptop proof used,
+  since `/api/v1/meta` carries no version field on this engine either), database Fly Managed
+  Postgres `<engine-db>`, plan Basic, Postgres 17, 10 GB, `syd`, session-mode direct
+  connection.
+- Lane database (local, not on Fly): `kyu_shop_fly162` on
+  `postgresql://hatchet:hatchet@localhost:15432/kyu_shop_fly162`.
+- **Two fixes made during this deploy, both recorded in this pull request:**
+  1. `infra/hatchet/fly/fly.toml`'s gRPC port (7077) needed `handlers = ['tls', 'http']` plus
+     `http_options.h2_backend = true`, not the bare `handlers = ['tls']` PR A shipped. A bare `tls`
+     handler on a `*.fly.dev` hostname never offers an ALPN protocol at all (confirmed directly
+     with `openssl s_client -alpn h2`: "no application protocol"), so grpc-js's mandatory ALPN
+     negotiation failed before the handshake completed — `SERVER_GRPC_INSECURE` was never the
+     issue (assumption check 2 in the plan named the wrong suspect). Adding `tls_options.alpn`
+     to the bare `tls` handler, the fix the Fly community docs suggest for a custom domain, made no
+     difference on `*.fly.dev`; adding `http` fixed ALPN but then had Fly forward to the backend as
+     HTTP/1.1, which a raw gRPC (h2c) server cannot parse (`hyper error: invalid HTTP version
+     parsed`); `http_options.h2_backend = true` is what makes Fly forward HTTP/2 to the backend
+     instead.
+  2. `examples/shop/src/__tests__/harness/scenario.ts`'s `LANE_TABLES` was missing
+     `shop_lead_projection` (added in migration `0007_shop.sql`), even though the comment claimed
+     it mirrors `vitest.integration.clearTables.ts`'s `CLEAN_TABLES`, which already had it. The very
+     first harness run against this freshly migrated database failed
+     `harness-leaves-nothing: truncating lane tables failed: cannot truncate a table referenced in
+     a foreign key constraint` — `shop_lead_projection` references `shop_order` but was never
+     truncated with it. This is not Fly-specific; it would have failed identically against a fresh
+     local database.
 
 ## The network path
 
-_Filled in after the run: the harness, the relay, the worker, the shop's Postgres and the outbox
-all run on this laptop in New Zealand; only the engine and its database are in Sydney. Measured
-round trip and the ten `curl` samples it is built from go here._
+The harness, the relay, the worker, the shop's Postgres and the outbox all run on this laptop in
+New Zealand; only the engine and its database are in Sydney (`syd`). Every scenario number below
+crosses that link once per engine call, where the laptop proof's numbers crossed loopback.
+
+Measured round trip (`curl -w '%{time_total}' -o /dev/null -s https://<engine-app>.fly.dev/api/ready`,
+ten samples, seconds): 0.148, 0.141, 0.199, 0.141, 0.142, 0.144, 0.144, 0.142, 0.140, 0.143.
+Min 140ms, median 143ms, max 199ms.
 
 ## Results table
 
-_Filled in after the run._
-
 | Scenario | Result | Wall time on Fly | Wall time on the laptop | Ratio |
 |---|---|---|---|---|
-| `engine-outage` | — | — | 103.5s | — |
-| `outbox-backlog` | — | — | 50,221ms (996 rows/sec) | — |
-| `tenant-load` | — | — | 221,426ms (50/200 slots) | — |
+| `engine-outage` | PASS | 61,046ms | 103.5s (103,500ms) | 0.59x (faster) |
+| `outbox-backlog` | **FAIL** (missed its 5-minute window) | 301,762ms | 50,221ms (996 rows/sec) | 6.0x |
+| `tenant-load` | **FAIL** (missed its windows) | 1,813,911ms (30.2 min) | 221,426ms (3.7 min, 50/200 slots) | 8.2x |
+
+`engine-outage`'s first attempt (122,083ms) is not counted in this table — its `--out` path was
+relative and resolved against the wrong working directory (`pnpm --filter` runs from
+`examples/shop`, not the repo root), so the JSON never wrote. The scenario itself passed both
+times; the number above is the second, correctly recorded run. `engine-outage` running faster
+against Fly than the laptop is plausible, not suspicious: its wall time is dominated by the fixed
+5-second hold-open and the assertion polling intervals, not by round-trip count, so a single-digit
+number of extra round trips at ~140ms each does not move it much either way.
 
 ## Throughput
 
-_Filled in after the run: rows/sec for `outbox-backlog` against the laptop's 996 rows/sec; handler
-rows/sec and orders/sec for `tenant-load` against the laptop's ~370 handler rows/sec and ~119
-orders/sec; which scenario the WAN link hurt more, and why._
+`outbox-backlog` inserts 50,000 outbox rows with the relay stopped, then starts the relay alone and
+times the drain. It failed its 5-minute (300,000ms) window at report size: after 301,762ms, 1,201 of
+50,000 rows (2.4%) were still pending. Rows drained in that time: 48,799, for roughly **162
+rows/sec** — against the laptop's 996 rows/sec, about **6x slower**. This is the scenario the plan
+expected the WAN link to hurt most, because the relay's push is one round trip per batch: at ~140ms
+per round trip, the extra latency directly taxes every batch, where on loopback that same round
+trip cost close to nothing.
+
+`tenant-load` also missed its window (below), but its failure list is short — 2 of 5,000 orders'
+`watch-shipping` handlers never ran, and 3 runs were still in flight at teardown — so the exact
+handler-rows/sec and orders/sec figures the laptop proof reports are not available for this run:
+`runScenario`'s teardown truncates the lane tables in a `finally` block regardless of pass or fail,
+and by the time this was checked those rows were already gone. Precise Fly-side throughput numbers
+for `tenant-load` are not in this proof; the wall-time comparison and the failure count above are
+what is available.
+
+### tenant-load — FAILED at report size
+
+What was injected: 20 tenants (one large, nineteen small) publishing 5,000 orders at once, against a
+worker sized `KYU_SHOP_SLOTS=50` / `KYU_SHOP_DURABLE_SLOTS=200` — the same slot counts as the
+laptop proof's third, passing run. This scenario waits for the three plain handlers
+(`record-order`, `audit-order`, `send-invoice`) within a 20-minute window, then separately waits for
+every order's durable `watch-shipping` run to reach a terminal row within a 15-minute window.
+
+What was observed: the run took 1,813,911ms (30.2 minutes) before failing, well past 20 minutes and
+past 15 minutes for the durable wait. Despite that, the failure list is short: `watch-shipping`
+never produced a terminal row for 2 of 5,000 orders, and 3 runs (one `record-order`, two
+`watch-shipping`) were still `running` when teardown tried to confirm nothing was left unsettled —
+against 5,000 orders each expected to produce four handler rows, this is a small tail, not a bulk
+loss. **This is not a delivery-guarantee failure** — nothing here shows a doubled effect or a lost
+outbox row, the same must-hold checks the plan requires held for everything that did settle. What
+failed is finishing inside the time budget at this scale, over this link.
+
+The relay/worker logs show `HeartbeatController` warnings spread across nearly the whole run
+(01:24–01:49, 26 occurrences) and a cluster of `Dispatcher`/`HeartbeatController` errors
+concentrated early, roughly 01:28–01:34 (about six minutes), then nothing until teardown. That
+shape — a rough patch early, then quiet — points at engine-side queueing under load rather than a
+sustained connectivity problem, matching the plan's own prediction that `tenant-load`'s cost is
+engine-side queueing rather than per-round-trip latency (unlike `outbox-backlog`, whose relay pushes
+one round trip per batch). Exact throughput numbers are not available (see § Throughput) because
+teardown truncated the lane tables before this was checked.
+
+**The issue's window is not being widened to make this pass.** This scenario was run once, at the
+same 5,000-order size, the same slot counts, and the same 20-minute / 15-minute windows the laptop
+proof used, and it took roughly 8x longer before missing them. That ratio, and the small, specific
+failure list above, is the honest result of running it against a real WAN link rather than loopback.
+
+### outbox-backlog — FAILED at report size
+
+What was injected: 50,000 outbox rows inserted directly (the relay stopped), then the relay started
+alone and the drain sampled once a second — no worker involved, so this isolates the relay's own
+push throughput against the deployed engine's REST push endpoint.
+
+What was observed: at 301,762ms (5.03 minutes), 1,201 of 50,000 rows (2.4%) were still pending, past
+the 5-minute (300,000ms) window this scenario allows. This is not a delivery-guarantee failure:
+nothing here contradicts must-hold — every row that failed to settle in time was still sitting in
+the outbox, not lost, not doubled, and would have drained had the window been longer. What failed is
+throughput at this latency: roughly 162 rows/sec against the laptop's 996 rows/sec, a 6x slowdown,
+consistent with the relay pushing one batch per round trip and each round trip now costing ~140ms
+instead of loopback's near-zero cost.
+
+**The issue's window is not being widened to make this pass.** This scenario was run once, at the
+same 50,000-row size and 5-minute window the laptop proof used, and it missed the window by 1,762ms
+— under 1% over. That margin, and the throughput math above, is the honest result of running it
+against a real WAN link rather than loopback.
+
+The committed `report-162b-outbox-backlog.json`'s `failures` array is capped at the first 20 of the
+1,201 real entries (`failuresCappedForReview: { shown: 20, total: 1201 }`), so the file stays
+reviewable — every prior scenario's report committed under `docs/proofs/data/` came from a passing
+run with a near-empty failures array, and this is the first one to hit `check-pr-size.sh`'s limit on
+data alone. The 20 shown are representative: every one reads `outbox-settled: outbox row <id> is
+still pending`, the same shape as the other 1,181.
 
 ## Engine outage against Fly
 
-_Filled in after the run — see the plan's "Engine outage against Fly: what it proves" section for
-what a proxy cut does and does not show, and whether the CTO also rehearsed a real machine
-stop/start._
+The harness's own proxy (`proxy.ts`'s `engineProxyTargetFromEnv`, this pull request's code change)
+cut a TCP proxy in front of `<engine-app>.fly.dev:7077` and `https://<engine-app>.fly.dev`,
+confirmed by the run's own recorded `proxyTargetHost: "<engine-app>.fly.dev"` — not localhost,
+which is exactly the bug this pull request fixes. 20 orders were placed and settled before the cut,
+20 more during the cut; the relay logged an error and a pending backlog was observed
+(`sawRelayError: true`, `backlogObserved: true`), it stayed alive through the cut and to the end
+(`relayStayedAliveDuringCut: true`, `relayAliveAtEnd: true`), the worker stayed alive too
+(`workerAliveAtEnd: true`), the outbox drained in 19,616ms after reopening, and all 40 order-placed
+envelopes' expected effects settled in time (`effectsSettledInTime: true`, `handlerRowCount: 120`).
+
+This proves the same thing the laptop run proved — the relay observes the loss, backs off, stays
+alive, loses nothing, doubles nothing — now over a real WAN path with real TLS through the Fly edge,
+not loopback.
+
+**What it does not prove, same as stated up front:** the engine process itself never died — only
+the client's path to it was cut. No CTO-run `fly machine stop` / `fly machine start` rehearsal was
+part of this pull request's session, so the engine-restart case (in-flight runs across a real engine
+restart, a lost database connection, a cold queue) stays unproven on this deployment, exactly as the
+laptop proof also left it unproven. This is recorded here rather than silently dropped.
 
 ## Restore rehearsal
 
-_Filled in after Step 3 of the plan: backup id and timestamp, destination cluster name, the three
-numbers the CTO reported back, how long the restore took, and confirmation the throwaway cluster
-was destroyed._
+Source backup `20260922-121422F_20260922-130302I` (incremental, completed `2026-09-22T13:03:02Z`),
+restored into a new throwaway cluster `<engine-db>-restoretest` (id `<restore-test-cluster-id>`),
+region `syd`, plan Basic. The restore command returned immediately; the cluster read `creating`
+until it reached `ready`, about 3.5 minutes later. The source cluster `<engine-db>` was
+confirmed untouched and still `ready` throughout, on both sides of the restore.
+
+**Not completed in this pull request's session:** connecting to the restored cluster to check its
+contents needs the CTO (only the CTO reads a Fly connection string). The three numbers the plan
+asks for — `\dt` listing Hatchet's own tables, the tenant table's row count, the task table's row
+count — were not collected, so this restore is proven to *complete* but not yet proven to hold
+readable, correct data. `<engine-db>-restoretest` is left running rather than destroyed,
+because the plan gates destruction on that CTO verification and this session could not get it
+synchronously; see `docs/operations/kyu-engine-on-fly.md`'s Restore log for the exact follow-up
+(CTO connects and reports the three numbers, then the cluster is destroyed and the runbook and this
+page are updated).

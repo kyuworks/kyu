@@ -84,8 +84,14 @@ export interface ScenarioResult {
 
 // Mirrors vitest.integration.clearTables.ts's CLEAN_TABLES: the lane
 // database's own rows, never the seeded shop_product or demo workflow rows.
+// shop_lead_projection (0007_shop.sql) was missing here — found running the
+// harness against a freshly migrated database (issue #162 PR B): truncating
+// shop_order alone failed with "cannot truncate a table referenced in a
+// foreign key constraint" because shop_lead_projection, outside this list,
+// still references it.
 const LANE_TABLES = [
   'shop_order_line',
+  'shop_lead_projection',
   'shop_order',
   'shop_invoice',
   'shop_handler_log',

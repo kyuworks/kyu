@@ -347,6 +347,38 @@ Ten scenarios, run with `--scenario <name>` or `--scenario all`:
 - `outbox-backlog` — a large backlog (up to 50,000 rows at the report size) is inserted with the
   relay stopped, then drained alone and sampled once a second.
 
+### Against the deployed dev engine
+
+Point the harness at the deployed dev engine (`infra/hatchet/fly/fly.toml`, issue #162) instead of
+the local stack. The shop's own database stays local — only the engine is remote:
+
+```bash
+PGPASSWORD=hatchet createdb -h localhost -p 15432 -U hatchet kyu_shop_<lane>
+export KYU_SHOP_DATABASE_URL=postgresql://hatchet:hatchet@localhost:15432/kyu_shop_<lane>
+pnpm --filter @kyuworks/shop build
+pnpm --filter @kyuworks/shop migrate
+
+export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/fly/token.sh -a <engine-app>)"
+export HATCHET_CLIENT_API_URL=https://<engine-app>.fly.dev
+export HATCHET_CLIENT_HOST_PORT=<engine-app>.fly.dev:7077
+export HATCHET_CLIENT_TLS_SERVER_NAME=<engine-app>.fly.dev
+unset HATCHET_CLIENT_TLS_STRATEGY       # must stay unset: the client defaults to 'tls'
+export KYU_SHOP_NAMESPACE=<lane>_
+export KYU_SHOP_SLOTS=50 KYU_SHOP_DURABLE_SLOTS=200 KYU_SHOP_WATCH_TIMEOUT=1s
+
+pnpm --filter @kyuworks/shop harness --scenario engine-outage --size report --out "$(pwd)/docs/proofs/data/report-<lane>-engine-outage.json"
+```
+
+`HATCHET_CLIENT_TLS_SERVER_NAME` matters for `engine-outage` specifically: its proxy dials
+`127.0.0.1`, but presents the real engine's name for both SNI and certificate checking, which is
+what lets a local TCP proxy sit in front of a TLS-terminated remote engine at all (`proxy.ts`'s
+`engineProxyTargetFromEnv`). Use a fresh `<lane>` namespace prefix and database per run — never
+reuse another lane's, on the local engine or this one, or a parked run from that lane's own
+namespace can be picked up. `--out` needs an absolute path (or one written relative to the repo
+root and passed as `$(pwd)/...`): `pnpm --filter` runs the script from `examples/shop`, not the
+repository root, so a plain relative `docs/proofs/data/...` path resolves to the wrong directory
+and the harness fails to write its report after an otherwise-successful run.
+
 ## Engine hygiene
 
 Each test run registers workflows and a concurrency strategy under a random namespace that the
