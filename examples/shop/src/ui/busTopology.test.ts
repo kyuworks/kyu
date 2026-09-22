@@ -38,6 +38,8 @@ function fakeConfig(): ShopConfig {
     logLevel: 'info',
     watchShippingTimeout: '3m',
     uiPort: 3333,
+    workerSlots: 5,
+    workerDurableSlots: 5,
   }
 }
 

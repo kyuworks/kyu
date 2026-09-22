@@ -30,8 +30,8 @@ async function main(): Promise<void> {
 
   const worker = await kyu.worker('shop-worker', {
     subscriptions: buildSubscriptions(kyu, pool, config),
-    slots: 5,
-    durableSlots: 5,
+    slots: config.workerSlots,
+    durableSlots: config.workerDurableSlots,
   })
 
   // Registered before start() so a signal that arrives during registration

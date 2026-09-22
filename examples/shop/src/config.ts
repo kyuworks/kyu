@@ -10,6 +10,8 @@ export interface ShopConfig {
   // Unset lets the relay fall back to the SDK's own default batch size.
   relayBatchSize?: number
   uiPort: number
+  workerSlots: number
+  workerDurableSlots: number
 }
 
 const LOG_LEVELS: readonly LogLevel[] = ['debug', 'info', 'warn', 'error']
@@ -69,6 +71,17 @@ function parseUiPort(value: string | undefined): number {
   return parsed
 }
 
+const DEFAULT_WORKER_SLOTS = 5
+// A durable run holds its slot for the whole wait, so this is the ceiling on load.
+const DEFAULT_WORKER_DURABLE_SLOTS = 5
+
+function parseSlotCount(value: string | undefined, variable: string, fallback: number): number {
+  if (value === undefined || value === '') return fallback
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed < 1) throw new MissingConfigError(variable, 'a positive integer')
+  return parsed
+}
+
 // The engine client reads HATCHET_CLIENT_TOKEN and HATCHET_CLIENT_TLS_STRATEGY
 // from the environment itself; this function never touches those two.
 export function readConfig(env: NodeJS.ProcessEnv = process.env): ShopConfig {
@@ -101,6 +114,12 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ShopConfig {
 
   const relayBatchSize = parseRelayBatchSize(env['KYU_SHOP_RELAY_BATCH_SIZE'])
   const uiPort = parseUiPort(env['KYU_SHOP_UI_PORT'])
+  const workerSlots = parseSlotCount(env['KYU_SHOP_SLOTS'], 'KYU_SHOP_SLOTS', DEFAULT_WORKER_SLOTS)
+  const workerDurableSlots = parseSlotCount(
+    env['KYU_SHOP_DURABLE_SLOTS'],
+    'KYU_SHOP_DURABLE_SLOTS',
+    DEFAULT_WORKER_DURABLE_SLOTS,
+  )
 
   const config: ShopConfig = {
     databaseUrl,
@@ -108,6 +127,8 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ShopConfig {
     logLevel: logLevelValue,
     watchShippingTimeout,
     uiPort,
+    workerSlots,
+    workerDurableSlots,
   }
   if (relayBatchSize !== undefined) config.relayBatchSize = relayBatchSize
   return config

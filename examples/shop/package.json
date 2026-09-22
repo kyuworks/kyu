@@ -17,6 +17,7 @@
     "worker": "node dist/worker.js",
     "publish-cli": "node dist/bin/publish.js",
     "ui": "node dist/ui.js",
+    "harness": "node dist/__tests__/harness/run.js",
     "web:dev": "vite",
     "web:build": "vite build"
   },

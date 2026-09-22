@@ -197,4 +197,50 @@ describe('readConfig', () => {
     expect(error?.message).toContain('debug')
     expect(error?.message).toContain('error')
   })
+
+  it('defaults workerSlots and workerDurableSlots to 5 when unset', () => {
+    const config = readConfig({ KYU_SHOP_DATABASE_URL: 'postgresql://localhost/db' })
+    expect(config.workerSlots).toBe(5)
+    expect(config.workerDurableSlots).toBe(5)
+  })
+
+  it('reads workerSlots and workerDurableSlots when set', () => {
+    const config = readConfig({
+      KYU_SHOP_DATABASE_URL: 'postgresql://localhost/db',
+      KYU_SHOP_SLOTS: '50',
+      KYU_SHOP_DURABLE_SLOTS: '200',
+    })
+    expect(config.workerSlots).toBe(50)
+    expect(config.workerDurableSlots).toBe(200)
+  })
+
+  it('throws MissingConfigError naming the variable for a zero worker slot count', () => {
+    let error: MissingConfigError | undefined
+    try {
+      readConfig({
+        KYU_SHOP_DATABASE_URL: 'postgresql://localhost/db',
+        KYU_SHOP_SLOTS: '0',
+      })
+    } catch (caught) {
+      if (caught instanceof MissingConfigError) error = caught
+      else throw caught
+    }
+    expect(error).toBeInstanceOf(MissingConfigError)
+    expect(error?.variable).toBe('KYU_SHOP_SLOTS')
+  })
+
+  it('throws MissingConfigError naming the variable for a non-integer durable slot count', () => {
+    let error: MissingConfigError | undefined
+    try {
+      readConfig({
+        KYU_SHOP_DATABASE_URL: 'postgresql://localhost/db',
+        KYU_SHOP_DURABLE_SLOTS: 'abc',
+      })
+    } catch (caught) {
+      if (caught instanceof MissingConfigError) error = caught
+      else throw caught
+    }
+    expect(error).toBeInstanceOf(MissingConfigError)
+    expect(error?.variable).toBe('KYU_SHOP_DURABLE_SLOTS')
+  })
 })
