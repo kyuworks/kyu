@@ -1,0 +1,68 @@
+# Fly config for the dev Kyu engine (hatchet-lite), issue #162.
+#
+# Pinned image tag: v0.107.0 — keep in step with infra/hatchet/compose.yaml.
+# Every secret this app needs is set by the CTO, never by an agent: run
+# infra/hatchet/fly/secrets.sh to print the exact commands. Full runbook:
+# docs/operations/kyu-engine-on-fly.md
+app = '<engine-app>'
+primary_region = 'syd'
+
+[build]
+  image = 'ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.107.0'
+
+[env]
+  SERVER_URL = 'https://<engine-app>.fly.dev'
+  SERVER_AUTH_COOKIE_DOMAIN = '<engine-app>.fly.dev'
+  SERVER_AUTH_COOKIE_INSECURE = 'f'
+  SERVER_AUTH_SET_EMAIL_VERIFIED = 't'
+  SERVER_GRPC_BIND_ADDRESS = '0.0.0.0'
+  SERVER_GRPC_PORT = '7077'
+  # Fly's edge terminates TLS and forwards plaintext to the container, so
+  # the engine itself sees an insecure connection; the client still uses the
+  # 'tls' strategy to the edge. Verify against /api/ready on first deploy.
+  SERVER_GRPC_INSECURE = 't'
+  SERVER_GRPC_BROADCAST_ADDRESS = '<engine-app>.fly.dev:7077'
+  SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS = 'localhost:7077'
+
+[[mounts]]
+  source = 'kyu_hatchet_config'
+  destination = '/config'
+
+[[vm]]
+  # hatchet-lite runs the API, dashboard, gRPC server and queue workers in
+  # one process; shared-cpu-2x's 512 MB does not fit that comfortably under
+  # harness load, and shared CPU throttling would corrupt latency numbers.
+  size = 'performance-1x'
+
+[[services]]
+  internal_port = 8888
+  protocol = 'tcp'
+  auto_stop_machines = 'off'
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 443
+    handlers = ['tls', 'http']
+
+  [[services.ports]]
+    port = 80
+    handlers = ['http']
+    force_https = true
+
+  [[services.http_checks]]
+    path = '/api/ready'
+    interval = '15s'
+    timeout = '5s'
+    grace_period = '30s'
+
+[[services]]
+  internal_port = 7077
+  protocol = 'tcp'
+  auto_stop_machines = 'off'
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 7077
+    handlers = ['tls']

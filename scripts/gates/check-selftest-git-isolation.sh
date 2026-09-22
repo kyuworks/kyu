@@ -15,7 +15,7 @@ echo "=== selftest git isolation ==="
 REPO_BUILD_PATTERN='git( +-[cC] +[^[:space:]]+)* +(init|clone|commit|worktree +add)\b'
 
 SEARCH_DIRS=()
-for dir in scripts .agents/skills; do
+for dir in scripts .agents/skills infra; do
   [ -d "${dir}" ] && SEARCH_DIRS+=("${dir}")
 done
 
