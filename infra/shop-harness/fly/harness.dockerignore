@@ -1,0 +1,23 @@
+# Allow-list for the shop harness image build (issue #166). Start excluded,
+# then re-include only what the Dockerfile actually COPYs. Kept beside
+# Dockerfile, not a root .dockerignore — the repository has none today.
+*
+
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!.npmrc
+!tsconfig.base.json
+!tsconfig.json
+!packages/
+!packages/**
+!examples/shop/
+!examples/shop/**
+!infra/hatchet/compose.yaml
+!infra/shop-harness/fly/run.sh
+
+# Re-excluded even under a re-included directory: never ship a host build
+# into the image, and never let a stale .tsbuildinfo skip the in-image build.
+**/node_modules
+**/dist
+**/*.tsbuildinfo

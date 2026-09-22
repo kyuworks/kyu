@@ -40,7 +40,11 @@ function isWorkingTreeDirty(): boolean {
   }
 }
 
-function readCommitSha(): string {
+// The in-region image has no .git (see infra/shop-harness/fly/harness.dockerignore), so the
+// build stamps the commit in as a build arg instead of relying on the git read below.
+export function readCommitSha(): string {
+  const fromEnv = process.env['KYU_HARNESS_COMMIT_SHA']
+  if (fromEnv !== undefined && fromEnv !== '') return fromEnv
   try {
     const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
     return isWorkingTreeDirty() ? `${sha}-dirty` : sha
