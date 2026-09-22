@@ -7,9 +7,12 @@ import type { CambaFlow } from './cambaDefinition.js'
 export const stepIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,38}$/)
 
 // Covers a shop step id (lowercase, stepIdSchema above) and a Camba node id
-// (the consuming project's flow code's nodeIdSchema allows mixed case,
-// e.g. "endC"). Used on message fields that carry either shape's node id.
-export const workflowNodeIdSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,39}$/)
+// (the consuming project's flow code's newNodeId draws from a base36 alphabet,
+// digits first, so a generated id can start with a digit, e.g. "3f8a2b91c4").
+// Used on message fields that carry either shape's node id: a leading-letter
+// rule here would parse a Camba definition but dead-letter the walker's first
+// publish of a digit-leading id (#157).
+export const workflowNodeIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/)
 
 // A year. A delay at or above the hand-off threshold is served by a scheduled
 // publish at its wake time (handlers/runWorkflow.ts), so any length is
