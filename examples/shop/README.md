@@ -25,6 +25,13 @@ A worker stopped while `watch-shipping`'s body is still executing fails that att
 engine retries it on the next worker to start. A worker stopped once the run is parked in its
 wait hands the wait to the next worker directly, with no failed attempt in between.
 
+`record-order`, `audit-order`, `send-invoice`, `watch-shipping` and `run-workflow` each set
+`scheduleTimeout: '30m'` (issue #149), well above the engine's own 5-minute default and above the
+`tenant-load` harness scenario's own report-size window, so a run queued behind a backlog is not
+dead-lettered before `worker`'s own `KYU_SHOP_SLOTS`/`KYU_SHOP_DURABLE_SLOTS` knobs (below) get a
+chance to clear it. `record-shipment` and `notify-staff` keep the engine's default: both are short
+handlers that never queue behind a backlog in this demo.
+
 `worker` also runs `run-workflow`, a durable handler that reads a workflow definition from the
 shop's own tables (below) and walks its steps — a delay, a branch on whether the order has
 shipped, and a staff notification — and `notify-staff`, a plain command handler that reads the

@@ -203,6 +203,7 @@ export function runWorkflowSubscription(kyu: Kyu, pool: Pool): Subscription {
     // Fixed at 1h. A delay of DELAY_HANDOFF_SECONDS or more never sleeps in-process (#113),
     // so a run's total sleep stays under it.
     executionTimeout: '1h',
+    scheduleTimeout: '30m',
     // Runs of one order are handled in publish order; two orders run at once.
     concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'fifo' },
     handler: (ctx) => runWorkflow(pool, kyu, ctx),

@@ -48,6 +48,7 @@ export function watchShippingSubscription(kyu: Kyu, pool: Pool, config: ShopConf
   return kyu.durable(orderPlaced, {
     name: WATCH_SHIPPING_NAME,
     executionTimeout: '1h',
+    scheduleTimeout: '30m',
     handler: (ctx) => watchShipping(pool, kyu, config, ctx),
   })
 }

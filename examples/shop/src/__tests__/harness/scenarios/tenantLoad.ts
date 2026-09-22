@@ -1,10 +1,5 @@
 // Scenario: tenant-load. Twenty tenants publish at once — one large tenant
-// and nineteen small ones — through a worker sized up with the two slot
-// knobs this pull request's sibling change added to ShopConfig
-// (KYU_SHOP_SLOTS, KYU_SHOP_DURABLE_SLOTS). Measured on this laptop (plan-144.md):
-// 100 orders at slots:5/durableSlots:5 took 180s (0.56 events/s); the same
-// 100 at slots:50/durableSlots:200 took 19s (5.19 events/s). Without the
-// wider worker this scenario cannot finish at the issue's numbers.
+// and nineteen small ones. Full numbers and both scheduleTimeout runs: docs/proofs/2026-09-22-shop-failure-harness.md.
 import type { Pool } from 'pg'
 import { z } from 'zod'
 import {
@@ -73,7 +68,7 @@ export const tenantLoad: Scenario = {
   async run(ctx): Promise<ScenarioObservation> {
     const env = ctx.env({
       KYU_SHOP_SLOTS: '50',
-      KYU_SHOP_DURABLE_SLOTS: '200',
+      KYU_SHOP_DURABLE_SLOTS: '50',
       // watch-shipping holds a durable slot for its whole wait; none of
       // these orders ever ship, so a short timeout is what makes the
       // measured throughput above reachable at all.

@@ -36,6 +36,7 @@ export function sendInvoiceSubscription(kyu: Kyu, pool: Pool): Subscription {
     name: 'send-invoice',
     concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'fifo' },
     retries: 0,
+    scheduleTimeout: '30m',
     handler: (ctx) => handleSendInvoice(pool, kyu, ctx),
   })
 }

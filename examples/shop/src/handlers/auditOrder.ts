@@ -23,6 +23,7 @@ async function auditOrder(pool: Pool, kyu: Kyu, ctx: OrderPlacedContext): Promis
 export function auditOrderSubscription(kyu: Kyu, pool: Pool): Subscription {
   return kyu.subscribe(orderPlaced, {
     name: 'audit-order',
+    scheduleTimeout: '30m',
     handler: (ctx) => auditOrder(pool, kyu, ctx),
   })
 }
