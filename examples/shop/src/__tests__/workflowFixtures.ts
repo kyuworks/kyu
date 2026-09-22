@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Client } from 'pg'
+import { PULL_BACK_AND_REASSIGN } from './cambaTemplate.js'
 
 export interface WorkflowFixtureSteps {
   waitSeconds: number
@@ -167,6 +168,25 @@ export async function insertTwoDelayWorkflowDefinition(
   await admin.query(
     'INSERT INTO shop_workflow_version (id, definition_id, tenant_id, version, steps) VALUES ($1, $2, $3, 1, $4)',
     [versionId, definitionId, tenantId, JSON.stringify(steps)],
+  )
+  await admin.query('UPDATE shop_workflow_definition SET enabled = true, current_version_id = $2 WHERE id = $1', [
+    definitionId,
+    versionId,
+  ])
+  return { definitionId, versionId }
+}
+
+// Camba's a CRM flow template, stored verbatim (issue #157).
+export async function insertCambaFlowDefinition(admin: Client, tenantId: string): Promise<InsertedDefinition> {
+  const definitionId = randomUUID()
+  const versionId = randomUUID()
+  await admin.query(
+    'INSERT INTO shop_workflow_definition (id, tenant_id, name, enabled, current_version_id) VALUES ($1, $2, $3, false, NULL)',
+    [definitionId, tenantId, 'camba-CRM flow'],
+  )
+  await admin.query(
+    'INSERT INTO shop_workflow_version (id, definition_id, tenant_id, version, steps) VALUES ($1, $2, $3, 1, $4)',
+    [versionId, definitionId, tenantId, JSON.stringify(PULL_BACK_AND_REASSIGN)],
   )
   await admin.query('UPDATE shop_workflow_definition SET enabled = true, current_version_id = $2 WHERE id = $1', [
     definitionId,

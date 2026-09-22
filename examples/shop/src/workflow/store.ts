@@ -1,8 +1,9 @@
 import type { Queryable, RelayQueryable, Unparsed } from '@kyuworks/sdk'
 import { NonRetryableError } from '@kyuworks/sdk'
 import { z } from 'zod'
-import { parseWorkflowDefinition, stepById } from './definition.js'
-import type { WorkflowDefinition, WorkflowStep } from './definition.js'
+import { flowActionKey, flowNodeById } from './cambaDefinition.js'
+import { parseStoredWorkflow, stepById } from './definition.js'
+import type { StoredWorkflow } from './definition.js'
 
 export interface EnabledDefinition {
   definitionId: string
@@ -36,7 +37,7 @@ const versionRowSchema = z.object({ steps: rawStepsSchema })
 export interface PinnedVersion {
   definitionId: string
   versionId: string
-  definition: WorkflowDefinition
+  stored: StoredWorkflow
 }
 
 export interface LoadPinnedVersionInput {
@@ -62,7 +63,7 @@ export async function loadPinnedVersion(client: RelayQueryable, input: LoadPinne
   return {
     definitionId: input.definitionId,
     versionId: input.versionId,
-    definition: parseWorkflowDefinition(row.steps),
+    stored: parseStoredWorkflow(row.steps),
   }
 }
 
@@ -85,15 +86,23 @@ export async function insertRun(client: Queryable, input: InsertRunInput): Promi
   )
 }
 
-export async function finishRun(client: Queryable, runId: string): Promise<void> {
-  await client.query('UPDATE shop_workflow_run SET finished_at = now() WHERE run_id = $1', [runId])
+// outcome is a shop step's `end` (always null) or a Camba `end` node's own
+// outcome string (0006_shop.sql).
+export async function finishRun(client: Queryable, runId: string, outcome: string | null): Promise<void> {
+  await client.query('UPDATE shop_workflow_run SET finished_at = now(), outcome = $2 WHERE run_id = $1', [
+    runId,
+    outcome,
+  ])
 }
 
 export interface RecordStepInput {
   runId: string
   stepId: string
   tenantId: string
-  kind: WorkflowStep['kind']
+  // A shop step's own kind, or a Camba node's action key / 'wait_for_completion' /
+  // 'end' (#157): shop_workflow_step_log.kind is plain text (0004_shop.sql),
+  // so this is intentionally not WorkflowStep['kind']'s closed literal union.
+  kind: string
   exitStepId: string | null
 }
 
@@ -139,7 +148,7 @@ export async function isOrderShipped(client: RelayQueryable, tenantId: string, o
   return row.shipped_at !== null
 }
 
-export interface ReadNotifyTextInput {
+export interface ReadNotifyNoteInput {
   tenantId: string
   versionId: string
   stepId: string
@@ -147,7 +156,9 @@ export interface ReadNotifyTextInput {
 
 // notify-staff only carries the version id and the step id (no definition
 // id), so this loads the version directly rather than through loadPinnedVersion.
-export async function readNotifyText(client: RelayQueryable, input: ReadNotifyTextInput): Promise<string> {
+// A shop `notify` step's own authored text; a Camba action node's
+// "<actionKey> <nodeId>" (the executors are out of scope, ADR decision 8).
+export async function readNotifyNote(client: RelayQueryable, input: ReadNotifyNoteInput): Promise<string> {
   const result = await client.query('SELECT steps FROM shop_workflow_version WHERE id = $1 AND tenant_id = $2', [
     input.versionId,
     input.tenantId,
@@ -158,10 +169,17 @@ export async function readNotifyText(client: RelayQueryable, input: ReadNotifyTe
     )
   }
   const row = versionRowSchema.parse(result.rows[0])
-  const definition = parseWorkflowDefinition(row.steps)
-  const step = stepById(definition, input.stepId)
-  if (step.kind !== 'notify') {
-    throw new NonRetryableError(`step ${input.stepId} of version ${input.versionId} is not a notify step`)
+  const stored = parseStoredWorkflow(row.steps)
+  if (stored.shape === 'shop') {
+    const step = stepById(stored.definition, input.stepId)
+    if (step.kind !== 'notify') {
+      throw new NonRetryableError(`step ${input.stepId} of version ${input.versionId} is not a notify step`)
+    }
+    return step.input.text
   }
-  return step.input.text
+  const node = flowNodeById(stored.flow, input.stepId)
+  if (node.kind !== 'action') {
+    throw new NonRetryableError(`node ${input.stepId} of version ${input.versionId} is not an action node`)
+  }
+  return `${flowActionKey(node)} ${node.id}`
 }

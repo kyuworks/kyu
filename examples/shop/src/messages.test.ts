@@ -83,6 +83,18 @@ describe('messages', () => {
     ).rejects.toThrow()
   })
 
+  // Camba's generated node ids draws from a digit-first base36 alphabet, so
+  // a real Camba node id can start with a digit; the trust edge must walk it (#157).
+  it('accepts a digit-leading resumeStepId, the shape Camba node ids can take (#157)', async () => {
+    await expect(
+      createEnvelope(
+        workflowTriggered,
+        { runId: uuidv7(), definitionId: uuidv7(), versionId: uuidv7(), orderId: uuidv7(), resumeStepId: '3f8a2b91c4' },
+        { tenantId: uuidv7(), source: 'test' },
+      ),
+    ).resolves.toBeDefined()
+  })
+
   it('rejects data that fails its schema for notifyStaff', async () => {
     await expect(
       createEnvelope(

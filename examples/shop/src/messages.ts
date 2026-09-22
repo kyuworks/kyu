@@ -1,6 +1,6 @@
 import { defineCommand, defineEvent } from '@kyuworks/sdk'
 import { z } from 'zod'
-import { stepIdSchema } from './workflow/definition.js'
+import { workflowNodeIdSchema } from './workflow/definition.js'
 
 export const orderPlaced = defineEvent({
   name: 'shop.order.placed',
@@ -32,8 +32,8 @@ export const workflowTriggered = defineEvent({
     versionId: z.uuid(),
     orderId: z.uuid(),
     // Set only on a continuation the interpreter scheduled for itself at a long
-    // delay's wake time: the step the new run walks from (#113).
-    resumeStepId: stepIdSchema.optional(),
+    // delay's wake time: the step or node the new run walks from (#113, #157).
+    resumeStepId: workflowNodeIdSchema.optional(),
   }),
 })
 
@@ -42,6 +42,7 @@ export const workflowTriggered = defineEvent({
 export const notifyStaff = defineCommand({
   name: 'shop.staff.notify',
   version: 1,
-  // stepId reuses workflow/definition.ts's stepIdSchema: one step-id rule.
-  data: z.object({ runId: z.uuidv7(), versionId: z.uuid(), stepId: stepIdSchema, orderId: z.uuid() }),
+  // stepId reuses workflow/definition.ts's workflowNodeIdSchema: a shop step
+  // id or a Camba node id, one rule (#157).
+  data: z.object({ runId: z.uuidv7(), versionId: z.uuid(), stepId: workflowNodeIdSchema, orderId: z.uuid() }),
 })
