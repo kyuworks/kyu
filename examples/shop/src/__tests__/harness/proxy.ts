@@ -9,7 +9,15 @@
 // runs.js), so a proxy that only fronted 7077 would leave cancellation
 // working during a simulated outage — this one fronts both.
 import net from 'node:net'
-import type { AddressInfo } from 'node:net'
+import { z } from 'zod'
+
+// server.address() returns AddressInfo | string | null; the string case is
+// a unix socket path, which never applies here since every server below
+// binds a TCP port with an explicit host and port 0. Parsed, not cast or
+// typeof-narrowed (oxlint-rules/anti-slop's no-runtime-typeof bans typeof
+// outright in this package) — the same "decode at the boundary" idiom this
+// file's siblings use for a pg row.
+const addressInfoSchema = z.object({ address: z.string(), family: z.string(), port: z.number() })
 
 interface ForwardTarget {
   server: net.Server
@@ -48,16 +56,12 @@ function listen(server: net.Server): Promise<number> {
   return new Promise((resolve, reject) => {
     server.once('error', reject)
     server.listen(0, '127.0.0.1', () => {
-      const address = server.address()
-      // server.address() returns AddressInfo | string | null; the string
-      // case is a unix socket path, which never applies here since every
-      // server below binds a TCP port with an explicit host and port 0.
-      if (address === null) {
+      const parsed = addressInfoSchema.safeParse(server.address())
+      if (!parsed.success) {
         reject(new Error('proxy server did not bind to a TCP port'))
         return
       }
-      const info = address as AddressInfo
-      resolve(info.port)
+      resolve(parsed.data.port)
     })
   })
 }

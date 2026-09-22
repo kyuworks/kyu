@@ -23,6 +23,9 @@ import type { Scenario, ScenarioObservation } from '../scenario.js'
 import { SIZE_PARAMS, ScenarioAssertionError } from '../scenario.js'
 
 const EXPECTED_HANDLERS = ['record-order', 'audit-order']
+// The worker's own gRPC client reconnects on its own backoff, slower than
+// the relay's plain outbox poll; generous on purpose.
+const POST_REOPEN_SETTLE_MS = 90_000
 
 export const engineOutage: Scenario = {
   name: 'engine-outage',
@@ -103,9 +106,7 @@ export const engineOutage: Scenario = {
       ctx.pool,
       { tenantIds: [tenantId] },
       [{ envelopeIds: allOrderPlacedIds, handlers: EXPECTED_HANDLERS }],
-      // The worker's own gRPC client reconnects on its own backoff, slower
-      // than the relay's plain outbox poll; generous on purpose.
-      90_000,
+      POST_REOPEN_SETTLE_MS,
     )
 
     const relayAliveAtEnd = relay.spawned.child.exitCode === null && relay.spawned.child.signalCode === null
@@ -139,7 +140,10 @@ export const engineOutage: Scenario = {
     }
     if (!settled) failures.push({ check: 'outbox-settled', detail: 'outbox never settled within 60s of reopening' })
     if (!effectsSettledInTime) {
-      failures.push({ check: 'no-effect-lost', detail: 'expected handler effects never settled within 30s' })
+      failures.push({
+        check: 'no-effect-lost',
+        detail: `expected handler effects never settled within ${String(POST_REOPEN_SETTLE_MS / 1000)}s`,
+      })
     }
     if (failures.length > 0) throw new ScenarioAssertionError(failures)
 

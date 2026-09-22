@@ -8,6 +8,7 @@
 // of "cancel between two steps" here (recorded in the written report).
 import { RUN_WORKFLOW_NAME } from '../../../handlers/runWorkflow.js'
 import { insertTwoDelayWorkflowDefinition } from '../../workflowFixtures.js'
+import type { InsertedDefinition } from '../../workflowFixtures.js'
 import { assertNoFailedRun } from '../assertions.js'
 import type { AssertionFailure } from '../assertions.js'
 import { startRelayChild, startWorkerChild } from '../children.js'
@@ -39,9 +40,10 @@ export const cancelBetweenSteps: Scenario = {
   describe: 'a workflow run is cancelled while genuinely parked between its first and second delay steps',
   async run(ctx): Promise<ScenarioObservation> {
     const admin = await openAdminClient()
+    let definition: InsertedDefinition | undefined
     try {
       const tenantId = newTenantId()
-      await insertTwoDelayWorkflowDefinition(admin, tenantId, FIRST_DELAY_SECONDS, SECOND_DELAY_SECONDS)
+      definition = await insertTwoDelayWorkflowDefinition(admin, tenantId, FIRST_DELAY_SECONDS, SECOND_DELAY_SECONDS)
 
       const env = ctx.env({ KYU_SHOP_WATCH_TIMEOUT: '5s' })
       const relay = await startRelayChild(env)
@@ -114,6 +116,24 @@ export const cancelBetweenSteps: Scenario = {
         notifyCount,
       }
     } finally {
+      // shop_workflow_definition and shop_workflow_version are never
+      // truncated between scenarios (they hold the seeded demo definition
+      // and version too); a scenario that inserts its own must delete it,
+      // by the ids insertTwoDelayWorkflowDefinition returned, or
+      // scenario.ts's assertNoStrayWorkflowRows fails the run on teardown.
+      // The run and step-log rows this definition's run wrote are deleted
+      // first — they carry FKs into shop_workflow_definition/version and
+      // would otherwise still be here, since runScenario truncates
+      // LANE_TABLES only after this scenario returns.
+      if (definition !== undefined) {
+        await admin.query(
+          'DELETE FROM shop_workflow_step_log WHERE run_id IN (SELECT run_id FROM shop_workflow_run WHERE definition_id = $1)',
+          [definition.definitionId],
+        )
+        await admin.query('DELETE FROM shop_workflow_run WHERE definition_id = $1', [definition.definitionId])
+        await admin.query('DELETE FROM shop_workflow_version WHERE id = $1', [definition.versionId])
+        await admin.query('DELETE FROM shop_workflow_definition WHERE id = $1', [definition.definitionId])
+      }
       await admin.end()
     }
   },

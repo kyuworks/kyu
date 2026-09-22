@@ -8,6 +8,7 @@
 // own technique) so the second run finishes the workflow.
 import { RUN_WORKFLOW_NAME } from '../../../handlers/runWorkflow.js'
 import { insertLongDelayDefinition } from '../../workflowFixtures.js'
+import type { InsertedDefinition } from '../../workflowFixtures.js'
 import {
   assertNoDoubleEffect,
   assertNoFailedRun,
@@ -45,9 +46,10 @@ export const longDelayHandoff: Scenario = {
   describe: 'a 48h workflow delay hands off to a scheduled continuation; the worker restarts during the hand-off',
   async run(ctx): Promise<ScenarioObservation> {
     const admin = await openAdminClient()
+    let definition: InsertedDefinition | undefined
     try {
       const tenantId = newTenantId()
-      await insertLongDelayDefinition(admin, tenantId, LONG_DELAY_SECONDS)
+      definition = await insertLongDelayDefinition(admin, tenantId, LONG_DELAY_SECONDS)
 
       const env = ctx.env({ KYU_SHOP_WATCH_TIMEOUT: '3s' })
       const relay = await startRelayChild(env)
@@ -187,6 +189,24 @@ export const longDelayHandoff: Scenario = {
         workerBPid: workerBPid ?? 0,
       }
     } finally {
+      // shop_workflow_definition and shop_workflow_version are never
+      // truncated between scenarios (they hold the seeded demo definition
+      // and version too); a scenario that inserts its own must delete it,
+      // by the ids insertLongDelayDefinition returned, or scenario.ts's
+      // assertNoStrayWorkflowRows fails the run on teardown. The run and
+      // step-log rows this definition's run wrote are deleted first — they
+      // carry FKs into shop_workflow_definition/version and would otherwise
+      // still be here, since runScenario truncates LANE_TABLES only after
+      // this scenario returns.
+      if (definition !== undefined) {
+        await admin.query(
+          'DELETE FROM shop_workflow_step_log WHERE run_id IN (SELECT run_id FROM shop_workflow_run WHERE definition_id = $1)',
+          [definition.definitionId],
+        )
+        await admin.query('DELETE FROM shop_workflow_run WHERE definition_id = $1', [definition.definitionId])
+        await admin.query('DELETE FROM shop_workflow_version WHERE id = $1', [definition.versionId])
+        await admin.query('DELETE FROM shop_workflow_definition WHERE id = $1', [definition.definitionId])
+      }
       await admin.end()
     }
   },

@@ -1,11 +1,20 @@
+import { KyuError } from '@kyuworks/sdk'
+
 export interface LogFields {
   [key: string]: string | number | boolean | null
 }
 
 // pg raises an AggregateError with an empty top-level message on a refused
 // connection; join its constituent errors instead of logging a blank reason.
+// A KyuError's own message names the call that failed (runOutcomes.ts's
+// readRunOutcomesFor: "runs.forEnvelope: could not read runs for ..."); its
+// `cause` names why, and is dropped without this — a scenario failure would
+// otherwise say only that a read failed, never why.
 export function describeError(cause: unknown): string {
   if (cause instanceof AggregateError) return cause.errors.map(describeError).join(', ')
+  if (cause instanceof KyuError && cause.cause instanceof Error) {
+    return `${cause.message}: ${describeError(cause.cause)}`
+  }
   if (cause instanceof Error) return cause.message === '' ? cause.name : cause.message
   return String(cause)
 }

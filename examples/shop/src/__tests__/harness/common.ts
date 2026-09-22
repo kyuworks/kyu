@@ -2,11 +2,12 @@
 // itself; extends what src/__tests__/restart.integration.test.ts already does
 // (its own waitUntil) rather than adding a second copy of the SDK's polling idiom.
 import { randomUUID } from 'node:crypto'
-import type { Kyu } from '@kyuworks/sdk'
+import type { Kyu, RunOutcome } from '@kyuworks/sdk'
 import { Client } from 'pg'
 import type { Pool } from 'pg'
 import { z } from 'zod'
 import { readConfig } from '../../config.js'
+import { describeError } from '../../log.js'
 import type { PlacedOrder } from '../../producer/placeOrder.js'
 import { placeOrder } from '../../producer/placeOrder.js'
 import { assertNoLostEffect } from './assertions.js'
@@ -103,6 +104,31 @@ async function mapWithConcurrency<T, R>(items: readonly T[], limit: number, fn: 
 }
 
 const RUN_OUTCOME_CONCURRENCY = 20
+const RUN_OUTCOME_READ_ATTEMPTS = 3
+const RUN_OUTCOME_READ_BACKOFF_MS = 250
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+// At RUN_OUTCOME_CONCURRENCY reads in flight, one transient REST error
+// (the engine briefly over capacity, a dropped connection) would otherwise
+// fail the whole scenario read rather than just that one envelope; a bounded
+// retry rides those out without hiding a genuine, persistent failure.
+async function readRunOutcomesWithRetry(kyu: Kyu, envelopeId: string): Promise<readonly RunOutcome[]> {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= RUN_OUTCOME_READ_ATTEMPTS; attempt += 1) {
+    try {
+      return await kyu.runs.forEnvelope(envelopeId)
+    } catch (caught) {
+      lastError = caught
+      if (attempt < RUN_OUTCOME_READ_ATTEMPTS) await sleep(RUN_OUTCOME_READ_BACKOFF_MS * attempt)
+    }
+  }
+  throw new Error(
+    `runs.forEnvelope for ${envelopeId} failed after ${String(RUN_OUTCOME_READ_ATTEMPTS)} attempts: ${describeError(lastError)}`,
+  )
+}
 
 // The only way to see a doubled handler that `shop_handler_log_once_idx`
 // turned into a failed run instead of a second row (assertions.ts's
@@ -117,7 +143,7 @@ export async function readEnvelopeRunOutcomes(
 ): Promise<readonly EnvelopeRunOutcomes[]> {
   return mapWithConcurrency(envelopeIds, RUN_OUTCOME_CONCURRENCY, async (envelopeId) => ({
     envelopeId,
-    outcomes: await kyu.runs.forEnvelope(envelopeId),
+    outcomes: await readRunOutcomesWithRetry(kyu, envelopeId),
   }))
 }
 

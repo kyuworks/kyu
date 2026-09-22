@@ -8,6 +8,7 @@ import type { Pool } from 'pg'
 import type { ShopConfig } from '../../config.js'
 import { createShopKyu } from '../../kyu.js'
 import { describeError } from '../../log.js'
+import { DEMO_TENANT_ID } from '../../shop.js'
 import { stopAllSpawnedProcesses } from '../processes.js'
 import type { AssertionFailure } from './assertions.js'
 import { laneEnv } from './children.js'
@@ -108,6 +109,34 @@ async function assertLaneTablesEmpty(pool: Pool): Promise<readonly AssertionFail
   if (total !== 0) {
     return [
       { check: 'harness-leaves-nothing', detail: `lane tables still hold ${String(total)} row(s) after teardown` },
+    ]
+  }
+  return []
+}
+
+// shop_workflow_definition and shop_workflow_version are never truncated
+// (they hold the seeded demo definition and version the UI depends on), so
+// they are not in LANE_TABLES. A scenario that inserts its own definition
+// and version (long-delay-handoff, cancel-between-steps) must delete them
+// itself, by the ids insertLongDelayDefinition/insertTwoDelayWorkflowDefinition
+// returned, in its own teardown. This is the check that catches one that does
+// not: every fixture uses a fresh random tenant, so any row whose tenant is
+// not the seeded demo tenant is a leak.
+async function assertNoStrayWorkflowRows(pool: Pool): Promise<readonly AssertionFailure[]> {
+  const result = await pool.query(
+    `SELECT
+       (SELECT count(*) FROM shop_workflow_definition WHERE tenant_id <> $1) AS definitions,
+       (SELECT count(*) FROM shop_workflow_version WHERE tenant_id <> $1) AS versions`,
+    [DEMO_TENANT_ID],
+  )
+  const definitions = Number(result.rows[0]?.['definitions'] ?? -1)
+  const versions = Number(result.rows[0]?.['versions'] ?? -1)
+  if (definitions !== 0 || versions !== 0) {
+    return [
+      {
+        check: 'harness-leaves-nothing',
+        detail: `workflow tables still hold ${String(definitions)} definition row(s) and ${String(versions)} version row(s) beyond the seeded demo tenant after teardown`,
+      },
     ]
   }
   return []
@@ -221,6 +250,7 @@ export async function runScenario(deps: ScenarioRunDeps, scenario: Scenario): Pr
   failures.push(...(await truncateLaneTables(deps.pool)))
   try {
     failures.push(...(await assertLaneTablesEmpty(deps.pool)))
+    failures.push(...(await assertNoStrayWorkflowRows(deps.pool)))
   } catch (caught) {
     failures.push({
       check: 'harness-leaves-nothing',
