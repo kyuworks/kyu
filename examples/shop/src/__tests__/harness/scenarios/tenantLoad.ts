@@ -22,6 +22,10 @@ import { WATCH_SHIPPING_TIMEOUT } from '../../../handlers/watchShipping.js'
 const SMALL_TENANT_COUNT = 19
 const SMALL_TENANT_ORDERS = 5
 
+const PLAIN_SLOTS = 50
+// Sized against the slot-count table in docs/proofs/2026-09-22-shop-failure-harness.md.
+const DURABLE_SLOTS = 200
+
 const TOTAL_ORDERS = { smoke: 200, report: 5_000 } satisfies Record<HarnessSize, number>
 const EFFECTS_TIMEOUT_MS = { smoke: 180_000, report: 20 * 60_000 } satisfies Record<HarnessSize, number>
 // A durable run holds its slot for its whole sleep and wait, at report size,
@@ -75,11 +79,8 @@ export const tenantLoad: Scenario = {
   describe: 'twenty tenants publish at once — one large, nineteen small — against a worker sized up for load',
   async run(ctx): Promise<ScenarioObservation> {
     const env = ctx.env({
-      KYU_SHOP_SLOTS: '50',
-      // A durable run holds its slot for its whole sleep and wait (about
-      // 10s each); 200 slots drain 5,000 of them in about 220s.
-      // docs/proofs/2026-09-22-shop-failure-harness.md has the slot-count table.
-      KYU_SHOP_DURABLE_SLOTS: '200',
+      KYU_SHOP_SLOTS: String(PLAIN_SLOTS),
+      KYU_SHOP_DURABLE_SLOTS: String(DURABLE_SLOTS),
       // watch-shipping holds a durable slot for its whole wait; none of
       // these orders ever ship, so a short timeout is what makes the
       // measured throughput above reachable at all.
@@ -198,8 +199,8 @@ export const tenantLoad: Scenario = {
       plainEffectsMs,
       durableSettledInTime,
       durableEffectsMs,
-      durableSlots: 200,
-      plainSlots: 50,
+      durableSlots: DURABLE_SLOTS,
+      plainSlots: PLAIN_SLOTS,
       watchShippingTerminalRows: counts.handlerRows.filter((row) => row.handler === WATCH_SHIPPING_TIMEOUT).length,
       runOutcomeSampleSize: sampledIds.length,
       runOutcomeSampledOfTotal: orderPlacedIds.length,

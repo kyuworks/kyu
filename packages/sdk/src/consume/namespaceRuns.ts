@@ -21,9 +21,16 @@ const RUN_MAX_PAGES = 200
 const WORKFLOW_PAGE_LIMIT = 100
 const WORKFLOW_MAX_PAGES = 10
 
+/** The public method's name, so a thrown KyuError names what the caller called — mirrors runOutcomes.ts's RunLookup.caller. */
+type NamespaceRunsCaller = 'runs.unsettledInNamespace' | 'runs.cancelUnsettledInNamespace'
+
 // The engine's own workflow listing defaults to 50 rows, and its `name` is a
 // substring search: page it, then keep only exact namespace prefixes.
-async function namespaceWorkflowNames(hatchet: NamespaceRunsClient, namespace: string): Promise<readonly string[]> {
+async function namespaceWorkflowNames(
+  hatchet: NamespaceRunsClient,
+  namespace: string,
+  caller: NamespaceRunsCaller,
+): Promise<readonly string[]> {
   const names: string[] = []
   for (let page = 0; page < WORKFLOW_MAX_PAGES; page += 1) {
     const list = await hatchet.workflows.list({
@@ -36,7 +43,7 @@ async function namespaceWorkflowNames(hatchet: NamespaceRunsClient, namespace: s
     if (rows.length < WORKFLOW_PAGE_LIMIT) return names
   }
   throw new KyuError(
-    `runs.unsettledInNamespace: namespace "${namespace}" holds more than ${String(WORKFLOW_MAX_PAGES * WORKFLOW_PAGE_LIMIT)} workflows`,
+    `${caller}: namespace "${namespace}" holds more than ${String(WORKFLOW_MAX_PAGES * WORKFLOW_PAGE_LIMIT)} workflows`,
   )
 }
 
@@ -47,7 +54,7 @@ export async function readUnsettledRunsInNamespace(
 ): Promise<readonly RunOutcome[]> {
   const namespace = hatchet.config.namespace ?? ''
   if (namespace === '') return []
-  const workflowNames = await namespaceWorkflowNames(hatchet, namespace)
+  const workflowNames = await namespaceWorkflowNames(hatchet, namespace, 'runs.unsettledInNamespace')
   if (workflowNames.length === 0) return []
 
   const outcomes: RunOutcome[] = []
@@ -83,7 +90,7 @@ export async function cancelUnsettledRunsInNamespace(
 ): Promise<number> {
   const namespace = hatchet.config.namespace ?? ''
   if (namespace === '') return 0
-  const workflowNames = await namespaceWorkflowNames(hatchet, namespace)
+  const workflowNames = await namespaceWorkflowNames(hatchet, namespace, 'runs.cancelUnsettledInNamespace')
   if (workflowNames.length === 0) return 0
 
   try {

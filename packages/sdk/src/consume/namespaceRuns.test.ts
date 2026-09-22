@@ -155,6 +155,27 @@ describe('cancelUnsettledRunsInNamespace', () => {
     expect(cancelled).toBe(2)
   })
 
+  it('never lists workflows or sends a cancel for the empty namespace', async () => {
+    const { client, workflowListCalls, cancelCalls } = fakeNamespaceRunsClient({ namespace: '' })
+
+    const cancelled = await cancelUnsettledRunsInNamespace(client, { since: new Date('2026-01-01') })
+
+    expect(cancelled).toBe(0)
+    expect(workflowListCalls()).toHaveLength(0)
+    expect(cancelCalls()).toHaveLength(0)
+  })
+
+  it('names itself, not unsettledInNamespace, when the namespace holds too many workflows', async () => {
+    const workflowPages = Array.from({ length: 11 }, (_, page) =>
+      Array.from({ length: 100 }, (_, i) => fixtureWorkflow(`ns_wf-${String(page * 100 + i)}`)),
+    )
+    const { client } = fakeNamespaceRunsClient({ namespace: 'ns_', workflowPages })
+
+    await expect(cancelUnsettledRunsInNamespace(client, { since: new Date('2026-01-01') })).rejects.toThrow(
+      'runs.cancelUnsettledInNamespace: namespace "ns_" holds more than 1000 workflows',
+    )
+  })
+
   it('wraps a rejected engine cancel in KyuError with the original error as cause', async () => {
     const cause = new Error('econnrefused')
     const { client } = fakeNamespaceRunsClient({ namespace: 'ns_', cancelError: cause })
@@ -205,6 +226,16 @@ describe('readUnsettledRunsInNamespace', () => {
     const outcomes = await readUnsettledRunsInNamespace(client, { since: new Date('2026-01-01') })
 
     expect(outcomes).toEqual([])
+    expect(listCalls()).toHaveLength(0)
+  })
+
+  it('never lists workflows or runs for the empty namespace', async () => {
+    const { client, workflowListCalls, listCalls } = fakeNamespaceRunsClient({ namespace: '' })
+
+    const outcomes = await readUnsettledRunsInNamespace(client, { since: new Date('2026-01-01') })
+
+    expect(outcomes).toEqual([])
+    expect(workflowListCalls()).toHaveLength(0)
     expect(listCalls()).toHaveLength(0)
   })
 })
