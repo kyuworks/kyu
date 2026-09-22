@@ -84,10 +84,11 @@ async function runWorkflow(pool: Pool, kyu: Kyu, ctx: TriggerContext): Promise<v
   throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: run ${runId} did not reach an end node`)
 }
 
-// A branch's exit is never null by construction (workflow/definition.ts's
-// whenTrue/whenFalse always name a step); only an `end` step's ledger row
-// legitimately carries a null exit. A null here would otherwise read as
-// "the run is finished" one level up and end it silently.
+// A branch's exit is never null: the shop's whenTrue/whenFalse always name a
+// step (workflow/definition.ts), and the Camba trust edge refuses a null
+// branch target at parse time (cambaFlowSchema's superRefine). Only an
+// `end` step's ledger row legitimately carries a null exit. A null here
+// would otherwise read as "the run is finished" one level up and end it silently.
 function branchExitStepId(runId: string, stepId: string, exitStepId: string | null): string {
   if (exitStepId === null) {
     throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: branch ${stepId} of run ${runId} recorded a null exit`)
@@ -301,52 +302,35 @@ async function walkFlowNode(
         const exitNodeId = requireFlowExitTarget(node, 'done')
         const durationSeconds = node.input.minutes * 60
 
-        if (durationSeconds >= DELAY_HANDOFF_SECONDS) {
-          await withTransaction(pool, (tx) =>
-            kyu.onceById(tx, run.runId, stepKey(node.id), async () => {
-              await kyu.publish(
-                tx,
-                workflowTriggered,
-                {
-                  runId: run.runId,
-                  definitionId: run.pinned.definitionId,
-                  versionId: run.pinned.versionId,
-                  orderId: run.orderId,
-                  resumeStepId: exitNodeId,
-                },
-                {
-                  tenantId: run.tenantId,
-                  correlationId: run.runId,
-                  causationId: ctx.envelope.id,
-                  publishAt: new Date(Date.now() + durationSeconds * 1000),
-                },
-              )
-              await recordStep(tx, {
-                runId: run.runId,
-                stepId: node.id,
-                tenantId: run.tenantId,
-                kind: 'wait_duration',
-                exitStepId: exitNodeId,
-              })
-            }),
-          )
-          return undefined
-        }
-        // sleepFor replays from the durable log; the duration comes from the
-        // PINNED version, so two workers always record the same wait.
-        await ctx.sleepFor(`${durationSeconds}s`)
         await withTransaction(pool, (tx) =>
-          kyu.onceById(tx, run.runId, stepKey(node.id), () =>
-            recordStep(tx, {
+          kyu.onceById(tx, run.runId, stepKey(node.id), async () => {
+            await kyu.publish(
+              tx,
+              workflowTriggered,
+              {
+                runId: run.runId,
+                definitionId: run.pinned.definitionId,
+                versionId: run.pinned.versionId,
+                orderId: run.orderId,
+                resumeStepId: exitNodeId,
+              },
+              {
+                tenantId: run.tenantId,
+                correlationId: run.runId,
+                causationId: ctx.envelope.id,
+                publishAt: new Date(Date.now() + durationSeconds * 1000),
+              },
+            )
+            await recordStep(tx, {
               runId: run.runId,
               stepId: node.id,
               tenantId: run.tenantId,
               kind: 'wait_duration',
               exitStepId: exitNodeId,
-            }),
-          ),
+            })
+          }),
         )
-        return exitNodeId
+        return undefined
       }
       if (node.input.timeoutMinutes === null) {
         throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: wait ${node.id} of run ${run.runId} has no timeout`)

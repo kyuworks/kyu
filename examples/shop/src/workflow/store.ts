@@ -153,7 +153,7 @@ export async function isOrderShipped(client: RelayQueryable, tenantId: string, o
 
 // The stub lead projection a Camba branch condition is evaluated against
 // (examples/shop/migrations/0007_shop.sql). A missing row is a
-// NonRetryableError, not a silent otherwise (decision 3): unlike Camba's own
+// NonRetryableError, not a silent otherwise: unlike Camba's own
 // "no projection means take otherwise", a missing row here means the test —
 // or a caller — forgot to seed it.
 export async function readLeadProjection(
