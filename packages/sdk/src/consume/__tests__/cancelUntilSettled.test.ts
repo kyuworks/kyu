@@ -22,7 +22,7 @@ describe('cancelUntilNoUnsettledRuns', () => {
         return 1
       },
       read: async () => (cancels >= 2 ? [] : [heldRun()]),
-      timeoutMs: 5_000,
+      timeoutMs: 200,
       pollMs: 1,
     })
     expect(cancels).toBe(2)
@@ -30,12 +30,17 @@ describe('cancelUntilNoUnsettledRuns', () => {
   })
 
   it('returns the runs still unsettled when the window closes', async () => {
+    let cancels = 0
     const left = await cancelUntilNoUnsettledRuns({
-      cancel: async () => 1,
+      cancel: async () => {
+        cancels += 1
+        return 1
+      },
       read: async () => [heldRun()],
       timeoutMs: 20,
       pollMs: 5,
     })
+    expect(cancels).toBeGreaterThan(1)
     expect(left).toHaveLength(1)
   })
 })

@@ -11,9 +11,8 @@ function sleep(ms: number): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
-// A run already assigned to a worker that has just stopped stays assigned
-// until the engine reassigns it (~30 s), so one cancel is not enough — see
-// examples/shop/src/__tests__/harness/scenario.ts:205.
+// One cancel call is a request, not a settlement: a run the engine still
+// holds can stay unsettled for a while (see docs/proofs/2026-09-22-shop-failure-harness.md), so retry.
 export async function cancelUntilNoUnsettledRuns(options: CancelUntilSettledOptions): Promise<readonly RunOutcome[]> {
   const deadline = Date.now() + options.timeoutMs
   for (;;) {
