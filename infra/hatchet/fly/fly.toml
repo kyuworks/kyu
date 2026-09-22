@@ -65,4 +65,9 @@ primary_region = 'syd'
 
   [[services.ports]]
     port = 7077
-    handlers = ['tls']
+    # A bare 'tls' handler offers no ALPN on *.fly.dev; see step 7 of
+    # docs/operations/kyu-engine-on-fly.md for why 'http' is needed too.
+    handlers = ['tls', 'http']
+
+    [services.ports.http_options]
+      h2_backend = true

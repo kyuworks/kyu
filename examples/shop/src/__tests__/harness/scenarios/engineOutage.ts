@@ -1,11 +1,12 @@
-// Scenario: engine-outage. A harness-owned TCP proxy (proxy.ts) fronts the
-// local engine's gRPC (7077) and REST (8888) ports; relay and worker are
-// started pointed at the proxy through the SDK's own HATCHET_CLIENT_HOST_PORT
-// / HATCHET_CLIENT_API_URL overrides (proven against the running engine,
-// plan-144.md's proxy-proof.sh). Cutting the proxy simulates the engine
-// going unreachable with no Docker involved. The relay is expected to back
-// off and stay alive, not die; the backlog it could not push must fully
-// drain once the proxy reopens.
+// Scenario: engine-outage. A harness-owned TCP proxy (proxy.ts) fronts
+// whichever engine the ambient HATCHET_CLIENT_HOST_PORT / HATCHET_CLIENT_API_URL
+// name — the local engine by default, or a deployed one when those are set;
+// relay and worker are started pointed at the proxy through the SDK's own
+// overrides (proven against the running local engine, plan-144.md's
+// proxy-proof.sh). Cutting the proxy simulates the engine going unreachable
+// with no Docker involved. The relay is expected to back off and stay
+// alive, not die; the backlog it could not push must fully drain once the
+// proxy reopens.
 import {
   assertNoDoubleEffect,
   assertNoFailedRun,
@@ -34,11 +35,17 @@ export const engineOutage: Scenario = {
     const proxy = await startEngineProxy()
     ctx.track(proxy)
 
-    const env = ctx.env({
+    const envOverrides: NodeJS.ProcessEnv = {
       HATCHET_CLIENT_HOST_PORT: proxy.grpcHostPort,
       HATCHET_CLIENT_API_URL: proxy.apiUrl,
       KYU_SHOP_WATCH_TIMEOUT: '5s',
-    })
+    }
+    // The relay/worker children dial the local proxy but must validate the
+    // real engine's TLS certificate when the target is remote.
+    if (proxy.target.servername !== undefined) {
+      envOverrides['HATCHET_CLIENT_TLS_SERVER_NAME'] = proxy.target.servername
+    }
+    const env = ctx.env(envOverrides)
     const relay = await startRelayChild(env)
     ctx.track(relay)
     const worker = await startWorkerChild(env)
@@ -148,6 +155,7 @@ export const engineOutage: Scenario = {
     if (failures.length > 0) throw new ScenarioAssertionError(failures)
 
     return {
+      proxyTargetHost: proxy.target.grpcHost,
       ordersBeforeOutage: openOrders.length,
       ordersDuringOutage: cutOrders.length,
       sawRelayError,

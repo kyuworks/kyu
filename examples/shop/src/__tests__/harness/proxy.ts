@@ -9,6 +9,7 @@
 // runs.js), so a proxy that only fronted 7077 would leave cancellation
 // working during a simulated outage — this one fronts both.
 import net from 'node:net'
+import tls from 'node:tls'
 import { z } from 'zod'
 
 // server.address() returns AddressInfo | string | null; the string case is
@@ -19,13 +20,79 @@ import { z } from 'zod'
 // file's siblings use for a pg row.
 const addressInfoSchema = z.object({ address: z.string(), family: z.string(), port: z.number() })
 
+/** One TLS-or-plain forwarding leg, resolved once from env at the trust edge. */
+interface EngineProxyLeg {
+  host: string
+  port: number
+  tls: boolean
+  servername?: string
+}
+
+/** The two engine ports to proxy, resolved once from the client env — nothing below this reads process.env. */
+export interface EngineProxyTarget {
+  grpcHost: string
+  grpcPort: number
+  apiHost: string
+  apiPort: number
+  apiTls: boolean
+  servername?: string
+}
+
+const hostPortSchema = z.object({
+  host: z.string().min(1),
+  port: z.coerce.number().int().positive(),
+})
+
+function parseHostPort(hostPort: string): { host: string; port: number } {
+  const lastColon = hostPort.lastIndexOf(':')
+  if (lastColon === -1) throw new Error(`expected host:port, got ${hostPort}`)
+  // A bare (unbracketed) IPv6 literal has more than one colon, which makes
+  // the split on the last colon ambiguous; bracket it (e.g. [::1]:7077).
+  if (!hostPort.startsWith('[') && hostPort.indexOf(':') !== lastColon) {
+    throw new Error(`ambiguous host:port for a bare IPv6 literal, bracket the host: ${hostPort}`)
+  }
+  return hostPortSchema.parse({ host: hostPort.slice(0, lastColon), port: hostPort.slice(lastColon + 1) })
+}
+
+const DOTTED_QUAD = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/
+
+/** grpc-js's ssl_target_name_override only makes sense pointed at the real remote name. */
+function servernameFor(host: string): string | undefined {
+  return host === 'localhost' || DOTTED_QUAD.test(host) ? undefined : host
+}
+
+/** Decoded once, at the trust edge: everything below takes this parsed target, never process.env again. */
+export function engineProxyTargetFromEnv(env: NodeJS.ProcessEnv): EngineProxyTarget {
+  const grpc = parseHostPort(env['HATCHET_CLIENT_HOST_PORT'] ?? '127.0.0.1:7077')
+  const apiUrlString = env['HATCHET_CLIENT_API_URL'] ?? 'http://127.0.0.1:8888'
+  const apiUrl = new URL(z.url().parse(apiUrlString))
+  const apiTls = apiUrl.protocol === 'https:'
+  const apiPort = apiUrl.port !== '' ? Number(apiUrl.port) : apiTls ? 443 : 80
+  const servername = servernameFor(grpc.host)
+
+  const target: EngineProxyTarget = {
+    grpcHost: grpc.host,
+    grpcPort: grpc.port,
+    apiHost: apiUrl.hostname,
+    apiPort,
+    apiTls,
+  }
+  if (servername !== undefined) target.servername = servername
+  return target
+}
+
 interface ForwardTarget {
   server: net.Server
   sockets: Set<net.Socket>
   cutFlag: { cut: boolean }
 }
 
-function startForward(targetHost: string, targetPort: number): ForwardTarget {
+// The gRPC leg is a plain byte passthrough: grpc-js's ssl_target_name_override
+// sets the SNI and the certificate identity check, so a proxied TCP stream to
+// the real TLS edge still validates. The API leg cannot do that — plain HTTP
+// to a TLS-only port never completes a handshake — so it originates its own
+// TLS connection to the target when the leg says so.
+function startForward(leg: EngineProxyLeg): ForwardTarget {
   const sockets = new Set<net.Socket>()
   const cutFlag = { cut: false }
   const server = net.createServer((incoming) => {
@@ -33,7 +100,9 @@ function startForward(targetHost: string, targetPort: number): ForwardTarget {
       incoming.destroy()
       return
     }
-    const outgoing = net.connect(targetPort, targetHost)
+    const outgoing = leg.tls
+      ? tls.connect({ host: leg.host, port: leg.port, servername: leg.servername ?? leg.host })
+      : net.connect(leg.port, leg.host)
     sockets.add(incoming)
     sockets.add(outgoing)
     incoming.pipe(outgoing)
@@ -75,6 +144,8 @@ export interface EngineProxy {
   grpcHostPort: string
   /** http://127.0.0.1:<port> — pass as HATCHET_CLIENT_API_URL. */
   apiUrl: string
+  /** The resolved target this proxy cuts — the real engine host, not the local listen address. */
+  target: EngineProxyTarget
   /** Destroys every open connection and refuses new ones — simulates the engine going unreachable. */
   cut(): void
   /** Resumes forwarding; already-open connections were destroyed by cut(), so callers reconnect on their own retry. */
@@ -83,16 +154,16 @@ export interface EngineProxy {
 }
 
 export interface StartEngineProxyOptions {
-  targetHost?: string
-  grpcTargetPort?: number
-  apiTargetPort?: number
+  target?: EngineProxyTarget
 }
 
 /** Starts both forwarding servers on ephemeral ports and waits for both to bind. */
 export async function startEngineProxy(options: StartEngineProxyOptions = {}): Promise<EngineProxy> {
-  const targetHost = options.targetHost ?? '127.0.0.1'
-  const grpc = startForward(targetHost, options.grpcTargetPort ?? 7077)
-  const api = startForward(targetHost, options.apiTargetPort ?? 8888)
+  const target = options.target ?? engineProxyTargetFromEnv(process.env)
+  const grpc = startForward({ host: target.grpcHost, port: target.grpcPort, tls: false })
+  const apiLeg: EngineProxyLeg = { host: target.apiHost, port: target.apiPort, tls: target.apiTls }
+  if (target.servername !== undefined) apiLeg.servername = target.servername
+  const api = startForward(apiLeg)
 
   const [grpcPort, apiPort] = await Promise.all([listen(grpc.server), listen(api.server)])
 
@@ -106,6 +177,7 @@ export async function startEngineProxy(options: StartEngineProxyOptions = {}): P
   return {
     grpcHostPort: `127.0.0.1:${String(grpcPort)}`,
     apiUrl: `http://127.0.0.1:${String(apiPort)}`,
+    target,
     cut: cutBoth,
     open: () => {
       grpc.cutFlag.cut = false

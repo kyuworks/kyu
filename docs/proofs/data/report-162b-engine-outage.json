@@ -1,0 +1,32 @@
+{
+  "commitSha": "caa4dc155b382e08ba44062effdbeb7bc0ccb620-dirty",
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpuCount": 10,
+    "totalMemBytes": 34359738368
+  },
+  "engineVersion": "hatchet-lite:latest",
+  "startedAt": "2026-09-22T13:17:40.018Z",
+  "scenarios": [
+    {
+      "name": "engine-outage",
+      "passed": true,
+      "durationMs": 61046,
+      "observation": {
+        "proxyTargetHost": "<engine-app>.fly.dev",
+        "ordersBeforeOutage": 20,
+        "ordersDuringOutage": 20,
+        "sawRelayError": true,
+        "backlogObserved": true,
+        "relayStayedAliveDuringCut": true,
+        "relayAliveAtEnd": true,
+        "workerAliveAtEnd": true,
+        "drainAfterReopenMs": 19616,
+        "effectsSettledInTime": true,
+        "handlerRowCount": 120
+      },
+      "failures": []
+    }
+  ]
+}

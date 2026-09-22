@@ -424,15 +424,17 @@ Commands use the same `publish` and `subscribe` calls with `kind: 'command'`; th
 
 | Concern | Release one |
 |---|---|
-| Runtime | `hatchet-lite` as a Fly app per environment, region `syd`, one machine, no autostop; dev is `<engine-app>`, machine size `performance-1x`; Fly org `<fly-org>` |
+| Runtime | `hatchet-lite` as a Fly app per environment, region `syd`, one machine, no autostop; dev is `<engine-app>`, machine size `performance-1x`; Fly org `<fly-org>`; deployed 2026-09-23 NZ time (the engine's own logged timestamps are UTC and read 2026-09-22), one machine, dedicated IPv4, health check on `/api/ready` |
 | Relay | One sidecar process per project per environment, on a small dedicated pool; supervised, restarted on exit; in-process only for a single-process project |
-| Database | Fly Managed Postgres, one cluster per environment, session-mode connection; not a project's own database or its transaction pooler |
+| Database | Fly Managed Postgres, one cluster per environment, session-mode connection; not a project's own database or its transaction pooler; dev deployed as `<engine-db>` (Basic, Postgres 17, 10 GB, `syd`), direct session-mode connection, no pooler |
 | Config | Every secret name and where its value comes from: `infra/hatchet/fly/secrets.sh`; deploy and operate steps: `docs/operations/kyu-engine-on-fly.md` |
-| Backups | Daily snapshot; restore rehearsed once before production go-live |
+| Backups | Daily snapshot; restore rehearsed on dev 2026-09-23 NZ time into a throwaway cluster and recorded in `docs/operations/kyu-engine-on-fly.md` (the restore itself completed in about 3.5 minutes; reading back the restored data still needs the CTO, noted there as open) |
 | Upgrades | Pin the image tag (dev is on `v0.107.0`); runbook: snapshot, upgrade dev, soak, staging, production; Hatchet migrates its schema on start |
-| Retention | Configure run and event retention to 30 days in production, 7 in dev (deferred to PR B; needs the deployed engine) |
-| Monitoring | Hatchet failure alerts to Slack; scrape engine metrics if exposed; outbox-lag alert from each producer (deferred to PR B; needs the deployed engine) |
+| Retention | Configure run and event retention to 30 days in production, 7 in dev — still deferred: this engine version does expose a data retention controller (`dataRetentionPeriod`, found by inspecting the deployed binary), but it is set per tenant, not by a global secret or env var, and choosing the actual period plus whether it needs a dashboard or API call is an open decision, not done in this deploy |
+| Monitoring | Hatchet failure alerts to Slack; scrape engine metrics if exposed; outbox-lag alert from each producer — still deferred: the deployed engine's own `/api/v1/meta` reports `"observabilityEnabled":false,"prometheusServerEnabled":false`, so there is nothing to scrape yet; no Slack alert or outbox-lag alert was wired up in this deploy either |
 | Scaling path | Compose or Helm topology with separate engine replicas and RabbitMQ when N4 is exceeded; no code change |
+
+Harness numbers against this deployment: `docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`
 
 **Worker pools.** One bus tenant per project per environment, and separate worker pools by subscription name inside it. A consumer builds its whole subscription list once and starts one process per pool, each with `kyu.worker(name, { subscriptions, serves: [...] })` naming the subscriptions that pool serves. A pool whose subscriptions call a slow third party runs on its own machine with its own rate limit, so it cannot hold up the pool that runs durable workflow handlers. A subscription no running worker serves gets no run at all: the engine does not back-fill when a worker starts later and picks it up, so every subscription must be served by some pool that is actually running. How the pools are laid out for a real integration is a second ADR, deferred until a marketplace integration is scheduled.
 

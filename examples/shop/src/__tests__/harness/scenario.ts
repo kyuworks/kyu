@@ -82,10 +82,11 @@ export interface ScenarioResult {
   error?: string
 }
 
-// Mirrors vitest.integration.clearTables.ts's CLEAN_TABLES: the lane
-// database's own rows, never the seeded shop_product or demo workflow rows.
+// Mirrors vitest.integration.clearTables.ts's CLEAN_TABLES — keep both lists
+// in sync, or a table missing here fails truncation with a foreign-key error.
 const LANE_TABLES = [
   'shop_order_line',
+  'shop_lead_projection',
   'shop_order',
   'shop_invoice',
   'shop_handler_log',

@@ -21,6 +21,7 @@ done
 assert_output_contains "names the app" "<engine-app>" bash "${SECRETS}"
 assert_output_contains "stages the secrets" "--stage" bash "${SECRETS}"
 assert_output_lacks "carries no password" "Admin123" bash "${SECRETS}"
+assert_output_contains "marks the keysets optional" "Optional overrides" bash "${SECRETS}"
 
 OUT="$(bash "${SECRETS}")"
 SET_LINE_COUNT="$(printf '%s\n' "${OUT}" | grep -c 'fly secrets set' || true)"
@@ -28,4 +29,6 @@ PLACEHOLDER_COUNT="$(printf '%s\n' "${OUT}" | grep -o '<REPLACE_ME>' | wc -l | t
 assert_eq "one <REPLACE_ME> per fly secrets set line" "${SET_LINE_COUNT}" "${PLACEHOLDER_COUNT}"
 BAD_LINES="$(printf '%s\n' "${OUT}" | grep 'fly secrets set' | grep -vE "='<REPLACE_ME>'\$" || true)"
 assert_eq "every fly secrets set line ends in ='<REPLACE_ME>'" "" "${BAD_LINES}"
+REQUIRED_COUNT="$(printf '%s\n' "${OUT}" | sed '/Optional overrides/q' | grep -c 'fly secrets set' || true)"
+assert_eq "three required secrets" 3 "${REQUIRED_COUNT}"
 gate_test_finish

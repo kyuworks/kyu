@@ -1,0 +1,45 @@
+{
+  "commitSha": "caa4dc155b382e08ba44062effdbeb7bc0ccb620-dirty",
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpuCount": 10,
+    "totalMemBytes": 34359738368
+  },
+  "engineVersion": "hatchet-lite:latest",
+  "startedAt": "2026-09-22T13:54:52.032Z",
+  "scenarios": [
+    {
+      "name": "tenant-load",
+      "passed": false,
+      "durationMs": 1813911,
+      "observation": {},
+      "failures": [
+        {
+          "check": "no-unsettled-run",
+          "detail": "envelope 01a0c94a-47ba-7002-a1e9-c6b516aeca08 run b0497ac8-94d7-4299-9cf8-074d7a58beb1 (watch-shipping) is still running"
+        },
+        {
+          "check": "no-unsettled-run",
+          "detail": "envelope 01a0c94a-47f2-7000-a436-f8b207d38ff6 run 5d4aeab9-b80e-4103-9713-54fe333660db (record-order) is still running"
+        },
+        {
+          "check": "no-unsettled-run",
+          "detail": "envelope 01a0c94a-47f2-7000-a436-f8b207d38ff6 run 3cf969ba-83cd-4e25-ab9d-7c4f286483c7 (watch-shipping) is still running"
+        },
+        {
+          "check": "no-effect-lost",
+          "detail": "handler \"watch-shipping:timeout\" never ran for envelope 01a0c94a-58c2-7000-b185-438281b1d124"
+        },
+        {
+          "check": "no-effect-lost",
+          "detail": "handler \"watch-shipping:timeout\" never ran for envelope 01a0c94a-58d7-7000-a2fb-ffbcadf09c0b"
+        },
+        {
+          "check": "no-effect-lost",
+          "detail": "watch-shipping never reached a terminal row for 5000 orders within 900000ms"
+        }
+      ]
+    }
+  ]
+}

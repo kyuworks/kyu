@@ -2,9 +2,17 @@
 // plus a one-line PASS/FAIL per scenario on stdout. Not read by any other
 // part of the shop.
 import { execFileSync } from 'node:child_process'
+import fs from 'node:fs'
 import os from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import type { ScenarioResult } from './scenario.js'
+
+const COMPOSE_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../../../infra/hatchet/compose.yaml',
+)
 
 export interface MachineInfo {
   platform: string
@@ -17,7 +25,8 @@ export interface HarnessReport {
   commitSha: string
   machine: MachineInfo
   engineVersion: string
-  startedAt: string
+  /** When this report was assembled, after every scenario finished — not when the run started. */
+  reportBuiltAt: string
   scenarios: readonly ScenarioResult[]
 }
 
@@ -44,11 +53,21 @@ function readMachineInfo(): MachineInfo {
   return { platform: os.platform(), arch: os.arch(), cpuCount: os.cpus().length, totalMemBytes: os.totalmem() }
 }
 
+// infra/hatchet/compose.yaml pins the tag consumers actually run
+// (`hatchet-lite:${KYU_HATCHET_IMAGE_TAG:-<pinned>}`); read that default
+// instead of falling back to 'latest', which the pin was added to avoid.
+function composeDefaultImageTag(): string {
+  const text = fs.readFileSync(COMPOSE_PATH, 'utf8')
+  const match = /hatchet-lite:\$\{KYU_HATCHET_IMAGE_TAG:-([^}]+)\}/.exec(text)
+  if (match?.[1] === undefined) throw new Error(`no hatchet-lite image tag default found in ${COMPOSE_PATH}`)
+  return match[1]
+}
+
 // hatchet-lite has no explicit /api/v1/meta version field today (checked
-// against the local engine); this composes the local compose file's own tag
-// (infra/hatchet/compose.yaml) instead of guessing at a field that is not there.
-function composeImageTag(): string {
-  return `hatchet-lite:${process.env['KYU_HATCHET_IMAGE_TAG'] ?? 'latest'}`
+// against the local engine); this composes the pinned tag instead of
+// guessing at a field that is not there.
+export function composeImageTag(): string {
+  return `hatchet-lite:${process.env['KYU_HATCHET_IMAGE_TAG'] ?? composeDefaultImageTag()}`
 }
 
 const metaResponseSchema = z.object({ version: z.string().optional() })
@@ -72,7 +91,7 @@ export async function buildReport(scenarios: readonly ScenarioResult[]): Promise
     commitSha: readCommitSha(),
     machine: readMachineInfo(),
     engineVersion: await readEngineVersion(),
-    startedAt: new Date().toISOString(),
+    reportBuiltAt: new Date().toISOString(),
     scenarios,
   }
 }

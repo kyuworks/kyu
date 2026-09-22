@@ -24,32 +24,31 @@ Secrets this app needs, and where each value comes from:
     LISTEN/NOTIFY, prepared statements and advisory locks; a transaction
     pooler breaks all three). Assumption to verify on first deploy: whether
     this string needs an sslmode parameter added.
-  SERVER_AUTH_COOKIE_SECRETS
-    Generated per the Hatchet self-hosting docs (a random cookie hashing
-    and encryption key pair).
-  SERVER_ENCRYPTION_MASTER_KEYSET
-    Generated per the Hatchet self-hosting docs (the engine's master
-    encryption keyset).
-  SERVER_ENCRYPTION_JWT_PRIVATE_KEYSET
-    Generated per the Hatchet self-hosting docs (the engine's JWT signing
-    private keyset).
-  SERVER_ENCRYPTION_JWT_PUBLIC_KEYSET
-    Generated per the Hatchet self-hosting docs (the engine's JWT signing
-    public keyset, paired with the private keyset above).
   SERVER_AUTH_ADMIN_EMAIL
     Chosen by the CTO for the dashboard admin account.
   SERVER_AUTH_ADMIN_PASSWORD
     Chosen by the CTO for the dashboard admin account.
 
+  Optional (see the block below): SERVER_AUTH_COOKIE_SECRETS,
+  SERVER_ENCRYPTION_MASTER_KEYSET, SERVER_ENCRYPTION_JWT_PRIVATE_KEYSET,
+  SERVER_ENCRYPTION_JWT_PUBLIC_KEYSET.
+
 Commands to run:
 
 fly secrets set --stage -a ${APP} DATABASE_URL='<REPLACE_ME>'
+fly secrets set --stage -a ${APP} SERVER_AUTH_ADMIN_EMAIL='<REPLACE_ME>'
+fly secrets set --stage -a ${APP} SERVER_AUTH_ADMIN_PASSWORD='<REPLACE_ME>'
+
+Optional overrides (not needed for a normal deploy):
+  The engine generates these into /config on first boot and the
+  kyu_hatchet_config volume keeps them; set them only to hold the keys
+  outside the volume, and note that once set, the environment value wins
+  over whatever /config holds.
+
 fly secrets set --stage -a ${APP} SERVER_AUTH_COOKIE_SECRETS='<REPLACE_ME>'
 fly secrets set --stage -a ${APP} SERVER_ENCRYPTION_MASTER_KEYSET='<REPLACE_ME>'
 fly secrets set --stage -a ${APP} SERVER_ENCRYPTION_JWT_PRIVATE_KEYSET='<REPLACE_ME>'
 fly secrets set --stage -a ${APP} SERVER_ENCRYPTION_JWT_PUBLIC_KEYSET='<REPLACE_ME>'
-fly secrets set --stage -a ${APP} SERVER_AUTH_ADMIN_EMAIL='<REPLACE_ME>'
-fly secrets set --stage -a ${APP} SERVER_AUTH_ADMIN_PASSWORD='<REPLACE_ME>'
 
 Then apply everything staged in one deploy:
 
