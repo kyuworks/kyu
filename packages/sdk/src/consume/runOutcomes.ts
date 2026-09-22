@@ -51,7 +51,7 @@ export interface KyuRuns {
   cancelForCorrelation(correlationId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
   /** Every run in this client's own namespace the engine still holds queued or running. Needs a `since`: a namespace has no id to date itself from. */
   unsettledInNamespace(options: NamespaceRunsOptions): Promise<readonly RunOutcome[]>
-  /** Cancels every run in this client's own namespace that is still queued or running, and returns how many the engine cancelled. A namespace with no registered workflow cancels nothing. */
+  /** Cancels every run in this client's own namespace that is still queued or running, and returns how many the engine cancelled; sends one cancel — poll `unsettledInNamespace` if you must see the namespace empty. A namespace with no registered workflow cancels nothing. */
   cancelUnsettledInNamespace(options: NamespaceRunsOptions): Promise<number>
 }
 

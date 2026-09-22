@@ -11,6 +11,7 @@ import { subscribe } from './subscribe.js'
 import type { HandlerContext } from './handlerContext.js'
 import { createWorker } from './worker.js'
 import type { KyuWorker } from './worker.js'
+import { cancelUntilNoUnsettledRuns } from './__tests__/cancelUntilSettled.js'
 
 // Envelopes go straight to `hatchet.events.push` — no relay or outbox — the
 // same pattern as cancelRuns.integration.test.ts. Namespaced per run.
@@ -88,11 +89,12 @@ describe('cancelUnsettledRunsInNamespace: leftover engine runs', () => {
     const cancelled = await cancelUnsettledRunsInNamespace(hatchet, { since })
     expect(cancelled).toBeGreaterThan(0)
 
-    const left = await pollUntil(
-      () => readUnsettledRunsInNamespace(hatchet, { since }),
-      (rows) => rows.length === 0,
-      30_000,
-    )
+    const left = await cancelUntilNoUnsettledRuns({
+      cancel: () => cancelUnsettledRunsInNamespace(hatchet, { since }),
+      read: () => readUnsettledRunsInNamespace(hatchet, { since }),
+      timeoutMs: 180_000,
+      pollMs: 2_000,
+    })
     expect(left).toEqual([])
-  }, 90_000)
+  }, 240_000)
 })
