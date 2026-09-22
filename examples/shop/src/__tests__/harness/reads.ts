@@ -104,6 +104,24 @@ export async function readOutboxState(db: HarnessDb): Promise<readonly OutboxSta
   return result.rows.map((row) => outboxStateRowSchema.parse(row))
 }
 
+export interface OutboxLag {
+  pending: number
+  oldestSeconds: number
+}
+
+const outboxLagRowSchema = z.object({ pending: z.coerce.number().int(), oldest_seconds: z.coerce.number().nullable() })
+
+/** The backlog scenario's sample: how many rows are still waiting, and how old the oldest one is. */
+export async function readOutboxLag(db: HarnessDb): Promise<OutboxLag> {
+  const result = await db.query(
+    `SELECT count(*)::int AS pending, extract(epoch from (now() - min(created_at)))::float AS oldest_seconds
+     FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL`,
+    [],
+  )
+  const parsed = outboxLagRowSchema.parse(result.rows[0])
+  return { pending: parsed.pending, oldestSeconds: parsed.oldest_seconds ?? 0 }
+}
+
 const tenantRowSchema = z.object({ tenant_id: z.uuid() })
 
 export interface TenantWindow {
@@ -127,9 +145,14 @@ const orderingRowSchema = z.object({
   seq: z.coerce.number().int(),
 })
 
+// Reads in arrival order (`at`, the wall-clock write time), not by `seq`
+// (the bigserial insertion sequence) — `assertPerKeyOrdering` checks that
+// `seq` still comes back monotonic per key in that order. Ordering by `seq`
+// itself would make that check vacuous: any subsequence of an already
+// seq-sorted result is trivially seq-sorted too.
 export async function readOrdering(db: HarnessDb, orderIds: readonly string[]): Promise<readonly OrderingRow[]> {
   const result = await db.query(
-    'SELECT order_id, handler, seq FROM shop_handler_log WHERE order_id = ANY($1::uuid[]) ORDER BY seq',
+    'SELECT order_id, handler, seq FROM shop_handler_log WHERE order_id = ANY($1::uuid[]) ORDER BY at, seq',
     [uuidArrayLiteral(orderIds)],
   )
   const rows: OrderingRow[] = []

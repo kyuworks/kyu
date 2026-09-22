@@ -2,12 +2,17 @@
 // injected fault and reads back what happened; runScenario owns timing,
 // cleanup and the one assertion every scenario must pass regardless of what
 // it itself checks: harness-leaves-nothing.
+import { randomBytes } from 'node:crypto'
 import type { Kyu } from '@kyuworks/sdk'
 import type { Pool } from 'pg'
+import type { ShopConfig } from '../../config.js'
+import { createShopKyu } from '../../kyu.js'
 import { describeError } from '../../log.js'
 import { stopAllSpawnedProcesses } from '../processes.js'
+import type { InsertedDefinition } from '../workflowFixtures.js'
 import type { AssertionFailure } from './assertions.js'
-import type { HarnessChild, laneEnv } from './children.js'
+import { laneEnv } from './children.js'
+import type { HarnessChild } from './children.js'
 
 export type HarnessSize = 'smoke' | 'report'
 
@@ -21,12 +26,28 @@ export const SIZE_PARAMS = {
   report: { orders: 20 },
 } satisfies Record<HarnessSize, SizeParams>
 
+/** Anything a scenario opens that must be closed on teardown besides a child process (e.g. the outage proxy). */
+export interface HarnessClosable {
+  close(): Promise<void>
+}
+
+function isHarnessChild(tracked: HarnessChild | HarnessClosable): tracked is HarnessChild {
+  return 'spawned' in tracked
+}
+
+function isHarnessClosable(tracked: HarnessChild | HarnessClosable): tracked is HarnessClosable {
+  return !isHarnessChild(tracked)
+}
+
 export interface ScenarioContext {
   pool: Pool
   kyu: Kyu
   size: HarnessSize
   env: typeof laneEnv
   track(child: HarnessChild): void
+  track(closable: HarnessClosable): void
+  /** Records a workflow definition/version pair the scenario inserted, so teardown can check the scenario removed exactly those ids. */
+  trackWorkflowRows(inserted: InsertedDefinition): void
 }
 
 export type ScenarioObservationValue = string | number | boolean | null
@@ -95,11 +116,57 @@ async function assertLaneTablesEmpty(pool: Pool): Promise<readonly AssertionFail
   return []
 }
 
+// shop_workflow_definition and shop_workflow_version are never truncated
+// (they hold the seeded demo definition and version the UI depends on), so
+// they are not in LANE_TABLES. A scenario that inserts its own definition
+// and version (long-delay-handoff, cancel-between-steps) must delete them
+// itself, by the ids insertLongDelayDefinition/insertTwoDelayWorkflowDefinition
+// returned, in its own teardown, and must have handed those ids to
+// ctx.trackWorkflowRows when it inserted them. This checks only that the
+// ids this scenario itself recorded are gone: the shop's own integration
+// suite deliberately leaves rows in these two tables for other tenants
+// (vitest.integration.clearTables.ts), so a check over every non-demo row
+// would fail a scenario on leaks it never made.
+async function assertNoStrayWorkflowRows(
+  pool: Pool,
+  inserted: readonly InsertedDefinition[],
+): Promise<readonly AssertionFailure[]> {
+  if (inserted.length === 0) return []
+  const definitionIds = inserted.map((row) => row.definitionId)
+  const versionIds = inserted.map((row) => row.versionId)
+  const result = await pool.query(
+    `SELECT
+       (SELECT count(*) FROM shop_workflow_definition WHERE id = ANY($1)) AS definitions,
+       (SELECT count(*) FROM shop_workflow_version WHERE id = ANY($2)) AS versions`,
+    [definitionIds, versionIds],
+  )
+  const definitions = Number(result.rows[0]?.['definitions'] ?? -1)
+  const versions = Number(result.rows[0]?.['versions'] ?? -1)
+  if (definitions !== 0 || versions !== 0) {
+    return [
+      {
+        check: 'harness-leaves-nothing',
+        detail: `scenario inserted ${String(inserted.length)} workflow definition/version pair(s) but ${String(definitions)} definition row(s) and ${String(versions)} version row(s) it inserted are still present after teardown`,
+      },
+    ]
+  }
+  return []
+}
+
 async function stopTrackedChild(child: HarnessChild): Promise<readonly AssertionFailure[]> {
   try {
     await child.stop()
   } catch (caught) {
     return [{ check: 'harness-leaves-nothing', detail: `stopping a tracked child failed: ${describeError(caught)}` }]
+  }
+  return []
+}
+
+async function closeTrackedClosable(closable: HarnessClosable): Promise<readonly AssertionFailure[]> {
+  try {
+    await closable.close()
+  } catch (caught) {
+    return [{ check: 'harness-leaves-nothing', detail: `closing a tracked resource failed: ${describeError(caught)}` }]
   }
   return []
 }
@@ -112,16 +179,51 @@ function assertChildExited(child: HarnessChild): readonly AssertionFailure[] {
   return []
 }
 
+export interface ScenarioRunDeps {
+  pool: Pool
+  config: ShopConfig
+  size: HarnessSize
+}
+
+// Every scenario run gets its own namespace, derived from the lane's base
+// namespace, the scenario's own name, and a random suffix (the same idiom
+// restart.integration.test.ts's own startShop uses). The scenario name alone
+// would not be enough: a run left genuinely parked by one invocation of a
+// scenario (a worker SIGKILLed or force-stopped before it could evict
+// cleanly) stays registered on the engine under that namespace forever, and
+// a later invocation of the same scenario would reconnect to it — observed
+// directly while building this scenario, as a NonDeterminismError when the
+// old run's durable log disagreed with the new worker's config. The random
+// suffix means a later run never reconnects to an older one's leftovers.
+// Hyphens are replaced with underscores: the engine only requires a trailing
+// underscore, but every other namespace in this repo uses `_`.
+function scenarioNamespace(baseNamespace: string, scenarioName: string): string {
+  const suffix = randomBytes(3).toString('hex')
+  return `${baseNamespace}${scenarioName.replaceAll('-', '_')}_${suffix}_`
+}
+
 /** Times a scenario, always tears down what it tracked, and always checks harness-leaves-nothing. */
-export async function runScenario(base: Omit<ScenarioContext, 'track'>, scenario: Scenario): Promise<ScenarioResult> {
-  const tracked: HarnessChild[] = []
+export async function runScenario(deps: ScenarioRunDeps, scenario: Scenario): Promise<ScenarioResult> {
+  const namespace = scenarioNamespace(deps.config.namespace, scenario.name)
+  const kyu = createShopKyu({ ...deps.config, namespace })
+  const env: typeof laneEnv = (overrides) => laneEnv({ KYU_SHOP_NAMESPACE: namespace, ...overrides })
+
+  const tracked: (HarnessChild | HarnessClosable)[] = []
+  const insertedWorkflowRows: InsertedDefinition[] = []
   const ctx: ScenarioContext = {
-    ...base,
-    track: (child: HarnessChild) => {
-      tracked.push(child)
+    pool: deps.pool,
+    kyu,
+    size: deps.size,
+    env,
+    track: (item: HarnessChild | HarnessClosable) => {
+      tracked.push(item)
+    },
+    trackWorkflowRows: (inserted: InsertedDefinition) => {
+      insertedWorkflowRows.push(inserted)
     },
   }
-  const children = (): readonly HarnessChild[] => tracked
+  const children = (): readonly HarnessChild[] => tracked.filter(isHarnessChild)
+  const closables = (): readonly HarnessClosable[] => tracked.filter(isHarnessClosable)
 
   const startedAt = Date.now()
   let observation: ScenarioObservation = {}
@@ -131,7 +233,7 @@ export async function runScenario(base: Omit<ScenarioContext, 'track'>, scenario
   // A crashed earlier run can leave rows behind; truncate before running,
   // not only after, so the first scenario in a session starts clean too
   // (this is what makes "before and after every scenario" true).
-  const preRunFailures = await truncateLaneTables(base.pool)
+  const preRunFailures = await truncateLaneTables(deps.pool)
   if (preRunFailures.length > 0) {
     failures.push(...preRunFailures)
   } else {
@@ -144,27 +246,31 @@ export async function runScenario(base: Omit<ScenarioContext, 'track'>, scenario
   }
 
   for (const child of children()) failures.push(...(await stopTrackedChild(child)))
+  for (const closable of closables()) failures.push(...(await closeTrackedClosable(closable)))
 
-  // Both steps below can throw (a process refusing to die, a dropped pool
-  // connection); collected here so one throwing does not skip the other —
-  // stopping every spawned process and checking the lane tables both matter
-  // even when one of them fails.
-  const teardownErrors: unknown[] = []
+  // The afterAll safety net for anything the scenario spawned but never
+  // tracked. A teardown failure here is recorded as its own assertion
+  // failure rather than thrown, so a scenario that fails to tear down
+  // cleanly still produces a report and still exits the run non-zero.
   try {
     await stopAllSpawnedProcesses()
   } catch (caught) {
-    teardownErrors.push(caught)
+    failures.push({
+      check: 'harness-leaves-nothing',
+      detail: `stopAllSpawnedProcesses failed: ${describeError(caught)}`,
+    })
   }
   for (const child of children()) failures.push(...assertChildExited(child))
 
-  failures.push(...(await truncateLaneTables(base.pool)))
+  failures.push(...(await truncateLaneTables(deps.pool)))
   try {
-    failures.push(...(await assertLaneTablesEmpty(base.pool)))
+    failures.push(...(await assertLaneTablesEmpty(deps.pool)))
+    failures.push(...(await assertNoStrayWorkflowRows(deps.pool, insertedWorkflowRows)))
   } catch (caught) {
-    teardownErrors.push(caught)
-  }
-  if (teardownErrors.length > 0) {
-    throw new AggregateError(teardownErrors, 'harness teardown failed')
+    failures.push({
+      check: 'harness-leaves-nothing',
+      detail: `checking lane tables were empty failed: ${describeError(caught)}`,
+    })
   }
 
   const result: ScenarioResult = {

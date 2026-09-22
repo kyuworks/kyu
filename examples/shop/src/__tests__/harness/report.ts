@@ -21,9 +21,20 @@ export interface HarnessReport {
   scenarios: readonly ScenarioResult[]
 }
 
+// A separate try/catch from the sha read itself: if `git status` fails for
+// some reason, that should not turn a good sha read into 'unknown'.
+function isWorkingTreeDirty(): boolean {
+  try {
+    return execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim().length > 0
+  } catch {
+    return false
+  }
+}
+
 function readCommitSha(): string {
   try {
-    return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+    const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+    return isWorkingTreeDirty() ? `${sha}-dirty` : sha
   } catch {
     return 'unknown'
   }
