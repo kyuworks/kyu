@@ -37,6 +37,11 @@ export function assertShopDatabaseName(databaseUrl: string): string {
   return name
 }
 
+/** What bin/migrate.ts logs for its start/failed events — the database name only, never the connection string. */
+export function migrateLogFields(databaseUrl: string) {
+  return { database: assertShopDatabaseName(databaseUrl) }
+}
+
 // Connects to the server's own `postgres` database and creates the target
 // database when missing. Never drops anything.
 export async function ensureDatabase(databaseUrl: string): Promise<void> {
