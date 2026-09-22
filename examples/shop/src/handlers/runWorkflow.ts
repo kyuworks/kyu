@@ -3,6 +3,8 @@ import { NonRetryableError } from '@kyuworks/sdk'
 import type { Pool } from 'pg'
 import { withTransaction } from '../db/pool.js'
 import { notifyStaff, workflowTriggered } from '../messages.js'
+import type { FlowNode } from '../workflow/cambaDefinition.js'
+import { flowActionKey, flowExitTarget, flowNodeById } from '../workflow/cambaDefinition.js'
 import type { WorkflowStep } from '../workflow/definition.js'
 import { stepById } from '../workflow/definition.js'
 import { finishRun, insertRun, isOrderShipped, loadPinnedVersion, readStepExit, recordStep } from '../workflow/store.js'
@@ -47,15 +49,29 @@ async function runWorkflow(pool: Pool, kyu: Kyu, ctx: TriggerContext): Promise<v
   )
 
   const run: RunState = { pinned, tenantId, runId, orderId }
-  // A continuation names the step to walk from; a first trigger starts at the definition's start.
-  let stepId: string | undefined = resumeStepId ?? pinned.definition.start
-  // Bounded by the step count: workflow/definition.ts already rejects a
-  // cycle at parse time, so a walk from `start` can never revisit a step.
-  for (let hops = 0; hops <= pinned.definition.steps.length; hops += 1) {
-    if (stepId === undefined) return
-    stepId = await walkStep(pool, kyu, ctx, run, stepById(pinned.definition, stepId))
+  const { stored } = pinned
+
+  if (stored.shape === 'shop') {
+    // A continuation names the step to walk from; a first trigger starts at the definition's start.
+    let stepId: string | undefined = resumeStepId ?? stored.definition.start
+    // Bounded by the step count: workflow/definition.ts already rejects a
+    // cycle at parse time, so a walk from `start` can never revisit a step.
+    for (let hops = 0; hops <= stored.definition.steps.length; hops += 1) {
+      if (stepId === undefined) return
+      stepId = await walkStep(pool, kyu, ctx, run, stepById(stored.definition, stepId))
+    }
+    throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: run ${runId} did not reach an end step`)
   }
-  throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: run ${runId} did not reach an end step`)
+
+  // A Camba flow (#157): same shape, walked from entryNodeId instead of start.
+  // cambaDefinition.ts's trust edge rejects a cycle-prone shape (a branch
+  // node) at parse time, so this bound holds the same way.
+  let nodeId: string | undefined = resumeStepId ?? stored.flow.entryNodeId
+  for (let hops = 0; hops <= Object.keys(stored.flow.nodes).length; hops += 1) {
+    if (nodeId === undefined) return
+    nodeId = await walkFlowNode(pool, kyu, ctx, run, flowNodeById(stored.flow, nodeId))
+  }
+  throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: run ${runId} did not reach an end node`)
 }
 
 // A branch's exit is never null by construction (workflow/definition.ts's
@@ -189,7 +205,127 @@ async function walkStep(
             kind: step.kind,
             exitStepId: null,
           })
-          await finishRun(tx, run.runId)
+          // A shop `end` step has no outcome; only a Camba `end` node does (0006_shop.sql).
+          await finishRun(tx, run.runId, null)
+        }),
+      )
+      return undefined
+    }
+  }
+}
+
+// Only an `end` node legitimately has no successor; an action's `next` or a
+// wait's chosen exit pointing nowhere is an incomplete graph, not a silent
+// finish (unsupported-is-loud, plan's must-hold table).
+function requireFlowExitTarget(node: FlowNode, exit: string): string {
+  const target = flowExitTarget(node, exit)
+  if (target === null) {
+    throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: node ${node.id} exit "${exit}" is unwired`)
+  }
+  return target
+}
+
+// Returns the next node id, or undefined when the run is finished.
+async function walkFlowNode(
+  pool: Pool,
+  kyu: Kyu,
+  ctx: TriggerContext,
+  run: RunState,
+  node: FlowNode,
+): Promise<string | undefined> {
+  switch (node.kind) {
+    case 'action': {
+      // Camba's seven action executors are out of scope (ADR decision 8): the
+      // proof is the walker, so every action reuses the shop's one
+      // notify-staff command and records the action key it would have run.
+      await withTransaction(pool, (tx) =>
+        kyu.onceById(tx, run.runId, stepKey(node.id), async () => {
+          await kyu.publish(
+            tx,
+            notifyStaff,
+            { runId: run.runId, versionId: run.pinned.versionId, stepId: node.id, orderId: run.orderId },
+            { tenantId: run.tenantId, correlationId: run.runId, causationId: ctx.envelope.id },
+          )
+          await recordStep(tx, {
+            runId: run.runId,
+            stepId: node.id,
+            tenantId: run.tenantId,
+            kind: flowActionKey(node),
+            exitStepId: requireFlowExitTarget(node, 'next'),
+          })
+        }),
+      )
+      return requireFlowExitTarget(node, 'next')
+    }
+    case 'wait': {
+      // The ledger first. A replay must reuse the exit this run already took.
+      const recorded = await readStepExit(pool, run.runId, node.id)
+      if (recorded.found) return branchExitStepId(run.runId, node.id, recorded.exitStepId)
+
+      if (node.input.timeoutMinutes === null) {
+        throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: wait ${node.id} of run ${run.runId} has no timeout`)
+      }
+      // The shop has no task subsystem, so the completion leg can never
+      // fire: the timeout leg is the only outcome this interpreter can honour.
+      const exitNodeId = requireFlowExitTarget(node, 'timed_out')
+      const timeoutSeconds = node.input.timeoutMinutes * 60
+
+      if (timeoutSeconds >= DELAY_HANDOFF_SECONDS) {
+        await withTransaction(pool, (tx) =>
+          kyu.onceById(tx, run.runId, stepKey(node.id), async () => {
+            await kyu.publish(
+              tx,
+              workflowTriggered,
+              {
+                runId: run.runId,
+                definitionId: run.pinned.definitionId,
+                versionId: run.pinned.versionId,
+                orderId: run.orderId,
+                resumeStepId: exitNodeId,
+              },
+              {
+                tenantId: run.tenantId,
+                correlationId: run.runId,
+                causationId: ctx.envelope.id,
+                publishAt: new Date(Date.now() + timeoutSeconds * 1000),
+              },
+            )
+            await recordStep(tx, {
+              runId: run.runId,
+              stepId: node.id,
+              tenantId: run.tenantId,
+              kind: 'wait_for_completion',
+              exitStepId: exitNodeId,
+            })
+          }),
+        )
+        return undefined
+      }
+      await ctx.sleepFor(`${timeoutSeconds}s`)
+      await withTransaction(pool, (tx) =>
+        kyu.onceById(tx, run.runId, stepKey(node.id), () =>
+          recordStep(tx, {
+            runId: run.runId,
+            stepId: node.id,
+            tenantId: run.tenantId,
+            kind: 'wait_for_completion',
+            exitStepId: exitNodeId,
+          }),
+        ),
+      )
+      return exitNodeId
+    }
+    case 'end': {
+      await withTransaction(pool, (tx) =>
+        kyu.onceById(tx, run.runId, stepKey(node.id), async () => {
+          await recordStep(tx, {
+            runId: run.runId,
+            stepId: node.id,
+            tenantId: run.tenantId,
+            kind: node.kind,
+            exitStepId: null,
+          })
+          await finishRun(tx, run.runId, node.outcome)
         }),
       )
       return undefined
