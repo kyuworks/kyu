@@ -98,8 +98,8 @@ function assertScheduleTimeout(value: Extract<Duration, string>): void {
   }
   if (milliseconds <= 0) {
     throw new KyuError(
-      value.trim() === ''
-        ? `scheduleTimeout is empty: every run would fail before it started`
+      value.length === 0
+        ? 'scheduleTimeout is empty: every run would fail before it started'
         : `scheduleTimeout "${value}" is zero: every run would fail before it started`,
     )
   }

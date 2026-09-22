@@ -2,7 +2,14 @@ import { createEnvelope, defineCommand, defineEvent, toEnvelopeMetadata } from '
 import { z } from 'zod'
 import { describe, expect, it, vi } from 'vitest'
 import { EnvelopeRejectedError } from '../errors.js'
-import type { Context, CreateTaskWorkflowOpts, HatchetClient, JsonObject, TaskWorkflowDeclaration } from '../hatchet.js'
+import type {
+  Context,
+  CreateTaskWorkflowOpts,
+  Duration,
+  HatchetClient,
+  JsonObject,
+  TaskWorkflowDeclaration,
+} from '../hatchet.js'
 import { ConcurrencyLimitStrategy, KyuError, Priority, RateLimitDuration } from '../hatchet.js'
 import { decodeIncomingEnvelope, subscribe } from './subscribe.js'
 import { toHatchetRateLimit } from './taskOptions.js'
@@ -237,6 +244,7 @@ describe('subscribe: option wiring', () => {
     ['zero, which would fail every queued run at once', '0s'],
     ['a fraction the engine grammar cannot read', '1.5s'],
     ['a negative duration', '-30s'],
+    ['an empty string', '' as Extract<Duration, string>],
   ] as const)('refuses a scheduleTimeout of %s before the engine', (_shape, value) => {
     const { client, capturedOptions } = fakeHatchetClient()
 
