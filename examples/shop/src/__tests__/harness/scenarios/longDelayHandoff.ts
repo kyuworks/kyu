@@ -36,6 +36,10 @@ import { ScenarioAssertionError } from '../scenario.js'
 const LONG_DELAY_SECONDS = 48 * 60 * 60
 const EXPECTED_HANDLERS = ['record-order', 'audit-order']
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export const longDelayHandoff: Scenario = {
   name: 'long-delay-handoff',
   describe: 'a 48h workflow delay hands off to a scheduled continuation; the worker restarts during the hand-off',
@@ -45,7 +49,7 @@ export const longDelayHandoff: Scenario = {
       const tenantId = newTenantId()
       await insertLongDelayDefinition(admin, tenantId, LONG_DELAY_SECONDS)
 
-      const env = ctx.env({ KYU_SHOP_WATCH_TIMEOUT: '5s' })
+      const env = ctx.env({ KYU_SHOP_WATCH_TIMEOUT: '3s' })
       const relay = await startRelayChild(env)
       ctx.track(relay)
       const workerA = await startWorkerChild(env)
@@ -78,6 +82,15 @@ export const longDelayHandoff: Scenario = {
       const continuation = continuations[0]
       if (continuation === undefined) throw new Error('unreachable')
 
+      // The order's own watch-shipping run (every orderPlaced triggers one)
+      // is still genuinely parked at this point; stopping a worker mid-park
+      // makes it wait out the engine's own eviction-ack timeout (worker.ts's
+      // own comment: up to 30s per parked run). Waiting past the short watch
+      // timeout above first — the same shape as
+      // workflowLongDelay.integration.test.ts's own settle sleep — keeps
+      // this scenario's restart about the workflow hand-off, not that.
+      await sleep(5_000)
+
       // The restart during the hand-off: the first run has already ended
       // (the hold step returned undefined), so stopping worker A now and
       // starting worker B before the continuation is due is exactly the gap
@@ -94,10 +107,24 @@ export const longDelayHandoff: Scenario = {
         return finishedRun?.finishedAt != null
       }, 90_000)
 
+      // The run finishing only means the interpreter reached its `end` step;
+      // the notify command it published in that same step still has to be
+      // pushed by the relay. Wait for the outbox to catch up before reading
+      // final state, the same shape every other scenario uses.
+      await waitUntil(async () => {
+        const rows = await readOutboxState(ctx.pool)
+        return assertOutboxSettled(rows).length === 0
+      }, 30_000)
+
       const finalSteps = await readWorkflowStepLog(ctx.pool, runId)
       const notifyCount = await countNotifyOutboxForRun(ctx.pool, runId)
-      const workflowRunOutcomes = await ctx.kyu.runs.forEnvelope(triggerEnvelopeId)
-      const runWorkflowOutcomes = workflowRunOutcomes.filter((outcome) => outcome.subscription === RUN_WORKFLOW_NAME)
+      // forEnvelope(triggerEnvelopeId) would only find the first run: the
+      // continuation is a fresh envelope with its own id, so its own run's
+      // additionalMetadata.envelopeId differs from the trigger's. Both runs
+      // share correlationId (= runId, set on both publishes), so
+      // forCorrelation is the lookup that actually sees both.
+      const workflowRunProgress = await ctx.kyu.runs.forCorrelation(runId)
+      const runWorkflowOutcomes = workflowRunProgress.filter((outcome) => outcome.subscription === RUN_WORKFLOW_NAME)
 
       const orderPlacedIds = [order.envelopeIds.orderPlaced]
       const sendInvoiceIds = [order.envelopeIds.sendInvoice]
@@ -113,7 +140,7 @@ export const longDelayHandoff: Scenario = {
       const failures: AssertionFailure[] = [
         ...assertNoDoubleEffect(counts),
         ...assertNoFailedRun(runOutcomes),
-        ...assertNoFailedRun([{ envelopeId: triggerEnvelopeId, outcomes: workflowRunOutcomes }]),
+        ...assertNoFailedRun([{ envelopeId: triggerEnvelopeId, outcomes: workflowRunProgress }]),
         ...assertNoLostEffect(counts, { envelopeIds: orderPlacedIds, handlers: EXPECTED_HANDLERS }),
         ...assertNoLostEffect(counts, { envelopeIds: sendInvoiceIds, handlers: ['send-invoice'] }),
         ...assertOutboxSettled(outboxRows),

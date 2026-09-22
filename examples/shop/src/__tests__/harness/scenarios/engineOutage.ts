@@ -74,6 +74,15 @@ export const engineOutage: Scenario = {
       return rows.some((row) => row.published_at === null && row.dead_at === null)
     }, 5_000)
 
+    // A cut this brief is enough to prove the relay backs off (its first
+    // retry is already past by the time sawRelayError resolves), but the
+    // engine SDK's own gRPC client backs off its reconnect too (worker
+    // reconnect measured up to several seconds after the channel goes
+    // unreachable — plan-144.md's worker-proxy-proof.sh used a 25s cut).
+    // Reopening the instant the outage is merely observed does not leave
+    // that backoff anywhere to land; holding the cut a little longer does.
+    await new Promise<void>((resolve) => setTimeout(resolve, 5_000))
+
     // Phase 3: reopen. The relay's own doubling backoff (packages/sdk's
     // relay.ts) means the next successful push can lag a few seconds behind
     // open(); assert on the final drained state, not the first tick after it.
@@ -94,7 +103,9 @@ export const engineOutage: Scenario = {
       ctx.pool,
       { tenantIds: [tenantId] },
       [{ envelopeIds: allOrderPlacedIds, handlers: EXPECTED_HANDLERS }],
-      30_000,
+      // The worker's own gRPC client reconnects on its own backoff, slower
+      // than the relay's plain outbox poll; generous on purpose.
+      90_000,
     )
 
     const relayAliveAtEnd = relay.spawned.child.exitCode === null && relay.spawned.child.signalCode === null

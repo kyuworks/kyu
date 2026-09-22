@@ -2,6 +2,7 @@
 // injected fault and reads back what happened; runScenario owns timing,
 // cleanup and the one assertion every scenario must pass regardless of what
 // it itself checks: harness-leaves-nothing.
+import { randomBytes } from 'node:crypto'
 import type { Kyu } from '@kyuworks/sdk'
 import type { Pool } from 'pg'
 import type { ShopConfig } from '../../config.js'
@@ -144,16 +145,21 @@ export interface ScenarioRunDeps {
   size: HarnessSize
 }
 
-// Every scenario gets its own namespace, derived from the lane's base
-// namespace plus the scenario's own name. Without this a durable run parked
-// by one scenario and evicted at its teardown can be picked up by the next
-// scenario's worker — same subscription name, same engine tenant — and fail
-// with a NonDeterminismError (observed once while chaining scenarios).
-// Hyphens are replaced with underscores rather than passed through: the
-// engine only requires a trailing underscore, but every other namespace in
-// this repo uses `_`.
+// Every scenario run gets its own namespace, derived from the lane's base
+// namespace, the scenario's own name, and a random suffix (the same idiom
+// restart.integration.test.ts's own startShop uses). The scenario name alone
+// would not be enough: a run left genuinely parked by one invocation of a
+// scenario (a worker SIGKILLed or force-stopped before it could evict
+// cleanly) stays registered on the engine under that namespace forever, and
+// a later invocation of the same scenario would reconnect to it — observed
+// directly while building this scenario, as a NonDeterminismError when the
+// old run's durable log disagreed with the new worker's config. The random
+// suffix means a later run never reconnects to an older one's leftovers.
+// Hyphens are replaced with underscores: the engine only requires a trailing
+// underscore, but every other namespace in this repo uses `_`.
 function scenarioNamespace(baseNamespace: string, scenarioName: string): string {
-  return `${baseNamespace}${scenarioName.replaceAll('-', '_')}_`
+  const suffix = randomBytes(3).toString('hex')
+  return `${baseNamespace}${scenarioName.replaceAll('-', '_')}_${suffix}_`
 }
 
 /** Times a scenario, always tears down what it tracked, and always checks harness-leaves-nothing. */

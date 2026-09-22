@@ -287,8 +287,9 @@ every scenario. Point it at its own database. It starts and stops its own relay 
 processes and never touches Docker.
 
 The harness is not run by CI. It is run by hand to produce the proof under `docs/proofs/`. Every
-scenario gets its own namespace (the lane's namespace plus the scenario's own name), so a durable
-run left parked by one scenario can never be picked up by the next scenario's worker.
+scenario run gets its own namespace (the lane's namespace, the scenario's own name, and a random
+suffix), so a durable run left parked by one scenario, or by an earlier invocation of the same
+scenario, can never be picked up by a later worker.
 
 Ten scenarios, run with `--scenario <name>` or `--scenario all`:
 
