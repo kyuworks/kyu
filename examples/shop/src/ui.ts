@@ -4,7 +4,7 @@ import path from 'node:path'
 import nodeProcess from 'node:process'
 import type { Pool } from 'pg'
 import { readConfig } from './config.js'
-import { createPool } from './db/pool.js'
+import { createPool, logDroppedConnections } from './db/pool.js'
 import { createShopKyu } from './kyu.js'
 import { describeError, exitAfterLog, log } from './log.js'
 import { buildSubscriptions } from './subscriptions.js'
@@ -44,6 +44,7 @@ function onShutdownSignal(server: http.Server, pool: Pool): void {
 async function main(): Promise<void> {
   const config = readConfig()
   const pool = createPool(config.databaseUrl)
+  logDroppedConnections(pool, 'ui')
   const kyu = createShopKyu(config)
   // Built once from the same registry the worker uses, so the diagram at
   // /bus can never name a subscription the worker does not run.
