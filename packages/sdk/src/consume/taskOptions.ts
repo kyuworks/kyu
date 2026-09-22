@@ -86,7 +86,7 @@ export function toHatchetRateLimit(option: RateLimitOption): HatchetRateLimitInp
 // The Duration string type still admits '0s', '1.5s' and '-30s'. Proved on the
 // local engine: '0s' fails every queued run in about 20ms, with no start time
 // and no error message, so a bad value here dead-letters a whole subscription.
-export function assertScheduleTimeout(value: Extract<Duration, string>): void {
+function assertScheduleTimeout(value: Extract<Duration, string>): void {
   let milliseconds: number
   try {
     milliseconds = durationToMs(value)
@@ -97,7 +97,11 @@ export function assertScheduleTimeout(value: Extract<Duration, string>): void {
     )
   }
   if (milliseconds <= 0) {
-    throw new KyuError(`scheduleTimeout "${value}" is zero: every run would fail before it started`)
+    throw new KyuError(
+      value.trim() === ''
+        ? `scheduleTimeout is empty: every run would fail before it started`
+        : `scheduleTimeout "${value}" is zero: every run would fail before it started`,
+    )
   }
 }
 

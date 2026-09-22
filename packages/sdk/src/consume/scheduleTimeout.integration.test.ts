@@ -20,6 +20,10 @@ const TENANT = '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f30'
 // run waits about 2 x HANDLER_MS for a slot — over the strict subscription's
 // schedule timeout, well under the patient one's.
 const HANDLER_MS = 8000
+// Halfway between the second run's ~1 x HANDLER_MS wait and the third's ~2 x:
+// keeps roughly a 4s margin on each side so a slow CI runner does not flip
+// which run fails.
+const STRICT_TIMEOUT = `${(HANDLER_MS * 1.5) / 1000}s` as const
 const STRICT = 'slot-strict'
 const PATIENT = 'slot-patient'
 
@@ -59,7 +63,7 @@ async function settledOutcome(
 }
 
 beforeAll(async () => {
-  await startWorkerFor(STRICT, '10s')
+  await startWorkerFor(STRICT, STRICT_TIMEOUT)
   await startWorkerFor(PATIENT, '2m')
 }, 60_000)
 

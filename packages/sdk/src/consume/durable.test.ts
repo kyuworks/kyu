@@ -476,6 +476,17 @@ describe('durable: option wiring', () => {
     durable(bare.client, orderPlaced, { name: 'follow-up', handler: () => undefined })
     expect(bare.capturedOptions()?.scheduleTimeout).toBeUndefined()
   })
+
+  // Mirrors subscribe.test.ts's refusal coverage: durable() rejects an invalid
+  // duration through the same shared validation, before the engine is touched.
+  it('refuses a scheduleTimeout the engine cannot read, before the engine is touched', () => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    expect(() =>
+      durable(client, orderPlaced, { name: 'follow-up', handler: () => undefined, scheduleTimeout: '1.5s' }),
+    ).toThrow(KyuError)
+    expect(capturedOptions()).toBeUndefined()
+  })
 })
 
 describe('durable: name validation', () => {
