@@ -21,7 +21,7 @@ import { z } from 'zod'
 const addressInfoSchema = z.object({ address: z.string(), family: z.string(), port: z.number() })
 
 /** One TLS-or-plain forwarding leg, resolved once from env at the trust edge. */
-export interface EngineProxyLeg {
+interface EngineProxyLeg {
   host: string
   port: number
   tls: boolean
@@ -46,6 +46,11 @@ const hostPortSchema = z.object({
 function parseHostPort(hostPort: string): { host: string; port: number } {
   const lastColon = hostPort.lastIndexOf(':')
   if (lastColon === -1) throw new Error(`expected host:port, got ${hostPort}`)
+  // A bare (unbracketed) IPv6 literal has more than one colon, which makes
+  // the split on the last colon ambiguous; bracket it (e.g. [::1]:7077).
+  if (!hostPort.startsWith('[') && hostPort.indexOf(':') !== lastColon) {
+    throw new Error(`ambiguous host:port for a bare IPv6 literal, bracket the host: ${hostPort}`)
+  }
   return hostPortSchema.parse({ host: hostPort.slice(0, lastColon), port: hostPort.slice(lastColon + 1) })
 }
 

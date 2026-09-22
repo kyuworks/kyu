@@ -65,16 +65,8 @@ primary_region = 'syd'
 
   [[services.ports]]
     port = 7077
-    # Found on first deploy (issue #162 PR B): a bare 'tls' handler offers
-    # no ALPN protocol at all on a *.fly.dev hostname (Fly disables h2 over
-    # raw TLS there — only works with a custom domain), so grpc-js's
-    # mandatory ALPN negotiation fails with "no application protocol"
-    # before the handshake completes; adding 'tls_options.alpn' to a bare
-    # 'tls' handler made no difference for the same reason. Adding 'http'
-    # negotiates ALPN correctly, but Fly then forwards to the backend as
-    # HTTP/1.1 by default, which a raw gRPC (h2c) server cannot parse
-    # ("hyper error: invalid HTTP version parsed"). http_options.h2_backend
-    # is what tells Fly's edge to forward HTTP/2 to the backend instead.
+    # A bare 'tls' handler offers no ALPN on *.fly.dev; see step 7 of
+    # docs/operations/kyu-engine-on-fly.md for why 'http' is needed too.
     handlers = ['tls', 'http']
 
     [services.ports.http_options]

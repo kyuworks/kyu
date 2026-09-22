@@ -25,4 +25,13 @@ describe('engineProxyTargetFromEnv', () => {
   it('rejects a host:port with no port', () => {
     expect(() => engineProxyTargetFromEnv({ HATCHET_CLIENT_HOST_PORT: '<engine-app>.fly.dev' })).toThrow()
   })
+
+  it('rejects a bare (unbracketed) IPv6 literal as ambiguous', () => {
+    expect(() => engineProxyTargetFromEnv({ HATCHET_CLIENT_HOST_PORT: '::1:7077' })).toThrow()
+  })
+
+  it('accepts a bracketed IPv6 literal', () => {
+    const target = engineProxyTargetFromEnv({ HATCHET_CLIENT_HOST_PORT: '[::1]:7077' })
+    expect(target).toMatchObject({ grpcHost: '[::1]', grpcPort: 7077 })
+  })
 })

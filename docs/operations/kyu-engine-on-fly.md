@@ -93,7 +93,8 @@ database cluster `<engine-db>` (cluster id `<engine-cluster-id>`).
 
 **Restore log**
 
-**2026-09-22 (issue #162 PR B).** Source backup `20260922-121422F_20260922-130302I` (incremental,
+**2026-09-23 NZ time (issue #162 PR B; the backup id and its UTC timestamps below read 2026-09-22).**
+Source backup `20260922-121422F_20260922-130302I` (incremental,
 completed `2026-09-22T13:03:02Z`), restored into a new throwaway cluster
 `<engine-db>-restoretest` (id `<restore-test-cluster-id>`), region `syd`, plan Basic — same shape as
 the source. `fly mpg restore` returned immediately; the cluster read `creating` in `fly mpg list`
@@ -106,11 +107,13 @@ connection string, which only the CTO reads (this lane's implementer never sees 
 string). The CTO still needs to connect with `psql` and report three plain numbers — that `\dt`
 lists Hatchet's own tables, the row count of the tenant table, and the count of task rows — after
 which the lane (or whoever picks this up next) destroys `<engine-db>-restoretest` with
-`fly mpg destroy <engine-db>-restoretest` and confirms with `fly mpg list -o <fly-org>` that
-it is gone and `<engine-db>` is untouched. **`<engine-db>-restoretest` is left running
-as of this entry** — it was created in this lane but the plan gates destroying it on the CTO's
-verification, which this session could not get synchronously. Until it is destroyed it costs the
-same as a second Basic-plan cluster.
+`fly mpg destroy <restore-test-cluster-id>` (the command takes the cluster id, not the name) and confirms
+with `fly mpg list -o <fly-org>` that it is gone and `<engine-db>` is untouched. **This is
+open item #165.**
+
+**`<engine-db>-restoretest` is left running as of this entry** — it was created in this lane
+but the plan gates destroying it on the CTO's verification, which this session could not get
+synchronously. Until it is destroyed it costs the same as a second Basic-plan cluster.
 
 ## When the engine is unhealthy
 

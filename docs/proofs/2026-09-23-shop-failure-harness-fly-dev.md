@@ -62,7 +62,10 @@ pnpm --filter @kyuworks/shop harness --scenario tenant-load    --size report --o
   own `engineVersion` field reads `hatchet-lite:latest` — the same fallback the laptop proof used,
   since `/api/v1/meta` carries no version field on this engine either), database Fly Managed
   Postgres `<engine-db>`, plan Basic, Postgres 17, 10 GB, `syd`, session-mode direct
-  connection.
+  connection. The committed JSONs' `engineVersion` field predates this pull request's fix to
+  `report.ts`'s `composeImageTag()`, which now reads the pinned tag from
+  `infra/hatchet/compose.yaml` instead of defaulting to `latest`; the real version run here was
+  v0.107.0, as stated above.
 - Lane database (local, not on Fly): `kyu_shop_fly162` on
   `postgresql://hatchet:hatchet@localhost:15432/kyu_shop_fly162`.
 - **Two fixes made during this deploy, both recorded in this pull request:**
@@ -102,7 +105,7 @@ Min 140ms, median 143ms, max 199ms.
 |---|---|---|---|---|
 | `engine-outage` | PASS | 61,046ms | 103.5s (103,500ms) | 0.59x (faster) |
 | `outbox-backlog` | **FAIL** (missed its 5-minute window) | 301,762ms | 50,221ms (996 rows/sec) | 6.0x |
-| `tenant-load` | **FAIL** (missed its windows) | 1,813,911ms (30.2 min) | 221,426ms (3.7 min, 50/200 slots) | 8.2x |
+| `tenant-load` | **FAIL** (missed the durable-wait window; the 20-minute plain window was met) | 1,813,911ms (30.2 min) | 221,426ms (3.7 min, 50/200 slots) | 8.2x |
 
 `engine-outage`'s first attempt (122,083ms) is not counted in this table — its `--out` path was
 relative and resolved against the wrong working directory (`pnpm --filter` runs from
@@ -122,8 +125,10 @@ expected the WAN link to hurt most, because the relay's push is one round trip p
 per round trip, the extra latency directly taxes every batch, where on loopback that same round
 trip cost close to nothing.
 
-`tenant-load` also missed its window (below), but its failure list is short — 2 of 5,000 orders'
-`watch-shipping` handlers never ran, and 3 runs were still in flight at teardown — so the exact
+`tenant-load` missed its durable-wait window (below) — the 20-minute plain-handler window was met
+— and its six-entry failure list is short: 2 of 5,000 orders' `watch-shipping` handlers never ran
+at all, 3 runs were still in flight at teardown, and the scenario's own aggregate line records that
+not every order's `watch-shipping` run reached a terminal row in time. So the exact
 handler-rows/sec and orders/sec figures the laptop proof reports are not available for this run:
 `runScenario`'s teardown truncates the lane tables in a `finally` block regardless of pass or fail,
 and by the time this was checked those rows were already gone. Precise Fly-side throughput numbers
@@ -138,14 +143,19 @@ laptop proof's third, passing run. This scenario waits for the three plain handl
 (`record-order`, `audit-order`, `send-invoice`) within a 20-minute window, then separately waits for
 every order's durable `watch-shipping` run to reach a terminal row within a 15-minute window.
 
-What was observed: the run took 1,813,911ms (30.2 minutes) before failing, well past 20 minutes and
-past 15 minutes for the durable wait. Despite that, the failure list is short: `watch-shipping`
-never produced a terminal row for 2 of 5,000 orders, and 3 runs (one `record-order`, two
-`watch-shipping`) were still `running` when teardown tried to confirm nothing was left unsettled —
-against 5,000 orders each expected to produce four handler rows, this is a small tail, not a bulk
-loss. **This is not a delivery-guarantee failure** — nothing here shows a doubled effect or a lost
-outbox row, the same must-hold checks the plan requires held for everything that did settle. What
-failed is finishing inside the time budget at this scale, over this link.
+What was observed: the run took 1,813,911ms (30.2 minutes) in total. The plain-handler wait
+(`record-order`, `audit-order`, `send-invoice` within the 20-minute window) completed in time — the
+committed JSON carries no entry for a missed plain window, the entry `tenantLoad.ts` pushes only
+when that wait times out — but the durable wait (every order's `watch-shipping` run reaching a
+terminal row within the 15-minute window) did not: it ran the full 900,000ms and still failed. Six
+failure entries resulted: three runs still `running` when teardown tried to confirm nothing was
+left unsettled (one `record-order`, two `watch-shipping`), two orders whose `watch-shipping:timeout`
+handler never ran at all, and the scenario's own aggregate line, `watch-shipping never reached a
+terminal row for 5000 orders within 900000ms` — against 5,000 orders each expected to produce four
+handler rows, this is a small tail, not a bulk loss. **This is not a delivery-guarantee failure** —
+nothing here shows a doubled effect or a lost outbox row, the same must-hold checks the plan
+requires held for everything that did settle. What failed is finishing the durable wait inside its
+time budget at this scale, over this link.
 
 The relay/worker logs show `HeartbeatController` warnings spread across nearly the whole run
 (01:24–01:49, 26 occurrences) and a cluster of `Dispatcher`/`HeartbeatController` errors
@@ -158,8 +168,14 @@ teardown truncated the lane tables before this was checked.
 
 **The issue's window is not being widened to make this pass.** This scenario was run once, at the
 same 5,000-order size, the same slot counts, and the same 20-minute / 15-minute windows the laptop
-proof used, and it took roughly 8x longer before missing them. That ratio, and the small, specific
-failure list above, is the honest result of running it against a real WAN link rather than loopback.
+proof used, and it took roughly 8x longer before missing the durable-wait window (the plain-handler
+window was met). That ratio, and the small, specific failure list above, is the honest result of
+running it against a real WAN link rather than loopback.
+
+**Cleanup gap:** at the second teardown check, 9 `watch-shipping` runs were still queued under this
+scenario's namespace even though the first check had already reported the namespace empty — the
+engine requeued a retry after that check ran. Nothing here was cancelled; the gap is tracked as
+issue #165.
 
 ### outbox-backlog — FAILED at report size
 
@@ -225,4 +241,5 @@ readable, correct data. `<engine-db>-restoretest` is left running rather than de
 because the plan gates destruction on that CTO verification and this session could not get it
 synchronously; see `docs/operations/kyu-engine-on-fly.md`'s Restore log for the exact follow-up
 (CTO connects and reports the three numbers, then the cluster is destroyed and the runbook and this
-page are updated).
+page are updated). This step, the admin-login check, and the token-survives-a-restart check are
+tracked as issue #165, so nothing here is lost when this pull request merges.
