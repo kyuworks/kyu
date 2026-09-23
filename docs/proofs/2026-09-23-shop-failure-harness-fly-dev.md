@@ -262,7 +262,8 @@ follow-up pull request.
   client-side cut against a deployed engine, out of scope for this issue.
 - **It is one run on one day.** Other days, sizes, or a busier Fly edge give other numbers.
 - **Both clusters are Basic plan, 10 GB.** The shop database sits on its own second Basic cluster
-  (`<shop-harness-db>`), not the engine's cluster and not a production-sized plan.
+  (`<shop-harness-db>`), not the engine's own Basic-plan cluster (`<engine-db>`), and
+  neither is a production-sized plan.
 - **The harness, the relay and the worker share one `performance-2x` machine.** A real consumer
   would run the relay and its workers as separate machines. The harness machine
   (`performance-2x`, 2 dedicated vCPU, 4 GB) is larger than the engine's own machine
@@ -301,15 +302,15 @@ fly machine stop <machine-id> -a <shop-harness-app>
 - Network path used: the engine's internal 6PN address, plaintext — `HATCHET_CLIENT_HOST_PORT =
   '<engine-app>.internal:7077'`, `HATCHET_CLIENT_API_URL = 'http://<engine-app>.internal:8888'`,
   `HATCHET_CLIENT_TLS_STRATEGY = 'none'`. The preflight (`GET /api/ready`) answered 200 on every
-  attempt and every scenario ran to completion over this path — **the public-edge fallback (D3) was
+  attempt and every scenario ran to completion over this path — **the public-edge fallback was
   never needed.**
 - **A `fly deploy` alone does not start a run on this app.** With no service block and `[[restart]]
   policy = 'never'`, a deploy that only updates an already-stopped machine's config leaves it
-  `stopped` — confirmed three times in this session. `fly machine start <id>` is the step that
-  actually executes `run.sh`; the runbook section below states this explicitly.
-- Commit: each collected report's `commitSha` reads `9c9ae54c2d31ab90db8f9f5435821a6e8c20e25d`
-  (this pull request's second commit — the migrate database-name logging change, kept in for this
-  run). `engineVersion` reads `hatchet-lite:v0.107.0`, the pinned tag, same as the laptop-to-Fly run.
+  `stopped`. `fly machine start <id>` is the step that actually executes `run.sh`; the runbook
+  section below states this explicitly.
+- Commit: each collected report's `commitSha` reads `9c9ae54c2d31ab90db8f9f5435821a6e8c20e25d` —
+  the migrate database-name logging change, kept in for this run. `engineVersion` reads
+  `hatchet-lite:v0.107.0`, the pinned tag, same as the laptop-to-Fly run.
 
 **Two blockers hit before either scenario could run, both recorded here rather than worked around
 silently:**
@@ -319,20 +320,14 @@ silently:**
    lookup finds no matching row; on a fresh Managed Postgres cluster the app role has no database
    it can create for itself. Fixed by creating the database through the platform, once, with no
    secret involved: `fly mpg databases create <shop-cluster-id> -n kyu_shop_inregion`.
-2. **The CTO's first `KYU_SHOP_DATABASE_URL` pointed at the wrong cluster.** Even with the database
-   created, migrate kept failing with `permission denied to create database` — the same error
-   `CREATE DATABASE` gives without privilege, meaning the existence lookup still found nothing. The
-   digest of the staged secret was identical before and after the CTO's first "fix" attempt (an
-   unchanged digest is an unchanged value), which ruled out a typo in that same string. To settle
-   it without reading the secret, `migrateLogFields()` was added
-   (`examples/shop/src/db/migrate.ts`, `examples/shop/src/bin/migrate.ts`) so `fly logs` shows the
-   database name migrate is actually targeting — never the connection string. That line showed the
-   name was already correct (`kyu_shop_inregion`), which meant the connection string as a whole,
-   not just the database name, was wrong: it was still naming the **engine's** cluster
-   (`<engine-db>`, which has no `kyu_shop_inregion` database), left over from an earlier
-   staging step. The CTO re-staged the direct connection string of the correct cluster
-   (`<shop-harness-db>`, `<shop-cluster-id>`) — a new secret digest confirmed the value had
-   actually changed — and migrate then applied all 10 pending SQL files cleanly.
+2. **The first `KYU_SHOP_DATABASE_URL` staged on the app named the engine's cluster
+   (`<engine-db>`), not the harness's own one, even though the database name in the string
+   was already correct.** This was found without reading the secret, by logging the target
+   database name only (`migrateLogFields()`, `examples/shop/src/db/migrate.ts` and
+   `examples/shop/src/bin/migrate.ts`), which showed the name was right while the string's host was
+   wrong; the CTO re-staged the direct connection string of the correct cluster
+   (`<shop-harness-db>`, `<shop-cluster-id>`), and migrate then applied all 10 pending SQL
+   files cleanly.
 
 ### Comparison table
 
@@ -374,7 +369,8 @@ must-hold: every pending row was still sitting in the outbox, not lost, not doub
 drained given more time. The committed JSON's `failures` array is capped at the first 20 of the
 901 real entries (`failuresCappedForReview: { shown: 20, total: 901 }`), the same `#164` pattern;
 all 20 shown, and a spot check of the full set, read `outbox-settled: outbox row <id> is still
-pending`.
+pending`. The full, uncapped report on the machine was about 128 KB; the committed, capped file is
+about 3.3 KB.
 
 #### `tenant-load` — FAILED at report size
 
@@ -390,7 +386,7 @@ run was not. 17 failure entries resulted: 8 runs still `running` at teardown (5 
 scenario's own aggregate line (`watch-shipping never reached a terminal row for 5000 orders within
 900000ms`), and one `harness-leaves-nothing` entry: the engine still held 19 queued or running runs
 in this run's namespace after teardown — the same #165 teardown-requeue gap the laptop-to-Fly run
-hit, not fixed here, recorded as instructed. Against 5,000 orders each expected to produce four
+hit, not fixed here. Against 5,000 orders each expected to produce four
 handler rows, this is a small tail, the same shape as both earlier runs, not a bulk loss — nothing
 here shows a doubled effect or a lost outbox row.
 
