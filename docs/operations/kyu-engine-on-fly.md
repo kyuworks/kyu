@@ -10,7 +10,10 @@ database cluster `<engine-db>` (cluster id `<engine-cluster-id>`).
 The engine runs on machine `<engine-machine-id>` (`performance-2x`, 4 GB) with config volume
 `kyu_hatchet_config_2x` (`<engine-config-volume-id>`) since 2026-09-23 (issue #173). Machine
 `<old-engine-machine-id>` (`performance-1x`) with volume `kyu_hatchet_config` (`<old-engine-volume-id>`) is
-stopped and kept as the rollback. Cluster plan: Starter (was Basic until 2026-09-23).
+stopped and kept as the rollback. Cluster plan: Starter (was Basic until 2026-09-23). Once the
+"Switching the engine to RabbitMQ" step below destroys this machine, the resize rollback path in
+"Resizing the engine machine" no longer exists — the rollback for the queue switch itself is the
+`SERVER_MSGQUEUE_KIND` setting, not this machine.
 
 Queue: from issue #176 the engine's `fly.toml` selects RabbitMQ (`<rabbitmq-app>`). Until the
 CTO runs *Switching the engine to RabbitMQ* below, the live machine still runs the Postgres queue.
@@ -119,7 +122,9 @@ engine's run detail for such runs (README). Evidence, queries and what to raise 
    `source`/`size`.
 5. Do not `fly deploy` the engine while both machines exist: flyctl replaces a machine whose
    volume name differs from `fly.toml` (`internal/command/deploy/machines_launchinput.go`).
-   Destroying the rollback machine and its volume is the CTO's call.
+   Destroying the rollback machine and its volume is the CTO's call. Once destroyed, this rollback
+   path is gone — see "Queue on RabbitMQ" below, which destroys `<old-engine-machine-id>` before switching
+   the engine's queue.
 
 ## Backup and restore rehearsal
 
@@ -198,9 +203,11 @@ image we run supports it. Issue #176 adds a private RabbitMQ app, `<rabbitmq-app
 can run the shop harness once with the queue on RabbitMQ, everything else unchanged, before the
 Camba decision.
 
-hatchet-lite (`cmd/hatchet-lite/main.go` at v0.107.0) forces the Postgres queue only when neither
-`SERVER_MSGQUEUE_KIND` nor `SERVER_MSGQUEUE_RABBITMQ_URL` is set in the environment — that is why
-the engine has run Postgres with no queue setting at all. `<rabbitmq-app>` has no public
+hatchet-lite (`cmd/hatchet-lite/main.go` at v0.107.0) forces the Postgres queue only when none of
+the four queue variables is set in the environment — `SERVER_MSGQUEUE_KIND`,
+`SERVER_MSGQUEUE_RABBITMQ_URL`, and the legacy `SERVER_TASKQUEUE_KIND` /
+`SERVER_TASKQUEUE_RABBITMQ_URL` — that is why the engine has run Postgres with no queue setting at
+all. `<rabbitmq-app>` has no public
 address and no management UI: everything outside the private network reaches it only through
 `fly machine exec`. The local Docker stack (`infra/hatchet/compose.yaml`) stays on the Postgres
 queue; nothing here changes it.
@@ -208,7 +215,10 @@ queue; nothing here changes it.
 **First deploy of RabbitMQ** (an engineer does steps 1, 2, 4 and 5; the CTO does step 3):
 
 1. Create the app: `fly apps create <rabbitmq-app> -o <fly-org>`
-2. Create the data volume, in `syd`, before any deploy: `fly volumes create kyu_rabbitmq_data -r syd -s 3 -a <rabbitmq-app>`
+2. Create the data volume, in `syd`, before any deploy: `fly volumes create kyu_rabbitmq_data -r syd -s 3 -a <rabbitmq-app> --vm-size performance-1x`
+   — the `--vm-size` flag places the volume on a host that can fit a `performance-1x` machine;
+   "Resizing the engine machine" above hit "insufficient memory available to fulfill request on
+   the current host" from a volume placed without one.
 3. **Before step 4**: the CTO runs `bash infra/hatchet/fly/rabbitmq/secrets.sh` and the two
    `fly secrets set --stage` commands it prints, filling in `RABBITMQ_DEFAULT_USER` and
    `RABBITMQ_DEFAULT_PASS` from 1Password. RabbitMQ reads both only on its first boot with an
