@@ -243,3 +243,60 @@ synchronously; see `docs/operations/kyu-engine-on-fly.md`'s Restore log for the 
 (CTO connects and reports the three numbers, then the cluster is destroyed and the runbook and this
 page are updated). This step, the admin-login check, and the token-survives-a-restart check are
 tracked as issue #165, so nothing here is lost when this pull request merges.
+
+## In-region run (issue #166)
+
+What this is: `tenant-load` and `outbox-backlog` — the two scenarios that missed their windows
+when the relay, worker and harness ran on a laptop against the deployed engine, above — run again
+from inside `syd`, beside `<engine-app>`, in a separate Fly app (`<shop-harness-app>`) built
+from `infra/shop-harness/fly/`.
+
+**This section is written in two passes, the same as the page's first section.** What this run
+does not prove, immediately below, is written and committed before any in-region command runs.
+The comparison table and the per-scenario results are filled in from the actual run in a
+follow-up pull request.
+
+### What this run does not prove
+
+- **The engine process never died.** `engine-outage` was not run in-region; #166 keeps it a
+  client-side cut against a deployed engine, out of scope for this issue.
+- **It is one run on one day.** Other days, sizes, or a busier Fly edge give other numbers.
+- **Both clusters are Basic plan, 10 GB.** The shop database sits on its own second Basic cluster
+  (`<shop-harness-db>`), not the engine's cluster and not a production-sized plan.
+- **The harness, the relay and the worker share one `performance-2x` machine.** A real consumer
+  would run the relay and its workers as separate machines. The harness machine
+  (`performance-2x`, 2 dedicated vCPU, 4 GB) is larger than the engine's own machine
+  (`performance-1x`, 1 dedicated vCPU, 2 GB).
+- **The path is the engine's internal 6PN address with TLS off**, or the public edge if the
+  fallback in `docs/operations/kyu-engine-on-fly.md` was used — stated below either way. It says
+  nothing about a consumer outside org `<fly-org>`.
+- **Only `tenant-load` and `outbox-backlog` ran in-region.** The other eight scenarios stand on
+  their laptop and laptop-to-Fly results only; none of them were re-run here.
+- **The rolled-back-transaction must-hold row is not exercised by either scenario.** Neither
+  `tenant-load` nor `outbox-backlog` publishes inside a transaction that then rolls back.
+- **The #165 teardown-requeue gap is not addressed here.** If a run leaves anything queued after
+  teardown reports its namespace empty, it is recorded below, not fixed.
+- **CI never runs the harness**, in-region or otherwise. This is a point-in-time measurement, not
+  a regression gate.
+
+### How this was produced
+
+_Filled in from the actual run (in a follow-up pull request)._
+
+### Comparison table
+
+| | Laptop only | Laptop to Fly | In-region |
+|---|---|---|---|
+| Harness, relay, worker run | laptop (NZ) | laptop (NZ) | `<shop-harness-app>`, `syd` |
+| Machine size | laptop spec | laptop spec | `performance-2x` |
+| Shop database | local Docker Postgres | local Docker Postgres | `<shop-harness-db>`, Basic, `syd` |
+| Engine | local compose v0.107.0 | `<engine-app>`, `performance-1x` | same |
+| Network path | loopback | NZ→`syd` public edge, TLS, median 143ms | _pending_ |
+| `outbox-backlog` | PASS, 50,221ms, 996 rows/sec | FAIL, 301,762ms, ~162 rows/sec | _pending_ |
+| `tenant-load` | PASS, 221,426ms, 50/200 slots | FAIL, 1,813,911ms | _pending_ |
+| Commit | — | `caa4dc1...-dirty` | _pending_ |
+| JSON file | `docs/proofs/data/report-155-*.json` | `docs/proofs/data/report-162b-*.json` | _pending_ |
+
+### Per-scenario results
+
+_Filled in from the actual run (in a follow-up pull request)._

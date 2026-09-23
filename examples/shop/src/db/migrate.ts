@@ -10,10 +10,14 @@ const SHOP_DATABASE_NAME_PATTERN = /^kyu_shop[a-z0-9_]*$/
 // levels up from this file, whether running from src/ (vitest) or dist/ (built).
 export const APP_MIGRATIONS_DIRECTORY: string = path.resolve(import.meta.dirname, '../../migrations')
 
-/** `databaseUrl` was not a valid URL, so no database name could be read from it. */
+/**
+ * `databaseUrl` was not a valid URL, so no database name could be read from it.
+ * The message never carries the url itself — a deployed secret can be malformed
+ * without printing its credentials into Fly's retained logs.
+ */
 export class InvalidDatabaseUrlError extends Error {
-  constructor(databaseUrl: string, cause: TypeError) {
-    super(`invalid database url: "${databaseUrl}"`, { cause })
+  constructor(cause: TypeError) {
+    super(`invalid database url: ${cause.name}: ${cause.message}`, { cause })
     this.name = 'InvalidDatabaseUrlError'
   }
 }
@@ -24,7 +28,7 @@ export function assertShopDatabaseName(databaseUrl: string): string {
   try {
     url = new URL(databaseUrl)
   } catch (error) {
-    if (error instanceof TypeError) throw new InvalidDatabaseUrlError(databaseUrl, error)
+    if (error instanceof TypeError) throw new InvalidDatabaseUrlError(error)
     throw error
   }
   const name = decodeURIComponent(url.pathname.replace(/^\//, ''))
@@ -35,6 +39,11 @@ export function assertShopDatabaseName(databaseUrl: string): string {
     )
   }
   return name
+}
+
+/** What bin/migrate.ts logs for its start/failed events — the database name only, never the connection string. */
+export function migrateLogFields(databaseUrl: string) {
+  return { database: assertShopDatabaseName(databaseUrl) }
 }
 
 // Connects to the server's own `postgres` database and creates the target

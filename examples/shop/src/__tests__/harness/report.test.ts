@@ -1,5 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { composeImageTag } from './report.js'
+import { composeImageTag, readCommitSha } from './report.js'
+
+describe('readCommitSha', () => {
+  it('returns KYU_HARNESS_COMMIT_SHA when it is set', () => {
+    const original = process.env['KYU_HARNESS_COMMIT_SHA']
+    process.env['KYU_HARNESS_COMMIT_SHA'] = 'abc123'
+    try {
+      expect(readCommitSha()).toBe('abc123')
+    } finally {
+      if (original === undefined) delete process.env['KYU_HARNESS_COMMIT_SHA']
+      else process.env['KYU_HARNESS_COMMIT_SHA'] = original
+    }
+  })
+
+  it('falls back to git rev-parse HEAD when the env var is unset', () => {
+    const original = process.env['KYU_HARNESS_COMMIT_SHA']
+    delete process.env['KYU_HARNESS_COMMIT_SHA']
+    try {
+      expect(readCommitSha()).toMatch(/^[0-9a-f]{40}(-dirty)?$/)
+    } finally {
+      if (original !== undefined) process.env['KYU_HARNESS_COMMIT_SHA'] = original
+    }
+  })
+})
 
 describe('composeImageTag', () => {
   it('reads the pinned tag from infra/hatchet/compose.yaml when no env override is set', () => {

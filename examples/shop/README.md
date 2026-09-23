@@ -379,6 +379,18 @@ root and passed as `$(pwd)/...`): `pnpm --filter` runs the script from `examples
 repository root, so a plain relative `docs/proofs/data/...` path resolves to the wrong directory
 and the harness fails to write its report after an otherwise-successful run.
 
+### In-region against the deployed dev engine
+
+Issue #166 runs the harness itself in `syd`, beside `<engine-app>`, instead of from a laptop —
+this is what the harness's own relay-to-engine round trip looks like in production, where the two
+scenarios most sensitive to round-trip count and queueing depth (`outbox-backlog`, `tenant-load`)
+missed their windows when run from a laptop in New Zealand. It is a separate Fly app
+(`<shop-harness-app>`) and its own database cluster, built from `infra/shop-harness/fly/` and
+driven by `run.sh` inside the container rather than by hand. See
+`docs/operations/kyu-engine-on-fly.md`, "Running the shop harness in-region", for the full
+runbook — creating the app and cluster, the CTO's two secrets, deploying, then `fly machine start`,
+collecting each report with `collect.sh`, and stopping the machine again.
+
 ## Engine hygiene
 
 Each test run registers workflows and a concurrency strategy under a random namespace that the
