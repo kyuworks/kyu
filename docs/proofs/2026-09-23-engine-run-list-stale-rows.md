@@ -94,13 +94,15 @@ CANCELLED in the run detail, for good.
 
 `runs.forEnvelope`, `runs.forCorrelation`, `runs.cancelForEnvelope`, `runs.cancelForCorrelation`
 and `runs.unsettledInNamespace` read the run list. For a row the list has shown queued or running
-for more than 60 seconds (from its `startedAt`, or `createdAt` when it has not started), they also
+for 60 seconds or more (from its `startedAt`, or `createdAt` when it has not started), they also
 read the run detail, once per such row and at most 100 rows per call. When the detail says
 COMPLETED or FAILED, the run reads `completed` or `failed`, with no `finishedAt` if the list never
 recorded one, and `unsettledInNamespace` leaves it out. A CANCELLED detail is not used, because the
 engine reports a scheduling timeout as CANCELLED there and FAILED in its list. Kind B runs still
-read queued or running: nothing the engine exposes says they are stuck. `cancelUnsettledInNamespace`
-is unchanged.
+read queued or running: nothing the engine exposes says they are stuck. A run detail read that
+fails keeps the row's listed status rather than failing the whole call: a cancel sends every listed
+run id regardless of status, and `unsettledInNamespace` is polled, so a caller drops out on the next
+read. `cancelUnsettledInNamespace` is unchanged.
 
 ## Queries
 

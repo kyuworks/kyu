@@ -170,12 +170,7 @@ function isLongUnsettledRow(row: EngineRunRow, now: number): boolean {
   return now - Date.parse(row.startedAt ?? row.createdAt) >= RUN_DETAIL_GRACE_MS
 }
 
-/**
- * Maps every row with toRunOutcome, then reads the engine's own run detail
- * once for each row the list has shown queued or running for at least
- * RUN_DETAIL_GRACE_MS, at most RUN_DETAIL_MAX_CHECKS per call; rows past the
- * cap keep the listed status.
- */
+/** Maps every row; a row unsettled ≥ RUN_DETAIL_GRACE_MS gets one run-detail check (capped at RUN_DETAIL_MAX_CHECKS), keeping the listed status when the check is skipped or fails. */
 export async function toCheckedRunOutcomes(
   hatchet: RunDetailReader,
   rows: readonly EngineRunRow[],
@@ -190,8 +185,12 @@ export async function toCheckedRunOutcomes(
     if (outcome === undefined) continue
     if (checks < RUN_DETAIL_MAX_CHECKS && isLongUnsettledRow(row, now)) {
       checks += 1
-      const ended = await readEngineEndedRunStatus(hatchet, outcome.runId, caller)
-      if (ended !== undefined) outcome.status = ended
+      try {
+        const ended = await readEngineEndedRunStatus(hatchet, outcome.runId, caller)
+        if (ended !== undefined) outcome.status = ended
+      } catch {
+        // A cancel sends every listed id regardless, and a poller retries: keep the listed status.
+      }
     }
     outcomes.push(outcome)
   }

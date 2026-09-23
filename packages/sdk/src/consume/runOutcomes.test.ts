@@ -449,16 +449,17 @@ describe('readRunOutcomes: engine run detail cross-check', () => {
     expect(detailCalls()).toEqual([staleId, liveId, youngId])
   })
 
-  it('throws a KyuError naming the caller when the run detail cannot be read', async () => {
+  // A poller (unsettledInNamespace, or a caller retrying forEnvelope) must not
+  // break on one failed detail read: it keeps the listed status and tries again later.
+  it('keeps the listed status when the run detail read fails', async () => {
     const cause = new Error('unavailable')
     const rows = [fixtureRow({ status: 'RUNNING', taskExternalId: staleId, finishedAt: undefined })]
-    const { reader } = fakeCheckedRunsReader('ns_', rows, new Map(), cause)
+    const { reader, detailCalls } = fakeCheckedRunsReader('ns_', rows, new Map(), cause)
 
-    const read = readRunOutcomes(reader, uuidv7())
+    const outcomes = await readRunOutcomes(reader, uuidv7())
 
-    await expect(read).rejects.toThrow(KyuError)
-    await expect(read).rejects.toThrow(`runs.forEnvelope: could not read the run detail for run ${staleId}`)
-    await expect(read).rejects.toHaveProperty('cause', cause)
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(['running'])
+    expect(detailCalls()).toEqual([staleId])
   })
 })
 
