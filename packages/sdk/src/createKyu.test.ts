@@ -17,6 +17,8 @@ import type {
 import { outboxRowSchema } from './outbox/rows.js'
 import type { OutboxRow } from './outbox/rows.js'
 import type { PushItem } from './relay/index.js'
+import { runDetailFixture } from './consume/__tests__/runDetailFixture.js'
+import type { RunDetailReader } from './consume/runOutcomes.js'
 
 const orderPlaced = defineEvent({
   name: 'shop.order.placed',
@@ -55,7 +57,7 @@ function fakeHatchetClient(listRows: EngineRunRow[] = []): FakeHatchetClient {
   let runsListOptions: Parameters<HatchetClient['runs']['list']>[0]
   let runsCancelOptions: Parameters<HatchetClient['runs']['cancel']>[0] | undefined
   let workerCalls = 0
-  const runs: Pick<HatchetClient['runs'], 'cancel' | 'list'> = {
+  const runs: Pick<HatchetClient['runs'], 'cancel' | 'list'> & RunDetailReader['runs'] = {
     list: (options) => {
       runsListOptions = options
       return Promise.resolve({ pagination: {}, rows: listRows })
@@ -64,6 +66,7 @@ function fakeHatchetClient(listRows: EngineRunRow[] = []): FakeHatchetClient {
       runsCancelOptions = options
       return Promise.resolve({ data: { ids: options.ids } } as Awaited<ReturnType<HatchetClient['runs']['cancel']>>)
     },
+    getDetails: async () => runDetailFixture(),
   }
   const stub: Pick<HatchetClient, 'config' | 'durableTask' | 'task' | 'worker'> = {
     task: (options: CreateTaskWorkflowOpts) => {

@@ -4,6 +4,7 @@ import { KyuError } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
 import { cancelRunsFor } from './cancelRuns.js'
 import type { RunsCanceller } from './cancelRuns.js'
+import { runDetailFixture } from './__tests__/runDetailFixture.js'
 
 // Copied from runOutcomes.test.ts's own fixtureRow: production source does
 // not export test fixtures, and tests do not count toward the size gate.
@@ -58,7 +59,12 @@ type CancelProcedure = (
   opts: Parameters<HatchetClient['runs']['cancel']>[0],
 ) => ReturnType<HatchetClient['runs']['cancel']>
 
-function fakeRunsCanceller(namespace: string, rows: EngineRunRow[], cancelError?: Error): FakeRunsCancellerCalls {
+function fakeRunsCanceller(
+  namespace: string,
+  rows: EngineRunRow[],
+  cancelError?: Error,
+  detailError?: Error,
+): FakeRunsCancellerCalls {
   const listCalls: Array<Parameters<HatchetClient['runs']['list']>[0]> = []
   const cancelCalls: Array<Parameters<HatchetClient['runs']['cancel']>[0]> = []
   const cancel: CancelProcedure = (opts) => {
@@ -75,6 +81,10 @@ function fakeRunsCanceller(namespace: string, rows: EngineRunRow[], cancelError?
         return { pagination: {}, rows }
       },
       cancel,
+      getDetails: async () => {
+        if (detailError !== undefined) throw detailError
+        return runDetailFixture()
+      },
     },
   }
   return { canceller, listCalls: () => listCalls, cancelCalls: () => cancelCalls }
@@ -98,6 +108,7 @@ function fakePagedRunsCanceller(namespace: string, pages: EngineRunRow[][]): Fak
         return { pagination: { num_pages: pages.length }, rows }
       },
       cancel,
+      getDetails: async () => runDetailFixture(),
     },
   }
   return { canceller, listCalls: () => listCalls, cancelCalls: () => cancelCalls }
@@ -224,5 +235,23 @@ describe('cancelRunsFor', () => {
     expect(cancelled).toHaveLength(1)
     expect(cancelled[0]?.status).toBe('cancelled')
     expect(cancelCalls()).toEqual([{ ids: ['018f0000-0000-7000-8000-000000000002'] }])
+  })
+
+  // A cancel sends every listed run id regardless of its status, so a failed
+  // detail read on a long-unsettled row must not stop the cancel from being sent.
+  it('still sends the cancel when the run detail read fails for a long-unsettled row', async () => {
+    const envelopeId = uuidv7()
+    const cause = new Error('unavailable')
+    const rows = [fixtureRow({ workflowName: 'ns_first', status: 'RUNNING' })]
+    const { canceller, cancelCalls } = fakeRunsCanceller('ns_', rows, undefined, cause)
+
+    const cancelled = await cancelRunsFor(canceller, {
+      key: 'envelopeId',
+      id: envelopeId,
+      caller: 'runs.cancelForEnvelope',
+    })
+
+    expect(cancelCalls()).toEqual([{ ids: ['018f0000-0000-7000-8000-000000000002'] }])
+    expect(cancelled.map((outcome) => outcome.status)).toEqual(['running'])
   })
 })

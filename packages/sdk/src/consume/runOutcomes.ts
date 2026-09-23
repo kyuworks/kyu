@@ -1,5 +1,5 @@
 import { envelopeSchema } from '@kyuworks/schemas'
-import { KyuError } from '../hatchet.js'
+import { KyuError, V1TaskStatus } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
 import type { NamespaceRunsOptions } from './namespaceRuns.js'
 import type { RunProgress } from './runProgress.js'
@@ -11,7 +11,7 @@ export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancell
 export interface RunOutcome {
   /** The subscription's name as the engine registered it, lowercased. */
   subscription: string
-  /** `completed` is reported only once both timestamps exist, `failed` only once `finishedAt` does; until then the run reads `running`. */
+  /** `completed` once both timestamps exist, `failed` once `finishedAt` does; until then `running` — except that a run the list has shown queued or running for over a minute reads `completed`/`failed` when the engine's run detail says so, possibly with no `finishedAt`. */
   status: RunStatus
   /** The engine's own attempt number, 1 on the first try; a queued run — none picked up yet — also reads 1. */
   attempts: number
@@ -49,7 +49,7 @@ export interface KyuRuns {
   cancelForEnvelope(envelopeId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
   /** Cancels every run that shares this correlation id — a durable run and the command runs it published — and returns them as they read just before the cancel. An unknown id returns an empty array. */
   cancelForCorrelation(correlationId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
-  /** Every run in this client's own namespace the engine still holds queued or running. Needs a `since`: a namespace has no id to date itself from. */
+  /** Every run in this client's own namespace the engine still holds queued or running. Needs a `since`: a namespace has no id to date itself from. A run the list has shown unsettled for over a minute is left out when the engine's run detail says it completed or failed. */
   unsettledInNamespace(options: NamespaceRunsOptions): Promise<readonly RunOutcome[]>
   /** Cancels every run in this client's own namespace that is still queued or running, and returns how many the engine cancelled; sends one cancel — poll `unsettledInNamespace` if you must see the namespace empty. A namespace with no registered workflow cancels nothing. */
   cancelUnsettledInNamespace(options: NamespaceRunsOptions): Promise<number>
@@ -58,11 +58,21 @@ export interface KyuRuns {
 type EngineRunRow = Awaited<ReturnType<HatchetClient['runs']['list']>>['rows'][number]
 type EngineStatus = EngineRunRow['status']
 
+type EngineRunDetail = Awaited<ReturnType<HatchetClient['runs']['getDetails']>>
+
+// A plain string id, so the unit test's fake needs no WorkflowRunRef.
+export interface RunDetailReader {
+  runs: { getDetails(runId: string): Promise<EngineRunDetail> }
+}
+
 // Narrowed to what this file actually needs, so the unit test's fake is a plain object.
 export interface RunsReader {
   config: Pick<HatchetClient['config'], 'namespace'>
-  runs: Pick<HatchetClient['runs'], 'list'>
+  runs: Pick<HatchetClient['runs'], 'list'> & RunDetailReader['runs']
 }
+
+/** The public method a run-detail failure is reported under. */
+export type RunDetailCaller = RunLookup['caller'] | 'runs.unsettledInNamespace'
 
 const RUN_STATUS = {
   QUEUED: 'queued',
@@ -87,6 +97,11 @@ const RUN_PAGE_MAX_PAGES = 10
 // drift: a producer more than a minute ahead would otherwise make every run
 // for its envelopes vanish, indistinguishable from an unknown envelope id.
 const SINCE_MARGIN_MS = 5 * 60_000
+
+// The run list is a copy the engine can leave behind for good
+// (docs/proofs/2026-09-23-engine-run-list-stale-rows.md); ordinary lag is sub-second.
+const RUN_DETAIL_GRACE_MS = 60_000
+const RUN_DETAIL_MAX_CHECKS = 100
 
 const LOOKUP_SCHEMA = {
   envelopeId: envelopeSchema.shape.id,
@@ -127,6 +142,59 @@ export function toRunOutcome(row: EngineRunRow, namespace: string): RunOutcome |
   if (row.finishedAt !== undefined) outcome.finishedAt = new Date(row.finishedAt)
   if (row.errorMessage !== undefined && row.errorMessage !== '') outcome.error = row.errorMessage
   return outcome
+}
+
+/** A cancelled detail is ignored: the engine reports a scheduling timeout as cancelled there and failed in its list. */
+export async function readEngineEndedRunStatus(
+  hatchet: RunDetailReader,
+  runId: string,
+  caller: RunDetailCaller,
+): Promise<'completed' | 'failed' | undefined> {
+  let detail: EngineRunDetail
+  try {
+    detail = await hatchet.runs.getDetails(runId)
+  } catch (cause) {
+    throw new KyuError(`${caller}: could not read the run detail for run ${runId}`, {
+      cause: cause instanceof Error ? cause : new Error(String(cause)),
+    })
+  }
+  if (detail.status === V1TaskStatus.COMPLETED) return 'completed'
+  if (detail.status === V1TaskStatus.FAILED) return 'failed'
+  return undefined
+}
+
+// Only a row the list still shows unsettled, and has for at least
+// RUN_DETAIL_GRACE_MS, is worth an extra engine call.
+function isLongUnsettledRow(row: EngineRunRow, now: number): boolean {
+  if (row.status !== V1TaskStatus.QUEUED && row.status !== V1TaskStatus.RUNNING) return false
+  return now - Date.parse(row.startedAt ?? row.createdAt) >= RUN_DETAIL_GRACE_MS
+}
+
+/** Maps every row; a row unsettled ≥ RUN_DETAIL_GRACE_MS gets one run-detail check (capped at RUN_DETAIL_MAX_CHECKS), keeping the listed status when the check is skipped or fails. */
+export async function toCheckedRunOutcomes(
+  hatchet: RunDetailReader,
+  rows: readonly EngineRunRow[],
+  namespace: string,
+  caller: RunDetailCaller,
+): Promise<RunOutcome[]> {
+  const now = Date.now()
+  let checks = 0
+  const outcomes: RunOutcome[] = []
+  for (const row of rows) {
+    const outcome = toRunOutcome(row, namespace)
+    if (outcome === undefined) continue
+    if (checks < RUN_DETAIL_MAX_CHECKS && isLongUnsettledRow(row, now)) {
+      checks += 1
+      try {
+        const ended = await readEngineEndedRunStatus(hatchet, outcome.runId, caller)
+        if (ended !== undefined) outcome.status = ended
+      } catch {
+        // A cancel sends every listed id regardless, and a poller retries: keep the listed status.
+      }
+    }
+    outcomes.push(outcome)
+  }
+  return outcomes
 }
 
 // A run cannot predate the id it is looked up by: a uuid v7's own 48-bit
@@ -187,13 +255,7 @@ export async function readRunOutcomesFor(
     if (page + 1 >= numPages) break
   }
 
-  const namespace = hatchet.config.namespace ?? ''
-  const outcomes: RunOutcome[] = []
-  for (const row of rows) {
-    const outcome = toRunOutcome(row, namespace)
-    if (outcome !== undefined) outcomes.push(outcome)
-  }
-  return outcomes
+  return toCheckedRunOutcomes(hatchet, rows, hatchet.config.namespace ?? '', lookup.caller)
 }
 
 /**
