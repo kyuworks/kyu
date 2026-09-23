@@ -186,19 +186,11 @@ export interface LeftoverRunsClient {
   runs: Pick<KyuRuns, 'cancelUnsettledInNamespace' | 'unsettledInNamespace'>
 }
 
-// A run still assigned to a worker the harness just stopped is not
-// reassignable until the engine notices that worker's heartbeat stopped,
-// which can take well past 30s (children.ts's terminate() gives a worker up
-// to 60s before SIGKILL, on top of the engine's own detection window) — a
-// single cancel sent before this wait loop starts can land before the
-// engine will honour it, and then nothing sent later ever clears the run.
-// Reissuing the cancel on every poll, past that window, is what actually
-// catches it (observed: 3 of 4 `--scenario all --size smoke` runs left
-// running `watch-shipping` runs behind on engine-outage with only one
-// upfront cancel; the same namespace cancelled again minutes later settled
-// within 5s).
-const LEFTOVER_CANCEL_TIMEOUT_MS = 180_000
+// A stopped worker's run is re-queued as a new attempt only after the engine notices the lost heartbeat, and a retry is invisible between attempts; one empty read proves nothing (#165).
+// Reissue the cancel on every poll and settle only after the namespace has stayed empty for LEFTOVER_QUIET_MS.
+const LEFTOVER_CANCEL_TIMEOUT_MS = 240_000
 const LEFTOVER_CANCEL_POLL_MS = 2_000
+const LEFTOVER_QUIET_MS = 60_000
 
 // Engine-side leftovers are not covered by the table truncate: a scenario's
 // own namespace can still hold queued or running runs no worker will ever
@@ -208,11 +200,14 @@ export async function cancelLeftoverRuns(
   namespace: string,
   since: Date,
 ): Promise<readonly AssertionFailure[]> {
+  let emptySince: number | undefined
   try {
     const settled = await waitUntil(
       async () => {
         await kyu.runs.cancelUnsettledInNamespace({ since })
-        return (await kyu.runs.unsettledInNamespace({ since })).length === 0
+        if ((await kyu.runs.unsettledInNamespace({ since })).length > 0) emptySince = undefined
+        else emptySince ??= Date.now()
+        return emptySince !== undefined && Date.now() - emptySince >= LEFTOVER_QUIET_MS
       },
       LEFTOVER_CANCEL_TIMEOUT_MS,
       LEFTOVER_CANCEL_POLL_MS,
