@@ -10,7 +10,15 @@ database cluster `<engine-db>` (cluster id `<engine-cluster-id>`).
 The engine runs on machine `<engine-machine-id>` (`performance-2x`, 4 GB) with config volume
 `kyu_hatchet_config_2x` (`<engine-config-volume-id>`) since 2026-09-23 (issue #173). Machine
 `<old-engine-machine-id>` (`performance-1x`) with volume `kyu_hatchet_config` (`<old-engine-volume-id>`) is
-stopped and kept as the rollback. Cluster plan: Starter (was Basic until 2026-09-23).
+stopped and kept as the rollback. Cluster plan: Launch, dedicated CPU (Basic until 2026-09-23, then Starter the same day).
+
+**Database plan.** Run the engine's cluster on Launch or larger. Hatchet Lite keeps its internal
+queue in this database, so the plan sets the engine's ceiling under load: on Starter the
+report-size `tenant-load` missed both windows with hundreds of queue errors in the engine log;
+on Launch, with nothing else changed, it passed with none
+(`docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`, issues #173 and #175). A cluster
+created by the command in First deploy starts on Basic; the plan is changed in the Fly
+dashboard.
 
 ## Who does what
 
@@ -190,7 +198,7 @@ Work through these in order:
 This runs the shop's failure harness (`examples/shop/src/__tests__/harness/`) from inside `syd`,
 beside `<engine-app>`, instead of from a laptop (issue #166, following #165 option 1). It is a
 second, separate app — `<shop-harness-app>` — plus its own database cluster
-(`<shop-harness-db>`, cluster id `<shop-cluster-id>`, Starter (was Basic until 2026-09-23),
+(`<shop-harness-db>`, cluster id `<shop-cluster-id>`, Launch (was Basic, then Starter, on 2026-09-23),
 Postgres 17, 10 GB, `syd`). It
 does not change `<engine-app>` or `<engine-db>` at all.
 
