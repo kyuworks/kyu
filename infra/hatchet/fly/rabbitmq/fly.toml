@@ -1,0 +1,37 @@
+# Fly config for the dev engine's RabbitMQ queue (issue #176). Private
+# network only: no services block, so no public address; the engine reaches
+# AMQP at <rabbitmq-app>.internal:5672. Credentials are secrets the CTO
+# sets: bash infra/hatchet/fly/rabbitmq/secrets.sh. Runbook:
+# docs/operations/kyu-engine-on-fly.md, "Queue on RabbitMQ".
+app = '<rabbitmq-app>'
+primary_region = 'syd'
+
+[build]
+  # Same digest as rabbitmq:3 on 2026-09-23. No management plugin: checks
+  # use rabbitmqctl through fly machine exec.
+  image = 'rabbitmq:3.13.7'
+
+[env]
+  # Data under /var/lib/rabbitmq is keyed by node name; the default is the
+  # hostname, which changes when Fly replaces the machine.
+  RABBITMQ_NODENAME = 'rabbit@localhost'
+
+[[mounts]]
+  source = 'kyu_rabbitmq_data'
+  destination = '/var/lib/rabbitmq'
+
+[[restart]]
+  # The engine exits at boot when RabbitMQ is down, so always come back.
+  policy = 'always'
+
+[[vm]]
+  # Dedicated CPU, as for the engine: throttling would corrupt the numbers.
+  size = 'performance-1x'
+
+[checks]
+  [checks.amqp]
+    type = 'tcp'
+    port = 5672
+    interval = '15s'
+    timeout = '5s'
+    grace_period = '30s'

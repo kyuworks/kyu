@@ -23,6 +23,10 @@ primary_region = 'syd'
   SERVER_GRPC_INSECURE = 't'
   SERVER_GRPC_BROADCAST_ADDRESS = '<engine-app>.fly.dev:7077'
   SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS = 'localhost:7077'
+  # Hatchet's internal queue (#176). Needs the SERVER_MSGQUEUE_RABBITMQ_URL
+  # secret; hatchet-lite falls back to postgres only when none of the four
+  # queue variables is set. Switch back: 'postgres' (runbook, "Queue on RabbitMQ").
+  SERVER_MSGQUEUE_KIND = 'rabbitmq'
 
 [[mounts]]
   # Renamed with the #173 resize; see "Resizing the engine machine" in the runbook.
