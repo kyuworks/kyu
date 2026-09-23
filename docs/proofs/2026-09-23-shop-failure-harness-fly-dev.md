@@ -252,9 +252,10 @@ from inside `syd`, beside `<engine-app>`, in a separate Fly app (`<shop-harness-
 from `infra/shop-harness/fly/`.
 
 **This section is written in two passes, the same as the page's first section.** What this run
-does not prove, immediately below, is written and committed before any in-region command runs.
-The comparison table and the per-scenario results are filled in from the actual run in a
-follow-up pull request.
+does not prove, immediately below, is written and committed before any in-region command runs;
+its wording was lightly revised for clarity after the run, in this pull request's tidy-up commit,
+without changing what it claims. The comparison table and the per-scenario results are filled in
+from the actual run in this pull request.
 
 ### What this run does not prove
 
@@ -306,20 +307,28 @@ fly machine stop <machine-id> -a <shop-harness-app>
   never needed.**
 - **A `fly deploy` alone does not start a run on this app.** With no service block and `[[restart]]
   policy = 'never'`, a deploy that only updates an already-stopped machine's config leaves it
-  `stopped`. `fly machine start <id>` is the step that actually executes `run.sh`; the runbook
-  section below states this explicitly.
+  `stopped`. `fly machine start <id>` is the step that actually executes `run.sh`; see
+  `docs/operations/kyu-engine-on-fly.md`'s "Running the shop harness in-region" section, which
+  states this explicitly.
 - Commit: each collected report's `commitSha` reads `9c9ae54c2d31ab90db8f9f5435821a6e8c20e25d` —
-  the migrate database-name logging change, kept in for this run. `engineVersion` reads
-  `hatchet-lite:v0.107.0`, the pinned tag, same as the laptop-to-Fly run.
+  the migrate database-name logging change, kept in for this run, baked in at image build time
+  from the `KYU_HARNESS_COMMIT_SHA` build argument above. A build argument cannot detect an
+  unstaged change, so unlike the laptop-to-Fly run's git-derived `-dirty` suffix (§ How this was
+  produced, above), this `commitSha` never carries `-dirty`, and a clean tree at build time is not
+  proven by it. `engineVersion` reads `hatchet-lite:v0.107.0` — that field is read from the pinned
+  tag in `infra/hatchet/compose.yaml`, not from the deployed engine itself; the laptop-to-Fly run's
+  JSON reads `hatchet-lite:latest` because that run predates the fix to `composeImageTag()` noted
+  above, while the actual deployed engine version, confirmed separately with `fly machine list`,
+  is v0.107.0 in both runs.
 
 **Two blockers hit before either scenario could run, both recorded here rather than worked around
 silently:**
 
 1. **The harness cluster's app role cannot `CREATE DATABASE`.** `ensureDatabase`
    (`examples/shop/src/db/migrate.ts`) connects to `/postgres` and issues `CREATE DATABASE` when a
-   lookup finds no matching row; on a fresh Managed Postgres cluster the app role has no database
-   it can create for itself. Fixed by creating the database through the platform, once, with no
-   secret involved: `fly mpg databases create <shop-cluster-id> -n kyu_shop_inregion`.
+   lookup finds no matching row; the plain fact is that on a fresh Managed Postgres cluster the app
+   role lacks the `CREATEDB` privilege. Fixed by creating the database through the platform, once,
+   with no secret involved: `fly mpg databases create <shop-cluster-id> -n kyu_shop_inregion`.
 2. **The first `KYU_SHOP_DATABASE_URL` staged on the app named the engine's cluster
    (`<engine-db>`), not the harness's own one, even though the database name in the string
    was already correct.** This was found without reading the secret, by logging the target
@@ -327,7 +336,8 @@ silently:**
    `examples/shop/src/bin/migrate.ts`), which showed the name was right while the string's host was
    wrong; the CTO re-staged the direct connection string of the correct cluster
    (`<shop-harness-db>`, `<shop-cluster-id>`), and migrate then applied all 10 pending SQL
-   files cleanly.
+   files cleanly. The engine's cluster holds only its own `fly-db` database, so the wrong first
+   secret left nothing behind there.
 
 ### Comparison table
 
@@ -345,15 +355,23 @@ silently:**
 
 **The in-region numbers are not faster than the laptop-to-Fly run, and `outbox-backlog`'s
 throughput is essentially unchanged (~161 vs ~162 rows/sec).** Cutting the network hop did not fix
-either miss. The engine logs for this run show recurring `HeartbeatController` and `Dispatcher`
-errors during the run (`Failed to send heartbeat: ... invalid auth token`, `/EventsService/BulkPush
-INTERNAL: An internal error occurred`, `/Dispatcher/SendStepActionEvent INTERNAL`), the same shape
-the laptop-to-Fly proof attributed to engine-side queueing under load rather than round-trip
-latency — this run is consistent with that reading, not a contradiction of it: removing the
-network hop did not remove the bottleneck, which points at the engine's own capacity at this load
-level rather than the link between the harness and the engine. **The issue's windows are not
-widened and the scenario's size is not shrunk to make either pass** — both ran once, at the same
-5,000-order / 50,000-row sizes and the same windows every other run in this page used.
+either miss. For `outbox-backlog` specifically, that result **contradicts** the round-trip-latency
+explanation given earlier in this page (§ Throughput, and § `outbox-backlog` — FAILED at report
+size, above): the earlier explanation was that the relay's one-round-trip-per-batch push, taxed by
+the ~140ms cross-Tasman hop, was the throughput ceiling. Removing that hop in-region should have
+sped the drain up under that explanation; it did not, so round-trip latency is not what is
+capping this scenario's throughput.
+
+The harness app's worker and relay logs (not the engine's own logs, which this harness has no
+access to) show recurring `HeartbeatController` and `Dispatcher` errors during the run (`Failed to
+send heartbeat: ... invalid auth token`, `/EventsService/BulkPush INTERNAL: An internal error
+occurred`, `/Dispatcher/SendStepActionEvent INTERNAL`), the same messages the laptop-to-Fly proof
+saw and attributed to engine-side queueing under load. The `invalid auth token` line plainly points
+at an authentication problem with that heartbeat call, not at capacity, and is not used here as
+capacity evidence. These quoted lines could not be re-read afterward to confirm exact counts or
+timestamps: Fly's log retention for this app is the last 100 lines only. **The issue's windows are
+not widened and the scenario's size is not shrunk to make either pass** — both ran once, at the
+same 5,000-order / 50,000-row sizes and the same windows every other run in this page used.
 
 ### Per-scenario results
 
@@ -385,10 +403,16 @@ run was not. 17 failure entries resulted: 8 runs still `running` at teardown (5 
 `watch-shipping`), 7 individual orders whose `watch-shipping:timeout` handler never ran, the
 scenario's own aggregate line (`watch-shipping never reached a terminal row for 5000 orders within
 900000ms`), and one `harness-leaves-nothing` entry: the engine still held 19 queued or running runs
-in this run's namespace after teardown — the same #165 teardown-requeue gap the laptop-to-Fly run
-hit, not fixed here. Against 5,000 orders each expected to produce four
-handler rows, this is a small tail, the same shape as both earlier runs, not a bulk loss — nothing
-here shows a doubled effect or a lost outbox row.
+in namespace `inregion166_tenant_load_593c3d_` after teardown. Those 19 runs were not cancelled and
+were not re-checked after this session ended; cleanup is tracked under issue #165, the same as the
+laptop-to-Fly run's leftovers, but the relationship between the two is not established — in the
+laptop-to-Fly run the runs reappeared after a first check had already reported the namespace empty
+(§ Cleanup gap, above), where here the harness's own single final check found the 19 directly, with
+no earlier "empty" check for them to have reappeared after. Against 5,000 orders each expected to
+produce four handler rows, this is a small tail — unlike the laptop-only run, which had zero
+failures; only the laptop-to-Fly run showed a comparable tail. The harness's `no-effect-lost` check
+failed for the 7 orders above plus the aggregate line, so those effects were not seen within the
+window and whether they ever ran at all is unknown; the outbox rows themselves were not lost.
 
 **Reading the two results together:** neither scenario got faster or more accurate by moving the
 harness, the relay and the worker into `syd`. That rules out the cross-Tasman network hop as the
