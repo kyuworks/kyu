@@ -209,24 +209,41 @@ create database "<name>"`, which names the database, not the credentials.
 
 ### Running it
 
-**Every `fly deploy` starts a run.** There is no separate "create" step once the app and cluster
-above exist.
+**A `fly deploy` only starts a run the first time, when it creates the machine.** On every deploy
+after that, the machine already exists and is `stopped` (restart policy `never`); a deploy to an
+existing machine only updates its config (including applying any newly staged secret) and leaves
+it `stopped` — confirmed three times in the #166 session, including once where a deploy alone was
+mistaken for a run and produced nothing. **`fly machine start <id> -a <shop-harness-app>` is the
+step that actually executes `run.sh` again.** There is no separate "create" step once the app and
+cluster above exist.
 
-1. From a clean tree (`git diff --quiet && git diff --cached --quiet`), deploy — this creates one
-   machine and starts it:
+1. From a clean tree (`git diff --quiet && git diff --cached --quiet`), deploy:
    `fly deploy . -c infra/shop-harness/fly/fly.toml --dockerfile infra/shop-harness/fly/Dockerfile --ignorefile infra/shop-harness/fly/harness.dockerignore --build-arg KYU_HARNESS_COMMIT_SHA="$(git rev-parse HEAD)" --ha=false -a <shop-harness-app>`
-2. Watch `fly logs -a <shop-harness-app>` for the harness's own event lines: `preflight-ok`,
-   `migrate-done`, one `report-written` per scenario, then `harness-done`. Do not paste engine or
-   harness logs into a pull request or a chat message beyond the event lines named here.
-3. Copy each scenario's report back, verified by its sha256, while the machine holds open
+   — this creates the machine and starts it only if the app has none yet; otherwise it updates the
+   existing (stopped) machine's config and image without running it.
+2. Start the run: `fly machine start <id> -a <shop-harness-app>`.
+3. Watch `fly logs -a <shop-harness-app>` for the harness's own event lines: `preflight-ok`,
+   `migrate-done` (including the database name `migrateLogFields()` logs — see the pitfall below),
+   one `report-written` per scenario, then `harness-done`. Do not paste engine or harness logs into
+   a pull request or a chat message beyond the event lines named here.
+4. Copy each scenario's report back, verified by its sha256, while the machine holds open
    (`KYU_HARNESS_HOLD_SECONDS` in `fly.toml`):
    `bash infra/shop-harness/fly/collect.sh -a <shop-harness-app> -m <machine-id> -s tenant-load -o docs/proofs/data/report-166-tenant-load.json`
    (and the same for `outbox-backlog`). The `-o` path must be absolute or repository-relative from
    the repo root — `#164`'s laptop-to-Fly run lost a report to a path resolved from the wrong
    working directory.
-4. Stop the machine once both reports are collected: `fly machine stop <id> -a <shop-harness-app>`
-5. Verify it actually stopped, names and states only:
+5. Stop the machine once both reports are collected: `fly machine stop <id> -a <shop-harness-app>`
+6. Verify it actually stopped, names and states only:
    `fly machine list -a <shop-harness-app> --json` and `fly status -a <shop-harness-app>`.
+
+**Pitfall: a `KYU_SHOP_DATABASE_URL` naming the wrong cluster fails the same way as a missing
+grant.** `migrate`'s `start`/`failed` log lines print the database name only
+(`{"process":"migrate","event":"start","database":"<name>"}`), never the connection string. If
+that name is right but migrate still fails with `permission denied to create database`, the
+database name is not the problem — check that the string's **host** is the shop cluster's
+(`<shop-harness-db>`, id `<shop-cluster-id>`), not the engine's (`<engine-db>`, id
+`<engine-cluster-id>`), which has no `kyu_shop_inregion` database at all. An unchanged secret digest
+in `fly secrets list` after a re-stage means the value was not actually changed.
 
 If nobody collects in time, the machine exits on its own after `KYU_HARNESS_HOLD_SECONDS` and
 reads `stopped` — nothing is left running either way.
