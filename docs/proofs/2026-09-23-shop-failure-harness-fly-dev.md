@@ -367,7 +367,7 @@ silently:**
 The new column's durations include the 60-second teardown quiet period added by #169; the
 tenant-load miss is far larger than that.
 
-**Every duration in the first three columns predates the 60-second quiet period this pull request adds to
+**Every duration in the first three columns predates the 60-second quiet period #169 added to
 `cancelLeftoverRuns`.** After this change, teardown's cancel loop
 (`examples/shop/src/__tests__/harness/scenario.ts` ~311–331) runs inside the same window a
 scenario's own wall time is measured against, for every scenario, not only the ones that had
@@ -534,8 +534,8 @@ attempt itself FAILED, at 365,979ms.
 rows were inserted with the relay stopped; at the 300,000ms (5-minute) window, 32,700 of 50,000
 rows (65.4%) were still pending — a far larger miss than the earlier in-region run's 901 rows
 (1.8%, issue #166) or the laptop-to-Fly run's 1,201 (2.4%). Rows drained: 17,300. The scenario's
-367,820ms total includes the 60-second teardown quiet period this pull request adds (§ "Every
-duration in this table", below), which is not part of the drain; over the remaining ~307,820ms
+367,820ms total includes the 60-second quiet period #169 added (§ Comparison table, above),
+which is not part of the drain; over the remaining ~307,820ms
 that is roughly **56 rows/sec**, well below every earlier run of this scenario on this page
 (161–996 rows/sec). Nothing here contradicts must-hold: every pending row was still sitting in the
 outbox, not lost, not doubled. Report: 4,742,068 bytes, sha256
