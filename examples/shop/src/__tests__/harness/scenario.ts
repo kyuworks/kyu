@@ -186,7 +186,8 @@ export interface LeftoverRunsClient {
   runs: Pick<KyuRuns, 'cancelUnsettledInNamespace' | 'unsettledInNamespace'>
 }
 
-// A stopped worker's run is re-queued as a new attempt only after the engine notices the lost heartbeat, and a retry is invisible between attempts; one empty read proves nothing (#165).
+// A stopped worker's run is re-queued only after the engine notices the lost
+// heartbeat; one empty read proves nothing between attempts (#165).
 // Reissue the cancel on every poll and settle only after the namespace has stayed empty for LEFTOVER_QUIET_MS.
 const LEFTOVER_CANCEL_TIMEOUT_MS = 240_000
 const LEFTOVER_CANCEL_POLL_MS = 2_000

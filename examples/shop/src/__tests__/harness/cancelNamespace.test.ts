@@ -17,7 +17,7 @@ describe('parseCancelNamespaceOptions', () => {
   })
 
   it('reads --since as an ISO date', () => {
-    const options = parseCancelNamespaceOptions(['a_b_', '--since', '2026-09-22T00:00:00Z'], new Date())
+    const options = parseCancelNamespaceOptions(['a_b_1a2b3c_', '--since', '2026-09-22T00:00:00Z'], new Date())
 
     expect(options.since.toISOString()).toBe('2026-09-22T00:00:00.000Z')
   })
@@ -28,6 +28,16 @@ describe('parseCancelNamespaceOptions', () => {
     expect(() => parseCancelNamespaceOptions(['inregion166'], now)).toThrow(CancelNamespaceOptionsError)
     expect(() => parseCancelNamespaceOptions(['Shop_'], now)).toThrow(CancelNamespaceOptionsError)
     expect(() => parseCancelNamespaceOptions(['a_', '--since', 'soon'], now)).toThrow(CancelNamespaceOptionsError)
+  })
+
+  // The old rule (`^[a-z0-9_]+_$`) matched any prefix ending in one underscore, so
+  // `shop_` — the live shop's own namespace — would have been accepted and the SDK
+  // cancels by prefix. Only the scenario shape runScenario actually mints
+  // (`scenarioNamespace`, scenario.ts) is accepted now.
+  it('rejects a bare project prefix like shop_, which the old rule accepted, and a lone underscore', () => {
+    const now = new Date()
+    expect(() => parseCancelNamespaceOptions(['shop_'], now)).toThrow(CancelNamespaceOptionsError)
+    expect(() => parseCancelNamespaceOptions(['_'], now)).toThrow(CancelNamespaceOptionsError)
   })
 })
 
@@ -56,8 +66,8 @@ describe('cancelHarnessNamespaces', () => {
     await vi.advanceTimersByTimeAsync(240_000)
 
     expect(await resultPromise).toEqual([
-      { namespace: 'a_', before: 1, failures: [] },
-      { namespace: 'b_', before: 1, failures: [] },
+      { namespace: 'a_', before: 1, acceptedByEngine: 0, left: 0, failures: [] },
+      { namespace: 'b_', before: 1, acceptedByEngine: 0, left: 0, failures: [] },
     ])
     expect(requestedNamespaces).toEqual(['a_', 'b_'])
   })

@@ -1,10 +1,15 @@
 import { parseArgs } from 'node:util'
+import { describeError } from '../../log.js'
 import type { AssertionFailure } from './assertions.js'
 import { cancelLeftoverRuns } from './scenario.js'
 import type { LeftoverRunsClient } from './scenario.js'
 
 const DEFAULT_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000
-const HARNESS_NAMESPACE = /^[a-z0-9_]+_$/
+// Only the shape scenarioNamespace (scenario.ts) actually mints: a prefix, then a
+// trailing `_<6 hex chars>_`. The old `^[a-z0-9_]+_$` matched any prefix ending in
+// one underscore — `shop_`, the live shop's own namespace, included — and the SDK
+// cancels by prefix, so that rule could have cancelled the live shop's runs.
+const HARNESS_NAMESPACE = /^[a-z0-9_]+_[0-9a-f]{6}_$/
 
 export interface CancelNamespaceOptions {
   namespaces: readonly string[]
@@ -13,8 +18,36 @@ export interface CancelNamespaceOptions {
 
 export interface CancelNamespaceResult {
   namespace: string
-  before: number
+  /** Unset when the namespace itself could not be read or cancelled at all. */
+  before?: number
+  /** Sum of every cancelUnsettledInNamespace call's own return value for this namespace. */
+  acceptedByEngine?: number
+  left?: number
   failures: readonly AssertionFailure[]
+}
+
+interface AcceptedByEngineTracker {
+  client: LeftoverRunsClient
+  total: () => number
+}
+
+// Wraps a client so cancelHarnessNamespaces can total what the engine itself
+// accepted, without cancelLeftoverRuns needing to know this CLI reads it.
+function trackAcceptedByEngine(client: LeftoverRunsClient): AcceptedByEngineTracker {
+  let total = 0
+  return {
+    client: {
+      runs: {
+        unsettledInNamespace: (options) => client.runs.unsettledInNamespace(options),
+        cancelUnsettledInNamespace: async (options) => {
+          const accepted = await client.runs.cancelUnsettledInNamespace(options)
+          total += accepted
+          return accepted
+        },
+      },
+    },
+    total: () => total,
+  }
 }
 
 /** The command line named no namespace, a malformed one, or an invalid --since. */
@@ -53,10 +86,26 @@ export async function cancelHarnessNamespaces(
 ): Promise<readonly CancelNamespaceResult[]> {
   const results: CancelNamespaceResult[] = []
   for (const namespace of options.namespaces) {
-    const client = clientFor(namespace)
-    const before = (await client.runs.unsettledInNamespace({ since: options.since })).length
-    const failures = await cancelLeftoverRuns(client, namespace, options.since)
-    results.push({ namespace, before, failures })
+    // One namespace's failure to even read or cancel must not lose the
+    // outcomes already gathered for namespaces before it.
+    try {
+      const rawClient = clientFor(namespace)
+      const before = (await rawClient.runs.unsettledInNamespace({ since: options.since })).length
+      const tracked = trackAcceptedByEngine(rawClient)
+      const failures = await cancelLeftoverRuns(tracked.client, namespace, options.since)
+      const left = (await rawClient.runs.unsettledInNamespace({ since: options.since })).length
+      results.push({ namespace, before, acceptedByEngine: tracked.total(), left, failures })
+    } catch (caught) {
+      results.push({
+        namespace,
+        failures: [
+          {
+            check: 'harness-leaves-nothing',
+            detail: `cancelling namespace ${namespace} failed: ${describeError(caught)}`,
+          },
+        ],
+      })
+    }
   }
   return results
 }

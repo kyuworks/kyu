@@ -177,7 +177,7 @@ scenario's namespace even though the first check had already reported the namesp
 engine requeued a retry after that check ran. Nothing here was cancelled; the gap is tracked as
 issue #165.
 
-Fixed in #165: `cancelLeftoverRuns` now settles only after the namespace has stayed empty for 60
+Changed in #165: `cancelLeftoverRuns` now settles only after the namespace has stayed empty for 60
 seconds, reissuing the cancel on every poll. On 2026-09-23 the namespace held 0 run(s) (the
 leftovers had already ended by themselves); after the cancel it held 0.
 
@@ -281,7 +281,10 @@ from the actual run in this pull request.
 - **The rolled-back-transaction must-hold row is not exercised by either scenario.** Neither
   `tenant-load` nor `outbox-backlog` publishes inside a transaction that then rolls back.
 - **The #165 teardown-requeue gap was fixed after this run.** This run used the old one-read
-  teardown; the 19 leftovers below were cancelled afterwards (see below).
+  teardown. Cancelling afterwards, with the new command, found 0 runs under the laptop-to-Fly
+  namespace (`fly162_tenant_load_2072de_` — it had already ended by the schedule timeout) and 18
+  under the in-region namespace (`inregion166_tenant_load_593c3d_`), and left all 18 in place (see
+  below).
 - **CI never runs the harness**, in-region or otherwise. This is a point-in-time measurement, not
   a regression gate.
 
@@ -357,6 +360,15 @@ silently:**
 | Commit | — | `caa4dc1...-dirty` | `9c9ae54` |
 | JSON file | `docs/proofs/data/report-155-*.json` | `docs/proofs/data/report-162b-*.json` | `docs/proofs/data/report-166-*.json` |
 
+**Every duration in this table predates the 60-second quiet period this pull request adds to
+`cancelLeftoverRuns`.** After this change, teardown's cancel loop
+(`examples/shop/src/__tests__/harness/scenario.ts` ~311–331) runs inside the same window a
+scenario's own wall time is measured against, for every scenario, not only the ones that had
+leftovers. A local report-size `tenant-load` run after this change read 423,209ms total, with its
+own effects settled at 362,009ms — the gap is teardown's quiet period, not scenario work. A
+duration measured after this pull request merges is not comparable to any number in this table, or
+in the earlier results table above, without adding that gap back in.
+
 **The in-region numbers are not faster than the laptop-to-Fly run, and `outbox-backlog`'s
 throughput is essentially unchanged (~161 vs ~162 rows/sec).** Cutting the network hop did not fix
 either miss. For `outbox-backlog` specifically, that result **contradicts** the round-trip-latency
@@ -378,10 +390,12 @@ not widened and the scenario's size is not shrunk to make either pass** — both
 same 5,000-order / 50,000-row sizes and the same windows every other run in this page used.
 
 **Follow-up (#165).** A smoke-size in-region `tenant-load` on 2026-09-23 with the same token logged
-0 `invalid auth token` lines and passed. A locally minted token on the same engine version lasts 90
-days, and the engine has not restarted since 2026-09-22T13:10Z. Read together with the 0-line,
-passing result, this points at load-related token validation on the engine side, not a fault with
-the token itself.
+0 `invalid auth token` lines and passed. That shows only that the token was accepted at smoke size
+that day — it does not show why the report-size run above logged the line. Engine-side token
+validation under load is an open hypothesis, not a confirmed cause. The token's measured lifetime
+(`exp` minus `iat`) is 90 days on v0.107.0, matching the admin tool's own default of 2160h; the
+engine has not restarted since 2026-09-22T13:10Z. Whether to re-mint before the 90 days are up is
+the CTO's decision.
 
 ### Per-scenario results
 
@@ -414,11 +428,20 @@ run was not. 17 failure entries resulted: 8 runs still `running` at teardown (5 
 scenario's own aggregate line (`watch-shipping never reached a terminal row for 5000 orders within
 900000ms`), and one `harness-leaves-nothing` entry: the engine still held 19 queued or running runs
 in namespace `inregion166_tenant_load_593c3d_` after teardown. On 2026-09-23,
-`cancelNamespaceCli.js` found 18 of them still queued or running and left 18 (issue #165), the same
-as the laptop-to-Fly run's leftovers, but the relationship between the two is not established — in the
-laptop-to-Fly run the runs reappeared after a first check had already reported the namespace empty
-(§ Cleanup gap, above), where here the harness's own single final check found the 19 directly, with
-no earlier "empty" check for them to have reappeared after. Against 5,000 orders each expected to
+`cancelNamespaceCli.js` found 18 of them still queued or running and left 18 (issue #165).
+
+**These 18 are strongly indicated, not proven, to be stale rows in the engine's REST run list,
+not genuinely stuck work.** On the local engine, a parallel check found 294 similar day-old
+leftovers listed as RUNNING or QUEUED while the engine's own tables (`v1_task_runtime`,
+`v1_queue_item`, `v1_retry_queue_item`) held none of them: 99 carried a COMPLETED event and the
+gRPC run detail agreed COMPLETED, and the rest carried only `SIGNAL_COMPLETED`. Cancelling a
+completed run by id returns the id and sets the core status CANCELLED, but the list still shows
+COMPLETED afterwards. So `unsettledInNamespace` and `harness-leaves-nothing` are reading stale
+list state for a run in this shape, and no cancel — the new command included — can clear it. This
+explanation is strongly indicated, not proven, for the 18 on Fly specifically, because the Fly
+engine's own database was not read in this session. Either way, `cancelNamespaceCli.js` cannot be
+relied on to bring this namespace's count to 0, and `harness-leaves-nothing` will keep reporting
+these runs for as long as the engine's list keeps showing them. Against 5,000 orders each expected to
 produce four handler rows, this is a small tail — unlike the laptop-only run, which had zero
 failures; only the laptop-to-Fly run showed a comparable tail. The harness's `no-effect-lost` check
 failed for the 7 orders above plus the aggregate line, so those effects were not seen within the

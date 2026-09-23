@@ -6,8 +6,10 @@ import type { ShopConfig } from './config.js'
 // so the diagram's producer box can never name a source nothing uses.
 export const SHOP_SOURCE = 'shop'
 
-// One place builds the engine client, so relay, worker and ui share the namespace rule.
-export function createShopKyu(config: ShopConfig): Kyu {
+// One place builds the engine client, so relay, worker and ui share the namespace
+// rule. Takes only the namespace, not the whole ShopConfig, so a caller that opens
+// no database (cancelNamespaceCli.ts) never needs KYU_SHOP_DATABASE_URL to build one.
+export function createShopKyu(config: Pick<ShopConfig, 'namespace'>): Kyu {
   const hatchet = createHatchetClient({ namespace: config.namespace })
   return createKyu({ hatchet, source: SHOP_SOURCE })
 }
