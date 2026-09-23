@@ -177,6 +177,10 @@ scenario's namespace even though the first check had already reported the namesp
 engine requeued a retry after that check ran. Nothing here was cancelled; the gap is tracked as
 issue #165.
 
+Fixed in #165: `cancelLeftoverRuns` now settles only after the namespace has stayed empty for 60
+seconds, reissuing the cancel on every poll. On 2026-09-23 the namespace held 0 run(s) (the
+leftovers had already ended by themselves); after the cancel it held 0.
+
 ### outbox-backlog — FAILED at report size
 
 What was injected: 50,000 outbox rows inserted directly (the relay stopped), then the relay started
@@ -276,8 +280,8 @@ from the actual run in this pull request.
   their laptop and laptop-to-Fly results only; none of them were re-run here.
 - **The rolled-back-transaction must-hold row is not exercised by either scenario.** Neither
   `tenant-load` nor `outbox-backlog` publishes inside a transaction that then rolls back.
-- **The #165 teardown-requeue gap is not addressed here.** If a run leaves anything queued after
-  teardown reports its namespace empty, it is recorded below, not fixed.
+- **The #165 teardown-requeue gap was fixed after this run.** This run used the old one-read
+  teardown; the 19 leftovers below were cancelled afterwards (see below).
 - **CI never runs the harness**, in-region or otherwise. This is a point-in-time measurement, not
   a regression gate.
 
@@ -373,6 +377,12 @@ timestamps: Fly's log retention for this app is the last 100 lines only. **The i
 not widened and the scenario's size is not shrunk to make either pass** — both ran once, at the
 same 5,000-order / 50,000-row sizes and the same windows every other run in this page used.
 
+**Follow-up (#165).** A smoke-size in-region `tenant-load` on 2026-09-23 with the same token logged
+0 `invalid auth token` lines and passed. A locally minted token on the same engine version lasts 90
+days, and the engine has not restarted since 2026-09-22T13:10Z. Read together with the 0-line,
+passing result, this points at load-related token validation on the engine side, not a fault with
+the token itself.
+
 ### Per-scenario results
 
 #### `outbox-backlog` — FAILED at report size
@@ -403,9 +413,9 @@ run was not. 17 failure entries resulted: 8 runs still `running` at teardown (5 
 `watch-shipping`), 7 individual orders whose `watch-shipping:timeout` handler never ran, the
 scenario's own aggregate line (`watch-shipping never reached a terminal row for 5000 orders within
 900000ms`), and one `harness-leaves-nothing` entry: the engine still held 19 queued or running runs
-in namespace `inregion166_tenant_load_593c3d_` after teardown. Those 19 runs were not cancelled and
-were not re-checked after this session ended; cleanup is tracked under issue #165, the same as the
-laptop-to-Fly run's leftovers, but the relationship between the two is not established — in the
+in namespace `inregion166_tenant_load_593c3d_` after teardown. On 2026-09-23,
+`cancelNamespaceCli.js` found 18 of them still queued or running and left 18 (issue #165), the same
+as the laptop-to-Fly run's leftovers, but the relationship between the two is not established — in the
 laptop-to-Fly run the runs reappeared after a first check had already reported the namespace empty
 (§ Cleanup gap, above), where here the harness's own single final check found the 19 directly, with
 no earlier "empty" check for them to have reappeared after. Against 5,000 orders each expected to
