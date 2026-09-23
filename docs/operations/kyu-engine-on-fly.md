@@ -7,6 +7,11 @@ This page covers the deployed Hatchet engine for the Kyu message bus: `infra/hat
 Today there is one environment: dev, app `<engine-app>`, org `<fly-org>`, region `syd`,
 database cluster `<engine-db>` (cluster id `<engine-cluster-id>`).
 
+The engine runs on machine `<engine-machine-id>` (`performance-2x`, 4 GB) with config volume
+`kyu_hatchet_config_2x` (`<engine-config-volume-id>`) since 2026-09-23 (issue #173). Machine
+`<old-engine-machine-id>` (`performance-1x`) with volume `kyu_hatchet_config` (`<old-engine-volume-id>`) is
+stopped and kept as the rollback. Cluster plan: Starter (was Basic until 2026-09-23).
+
 ## Who does what
 
 - The CTO sets every secret and is the only one who runs `fly ssh issue` for the org. No agent
@@ -91,6 +96,27 @@ stopping between writing its own state and the list's copy. The SDK's run reader
 engine's run detail for such runs (README). Evidence, queries and what to raise upstream:
 `docs/proofs/2026-09-23-engine-run-list-stale-rows.md`.
 
+## Resizing the engine machine
+
+1. `fly machine update <id> --vm-size performance-2x` can be refused with "insufficient memory
+   available to fulfill request on the current host"; the update reverts without a restart.
+2. Fork and clone (CTO-run), in this order: stop the old machine; fork its config volume —
+   `fly volumes fork <old-engine-volume-id> -a <engine-app> -n kyu_hatchet_config_2x --vm-size performance-2x`;
+   clone the machine onto the forked volume —
+   `fly machine clone <old-engine-machine-id> -a <engine-app> --attach-volume <new vol id>:/config --vm-size performance-2x`;
+   then update `fly.toml`'s `source` and `size`. The fork copies `/config`, so existing worker
+   tokens keep working — the #173 report run registered with a token minted before the clone.
+3. **Never run two engine machines against one cluster.** During about 70 seconds of overlap on
+   2026-09-23 the Starter cluster refused connections ("remaining connection slots are
+   reserved…", "too many clients"); one engine machine hit the same error under `tenant-load`
+   load later, alone. Stop the old machine first.
+4. Roll back (CTO): `fly machine stop <engine-machine-id> -a <engine-app>`, wait for `stopped` in
+   `fly machine list`, `fly machine start <old-engine-machine-id> -a <engine-app>`, revert `fly.toml`'s
+   `source`/`size`.
+5. Do not `fly deploy` the engine while both machines exist: flyctl replaces a machine whose
+   volume name differs from `fly.toml` (`internal/command/deploy/machines_launchinput.go`).
+   Destroying the rollback machine and its volume is the CTO's call.
+
 ## Backup and restore rehearsal
 
 1. List available backups: `fly mpg backup list <engine-cluster-id>`
@@ -112,18 +138,9 @@ until `ready` about 3.5 minutes later (started `13:28:45Z`, confirmed `ready` at
 poll; polling was on a 15-second interval, so the true finish time is somewhere in that window).
 The source cluster `<engine-db>` was confirmed untouched and still `ready` throughout.
 
-**What is not yet done, and needs the CTO:** connecting to the restored cluster needs its
-connection string, which only the CTO reads (this lane's implementer never sees a Fly connection
-string). The CTO still needs to connect with `psql` and report three plain numbers — that `\dt`
-lists Hatchet's own tables, the row count of the tenant table, and the count of task rows — after
-which the lane (or whoever picks this up next) destroys `<engine-db>-restoretest` with
-`fly mpg destroy <restore-test-cluster-id>` (the command takes the cluster id, not the name) and confirms
-with `fly mpg list -o <fly-org>` that it is gone and `<engine-db>` is untouched. **This is
-open item #165.**
-
-**`<engine-db>-restoretest` is left running as of this entry** — it was created in this lane
-but the plan gates destroying it on the CTO's verification, which this session could not get
-synchronously. Until it is destroyed it costs the same as a second Basic-plan cluster.
+**2026-09-23 (issue #173):** the CTO destroyed `<engine-db>-restoretest`
+(`<restore-test-cluster-id>`). The three-number data check was skipped. The restore is proven to complete,
+not proven to hold readable data.
 
 ## When the engine is unhealthy
 
@@ -143,6 +160,10 @@ Work through these in order:
 2. `fly logs -a <engine-app>` — look for a crash loop, a database connection error, or a
    migration failure at start.
 3. `curl -s https://<engine-app>.fly.dev/api/ready` — is the API answering at all?
+
+   `/api/ready` answering 200 does not mean the REST API is ready. After the 2026-09-23 restart,
+   run reads answered 500 for at least ~3 minutes; a check 8 minutes after the restart passed.
+   Wait 10 minutes, or run a smoke-size harness run, before a report-size run.
 4. `fly mpg status <engine-cluster-id>` — is the database cluster itself healthy? This prints
    connection details, so the CTO runs it, not an agent.
 5. Check the volume: has the machine been replaced? A replacement with no volume attached, or a
@@ -154,14 +175,13 @@ Work through these in order:
    shows `Sending signal SIGINT to main child process`, `Restarting system`, then Firecracker
    booting again) — and each time, `fly logs` printed the same "Generating encryption keys" /
    "Generating config files" lines again, even though `--overwrite=false` should mean it reuses
-   what is already on the volume. Minting a fresh token after each restart kept working, but a
-   fresh mint reading current config either way does not test whether a token minted *before* a
-   restart still works *after* it — that is the actual claim this runbook makes, and it was not
-   tested this session. **Not yet confirmed on this deployment:** that a worker token minted before
-   a machine restart still works after it. That needs a CTO-run `fly machine restart` (an agent
-   must not run it) followed by a re-check of an already-minted token; while checking, also look at
-   whether the "Generating encryption keys" log line means what it says or is printed
-   unconditionally regardless of whether it wrote anything.
+   what is already on the volume. **Confirmed 2026-09-23 (issue #173):** a worker token minted
+   before a machine restart still works after it. The CTO restarted `<old-engine-machine-id>` at
+   06:53:50Z; a smoke-size harness run with the old token passed at 07:02Z
+   (`docs/proofs/data/report-173-smoke-after-restart.json`). The same token also worked on the
+   cloned machine with the forked volume. The "Generating encryption keys" and "Generating config
+   files" lines were printed again on that restart and on the clone, so they are printed every
+   boot and do not mean new keys were written.
 6. If nothing above explains it, re-read the first-deploy steps for anything skipped or done out
    of order, then ask the CTO to check the secrets are all set.
 
@@ -170,7 +190,8 @@ Work through these in order:
 This runs the shop's failure harness (`examples/shop/src/__tests__/harness/`) from inside `syd`,
 beside `<engine-app>`, instead of from a laptop (issue #166, following #165 option 1). It is a
 second, separate app — `<shop-harness-app>` — plus its own database cluster
-(`<shop-harness-db>`, cluster id `<shop-cluster-id>`, Basic, Postgres 17, 10 GB, `syd`). It
+(`<shop-harness-db>`, cluster id `<shop-cluster-id>`, Starter (was Basic until 2026-09-23),
+Postgres 17, 10 GB, `syd`). It
 does not change `<engine-app>` or `<engine-db>` at all.
 
 **Who does what:** an engineer (or an agent, for the parts that touch no secret) creates the app,
@@ -183,9 +204,11 @@ Fly connection string or a token back once set — the checks below use names-on
 1. Create the app: `fly apps create <shop-harness-app> -o <fly-org>`
 2. Create a second Basic managed Postgres cluster — **never** the engine's own cluster
    (`<engine-db>`, `<engine-cluster-id>`) and never `<engine-db>-restoretest`
-   (waiting to be destroyed under #165). Redirect stdout to `/dev/null`; it carries one-time
+   (destroyed 2026-09-23). Redirect stdout to `/dev/null`; it carries one-time
    credentials:
    `fly mpg create -o <fly-org> -n <shop-harness-db> -r syd --plan Basic --pg-major-version 17 --volume-size 10 >/dev/null`
+   (this cluster was later moved to Starter through the dashboard, 2026-09-23 — the command line
+   cannot change a cluster's plan; see the note at the top of this page).
 3. Confirm it reached `ready` with names only: `fly mpg list -o <fly-org>`.
 4. Create the database inside the cluster: `fly mpg databases create <shop-cluster-id> -n kyu_shop_inregion`
    — the managed Postgres user lacks `CREATEDB`, so `migrate` cannot create it itself.
@@ -251,6 +274,11 @@ cluster above exist.
    (and the same for `outbox-backlog`). The `-o` path must be absolute or repository-relative from
    the repo root — `#164`'s laptop-to-Fly run lost a report to a path resolved from the wrong
    working directory.
+
+   Collect before you stop. Run `collect.sh` on its own and wait for `collected`; never chain
+   `fly machine stop` after it in one command. On 2026-09-23 a 6.7 MB report was lost that way.
+   `collect.sh` reads a report in 1 MB parts, because one exec answer has a size limit — on
+   2026-09-23 that read failed: `Error: could not exec command on machine`.
 5. Stop the machine once both reports are collected: `fly machine stop <id> -a <shop-harness-app>`
 6. Verify it actually stopped, names and states only:
    `fly machine list -a <shop-harness-app> --json` and `fly status -a <shop-harness-app>`.

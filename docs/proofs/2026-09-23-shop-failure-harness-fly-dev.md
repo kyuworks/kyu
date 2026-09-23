@@ -248,6 +248,10 @@ synchronously; see `docs/operations/kyu-engine-on-fly.md`'s Restore log for the 
 page are updated). This step, the admin-login check, and the token-survives-a-restart check are
 tracked as issue #165, so nothing here is lost when this pull request merges.
 
+**Update (issue #173).** The CTO destroyed `<engine-db>-restoretest` on 2026-09-23 without
+reading its data. The three-number check was skipped. The restore is proven to complete, not
+proven to hold readable data.
+
 ## In-region run (issue #166)
 
 What this is: `tenant-load` and `outbox-backlog` — the two scenarios that missed their windows
@@ -348,19 +352,22 @@ silently:**
 
 ### Comparison table
 
-| | Laptop only | Laptop to Fly | In-region |
-|---|---|---|---|
-| Harness, relay, worker run | laptop (NZ) | laptop (NZ) | `<shop-harness-app>`, `syd` |
-| Machine size | laptop spec | laptop spec | `performance-2x` (2 dedicated vCPU, 4 GB) |
-| Shop database | local Docker Postgres | local Docker Postgres | `<shop-harness-db>`, Basic, `syd` |
-| Engine | local compose v0.107.0 | `<engine-app>`, `performance-1x` | same |
-| Network path | loopback | NZ→`syd` public edge, TLS, median 143ms | `syd` internal 6PN, plaintext |
-| `outbox-backlog` | PASS, 50,221ms, 996 rows/sec | FAIL, 301,762ms, ~162 rows/sec | FAIL, 304,063ms, ~161 rows/sec |
-| `tenant-load` | PASS, 221,426ms, 50/200 slots | FAIL, 1,813,911ms | FAIL, 2,300,934ms |
-| Commit | — | `caa4dc1...-dirty` | `9c9ae54` |
-| JSON file | `docs/proofs/data/report-155-*.json` | `docs/proofs/data/report-162b-*.json` | `docs/proofs/data/report-166-*.json` |
+| | Laptop only | Laptop to Fly | In-region | In-region, performance-2x + Starter |
+|---|---|---|---|---|
+| Harness, relay, worker run | laptop (NZ) | laptop (NZ) | `<shop-harness-app>`, `syd` | `<shop-harness-app>`, `syd` |
+| Machine size | laptop spec | laptop spec | `performance-2x` (2 dedicated vCPU, 4 GB) | `performance-2x` |
+| Shop database | local Docker Postgres | local Docker Postgres | `<shop-harness-db>`, Basic, `syd` | `<shop-harness-db>`, Starter |
+| Engine | local compose v0.107.0 | `<engine-app>`, `performance-1x` | same | `<engine-app>` machine `<engine-machine-id>`, `performance-2x`, database Starter |
+| Network path | loopback | NZ→`syd` public edge, TLS, median 143ms | `syd` internal 6PN, plaintext | same |
+| `outbox-backlog` | PASS, 50,221ms, 996 rows/sec | FAIL, 301,762ms, ~162 rows/sec | FAIL, 304,063ms, ~161 rows/sec | FAIL, 367,820ms, ~56 rows/sec adjusted for teardown (run alone, 10:04–10:10Z) |
+| `tenant-load` | PASS, 221,426ms, 50/200 slots | FAIL, 1,813,911ms | FAIL, 2,300,934ms | FAIL, 2,422,223ms; plain window missed; durable window missed |
+| Commit | — | `caa4dc1...-dirty` | `9c9ae54` | `15542eb` |
+| JSON file | `docs/proofs/data/report-155-*.json` | `docs/proofs/data/report-162b-*.json` | `docs/proofs/data/report-166-*.json` | `docs/proofs/data/report-173-*.json` |
 
-**Every duration in this table predates the 60-second quiet period this pull request adds to
+The new column's durations include the 60-second teardown quiet period added by #169; the
+tenant-load miss is far larger than that.
+
+**Every duration in the first three columns predates the 60-second quiet period this pull request adds to
 `cancelLeftoverRuns`.** After this change, teardown's cancel loop
 (`examples/shop/src/__tests__/harness/scenario.ts` ~311–331) runs inside the same window a
 scenario's own wall time is measured against, for every scenario, not only the ones that had
@@ -394,7 +401,9 @@ same 5,000-order / 50,000-row sizes and the same windows every other run in this
 that day — it does not show why the report-size run above logged the line. Engine-side token
 validation under load is an open hypothesis, not a confirmed cause. The token's measured lifetime
 (`exp` minus `iat`) is 90 days on v0.107.0, matching the admin tool's own default of 2160h; the
-engine has not restarted since 2026-09-22T13:10Z. Whether to re-mint before the 90 days are up is
+engine had not restarted since 2026-09-22T13:10Z as of this section (issue #166) — it restarted
+again on 2026-09-23, see "Engine one size up (issue #173)" below. Whether to re-mint before the 90
+days are up is
 the CTO's decision.
 
 ### Per-scenario results
@@ -450,7 +459,121 @@ window and whether they ever ran at all is unknown; the outbox rows themselves w
 **Reading the two results together:** neither scenario got faster or more accurate by moving the
 harness, the relay and the worker into `syd`. That rules out the cross-Tasman network hop as the
 sole or even primary cause of the laptop-to-Fly misses; the engine's own queueing under this load
-size, on a `performance-1x` machine, is the more likely ceiling, consistent with the
+size, on a `performance-1x` machine (issue #173, below, tested one size up), is the more likely ceiling, consistent with the
 `HeartbeatController`/`Dispatcher` error pattern logged during this run. A larger engine machine or
 a smaller load size were not tried here — #166 asked only for the in-region measurement, not a
 capacity fix.
+
+## Engine one size up (issue #173)
+
+What this is: the same `tenant-load` and `outbox-backlog` scenarios from the in-region run above,
+run again with the dev engine machine resized from `performance-1x` to `performance-2x`, to tell
+apart the two explanations issue #166 left open — the engine machine's size, or its token
+validation under load.
+
+### What this run does not prove
+
+- **Two things changed at once.** The engine machine went `performance-1x` → `performance-2x` and
+  both database clusters went Basic → Starter, because both changes landed the same day; this run
+  cannot separate their effects.
+- **One run.** Not repeated, not averaged.
+- **No CPU or database metrics were read.** Nothing here is measured against the machine's or the
+  cluster's own resource graphs.
+- **`outbox-backlog` ran alone, in a later start, not in the same run as `tenant-load`.** The first
+  attempt's report could not be collected (below); this page's `outbox-backlog` numbers come from a
+  separate recovery run against the same resized engine, starting 27 minutes after `tenant-load`
+  finished. Whether that run left anything queued on the engine was not checked before the
+  recovery run started.
+- **The Starter plan's CPU kind was not checked.** Whether Starter is shared or dedicated CPU was
+  not confirmed for this run.
+- **The report run started about 2 minutes after the cloned engine machine came up** (machine
+  created 08:54:12Z, run started 08:56:28Z), inside the "wait 10 minutes, or run a smoke-size
+  harness run" guidance this pull request adds to the runbook after a restart. No smoke-size run
+  against the cloned machine specifically was recorded before this report-size run.
+
+### What was done
+
+The CTO restarted engine machine `<old-engine-machine-id>` at 06:53:50Z. Two smoke-size `tenant-load` runs
+followed with the existing worker token: the first (`report-173-smoke-after-restart-failed.json`)
+failed with `runs.forEnvelope … Request failed with status code 500` after 3 attempts, 92,269ms; the
+second (`report-173-smoke-after-restart.json`), about 8 minutes after the restart, passed — 200
+orders, 1,000 handler rows, 108,790ms. `fly machine update --vm-size performance-2x` was refused
+twice with "insufficient memory available to fulfill request on the current host"; the engine was
+resized instead by forking its config volume and cloning the machine (`docs/operations/kyu-engine-on-fly.md`,
+"Resizing the engine machine"). The two engine machines ran against one cluster for about 70
+seconds during that clone; the cluster refused connections for part of that window (Engine log,
+below). The report run started 08:56:28Z from commit `15542eb`, namespace `inregion173_`.
+
+### `tenant-load`
+
+FAIL, 2,422,223ms. 11,434 failures: 1,897 orders × 4 `no-effect-lost` "never ran" rows
+(`record-order`, `audit-order`, `send-invoice`, `watch-shipping:timeout`), 3,844 `outbox-settled`
+"still pending", plus two aggregate lines — `expected handler effects for 5000 orders never settled
+within 1200000ms` (the plain window, missed for the first time on this page) and `watch-shipping
+never reached a terminal row for 5000 orders within 900000ms` (the durable window, also missed).
+
+No message the engine accepted was lost. Every one of the 3,794 envelopes whose handlers never ran
+still had its outbox row pending at the deadline: the relay had not handed them to the engine yet.
+This is the first run on this page where the plain window was missed. 50 further pending outbox
+rows had no missing handler row.
+
+Stored copy capped `{ shown: 22, total: 11434 }` (first 20 failures plus both aggregate lines, the
+`#164` pattern). Full report: 1,827,215 bytes, sha256 `e16c0d6da834ce63aa42021c7b72dc485cfb011dcb2d54b8138c7f341f07c71d`.
+
+### `outbox-backlog`
+
+The first attempt's report was not recovered: `collect.sh` read the whole file in one
+`fly machine exec`, which has a response-size limit somewhere between about 1.8 MB and the report's
+6,772,068 bytes; the read failed with "could not read /reports/outbox-backlog.json from machine",
+and the machine was stopped in the same command, so nothing was left to retry against. That first
+attempt itself FAILED, at 365,979ms.
+
+**Recovery run.** A separate, `outbox-backlog`-only run against the same resized engine, namespace
+`inregion173b_`: the harness machine started 10:03:57Z, `preflight-ok` and `migrate-done` both at
+10:04Z, and `scenario-done scenario=outbox-backlog` at 10:10:09Z — FAIL, 367,820ms. 50,000 outbox
+rows were inserted with the relay stopped; at the 300,000ms (5-minute) window, 32,700 of 50,000
+rows (65.4%) were still pending — a far larger miss than the earlier in-region run's 901 rows
+(1.8%, issue #166) or the laptop-to-Fly run's 1,201 (2.4%). Rows drained: 17,300. The scenario's
+367,820ms total includes the 60-second teardown quiet period this pull request adds (§ "Every
+duration in this table", below), which is not part of the drain; over the remaining ~307,820ms
+that is roughly **56 rows/sec**, well below every earlier run of this scenario on this page
+(161–996 rows/sec). Nothing here contradicts must-hold: every pending row was still sitting in the
+outbox, not lost, not doubled. Report: 4,742,068 bytes, sha256
+`617f0b23d325cc823ece46c5f760a1f2014d6251e03012cb04af5e63369aaa71`, collected in 5 parts with the
+`collect.sh` fix from this pull request. Stored copy capped `{ shown: 21, total: 32701 }` (20
+individual failures plus the one aggregate line, the `#164` pattern).
+
+### Engine log
+
+Machine `<engine-machine-id>`, lines at or after 08:56:28Z (the `tenant-load` run's start) through
+09:43:48Z (end of tail), counted by `grep`/`awk` on the raw log: 69,784 lines in the window; 809
+`failed to send callback completed message to dispatcher`; 654 `error adding message for queue`;
+417 `error binding queue`; 93 `error replenishing slots`; 3,476 `queue took longer than 100ms`;
+20,778 `long transaction` (3,140 in `optimistic_tx.go`, 3,238 in `durable_events.go`, 6,620 in
+`olap.go`); 3,611 `context deadline exceeded`. Connection-slot errors (`remaining connection slots
+are reserved`, `too many clients`): 7 lines at 09:33:08–10Z, with only one engine machine
+running — during the `tenant-load` run itself; 11 more at 08:54:38Z, while both engine machines ran
+against the cluster during the clone.
+
+### Harness log
+
+1 `invalid auth token` line, at 09:33:48Z; 104 heartbeat lines after 08:56Z. Captured with a live
+`fly logs` tail saved to a file during the run, not read back afterward — the app's log retention
+is the last 100 lines only (§ In-region run, above).
+
+### What this supports
+
+Neither explanation in issue #173 holds as stated. The larger engine machine, together with the
+Starter database plan (the two changed at once — see "What this run does not prove"), did not
+help: `tenant-load` did worse than the earlier in-region run on `performance-1x`, and the recovered
+`outbox-backlog` run drained rows at roughly a third the earlier in-region run's rate (~56 vs ~161
+rows/sec) and an order of magnitude below the laptop-only run's 996. Token validation does not
+explain it: one `invalid auth token` line in a 40-minute run with 11,434 failures. The engine log
+points at its Postgres-backed internal message queue on the managed database: timed-out queue
+writes, dispatcher callbacks and long transactions, and the cluster ran out of connection slots
+under this load. Because the database plan changed at the same time as the machine size, this run
+cannot say whether Starter is worse than Basic, or whether a larger machine alone would have done
+better; neither combination did. The variable most likely left is the database plan — whether
+Starter gives dedicated CPU was not checked here (see "What this run does not prove"). The design
+document's scaling path (§ 12: separate engine replicas with RabbitMQ) is the other. The CTO
+decides whether to run either.

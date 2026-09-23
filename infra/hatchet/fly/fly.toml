@@ -25,14 +25,15 @@ primary_region = 'syd'
   SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS = 'localhost:7077'
 
 [[mounts]]
-  source = 'kyu_hatchet_config'
+  # Renamed with the #173 resize; see "Resizing the engine machine" in the runbook.
+  source = 'kyu_hatchet_config_2x'
   destination = '/config'
 
 [[vm]]
   # hatchet-lite runs the API, dashboard, gRPC server and queue workers in
   # one process; shared-cpu-2x's 512 MB does not fit that comfortably under
   # harness load, and shared CPU throttling would corrupt latency numbers.
-  size = 'performance-1x'
+  size = 'performance-2x'
 
 [[services]]
   internal_port = 8888
