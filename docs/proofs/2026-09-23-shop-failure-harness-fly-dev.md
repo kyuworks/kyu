@@ -352,20 +352,20 @@ silently:**
 
 ### Comparison table
 
-| | Laptop only | Laptop to Fly | In-region | In-region, performance-2x + Starter |
-|---|---|---|---|---|
-| Harness, relay, worker run | laptop (NZ) | laptop (NZ) | `<shop-harness-app>`, `syd` | `<shop-harness-app>`, `syd` |
-| Machine size | laptop spec | laptop spec | `performance-2x` (2 dedicated vCPU, 4 GB) | `performance-2x` |
-| Shop database | local Docker Postgres | local Docker Postgres | `<shop-harness-db>`, Basic, `syd` | `<shop-harness-db>`, Starter |
-| Engine | local compose v0.107.0 | `<engine-app>`, `performance-1x` | same | `<engine-app>` machine `<engine-machine-id>`, `performance-2x`, database Starter |
-| Network path | loopback | NZ→`syd` public edge, TLS, median 143ms | `syd` internal 6PN, plaintext | same |
-| `outbox-backlog` | PASS, 50,221ms, 996 rows/sec | FAIL, 301,762ms, ~162 rows/sec | FAIL, 304,063ms, ~161 rows/sec | FAIL, 367,820ms, ~56 rows/sec adjusted for teardown (run alone, 10:04–10:10Z) |
-| `tenant-load` | PASS, 221,426ms, 50/200 slots | FAIL, 1,813,911ms | FAIL, 2,300,934ms | FAIL, 2,422,223ms; plain window missed; durable window missed |
-| Commit | — | `caa4dc1...-dirty` | `9c9ae54` | `15542eb` |
-| JSON file | `docs/proofs/data/report-155-*.json` | `docs/proofs/data/report-162b-*.json` | `docs/proofs/data/report-166-*.json` | `docs/proofs/data/report-173-*.json` |
+| | Laptop only | Laptop to Fly | In-region | In-region, performance-2x + Starter | In-region, performance-2x + Launch |
+|---|---|---|---|---|---|
+| Harness, relay, worker run | laptop (NZ) | laptop (NZ) | `<shop-harness-app>`, `syd` | `<shop-harness-app>`, `syd` | `<shop-harness-app>`, `syd` |
+| Machine size | laptop spec | laptop spec | `performance-2x` (2 dedicated vCPU, 4 GB) | `performance-2x` | `performance-2x` |
+| Shop database | local Docker Postgres | local Docker Postgres | `<shop-harness-db>`, Basic, `syd` | `<shop-harness-db>`, Starter | `<shop-harness-db>`, Launch |
+| Engine | local compose v0.107.0 | `<engine-app>`, `performance-1x` | same | `<engine-app>` machine `<engine-machine-id>`, `performance-2x`, database Starter | same machine `<engine-machine-id>`, `performance-2x`, database Launch |
+| Network path | loopback | NZ→`syd` public edge, TLS, median 143ms | `syd` internal 6PN, plaintext | same | same |
+| `outbox-backlog` | PASS, 50,221ms, 996 rows/sec | FAIL, 301,762ms, ~162 rows/sec | FAIL, 304,063ms, ~161 rows/sec | FAIL, 367,820ms, ~56 rows/sec adjusted for teardown (run alone, 10:04–10:10Z) | FAIL, 365,169ms, ~162 rows/sec adjusted for teardown; 600 of 50,000 rows left |
+| `tenant-load` | PASS, 221,426ms, 50/200 slots | FAIL, 1,813,911ms | FAIL, 2,300,934ms | FAIL, 2,422,223ms; plain window missed; durable window missed | **PASS**, 378,707ms; plain window met at 314,305ms, durable at 314,372ms; ~80 handler rows/sec |
+| Commit | — | `caa4dc1...-dirty` | `9c9ae54` | `15542eb` | `15542eb` (same image as #173) |
+| JSON file | `docs/proofs/data/report-155-*.json` | `docs/proofs/data/report-162b-*.json` | `docs/proofs/data/report-166-*.json` | `docs/proofs/data/report-173-*.json` | `docs/proofs/data/report-175-*.json` |
 
-The new column's durations include the 60-second teardown quiet period added by #169; the
-tenant-load miss is far larger than that.
+The last two columns' durations include the 60-second teardown quiet period added by #169; the
+#173 tenant-load miss is far larger than that.
 
 **Every duration in the first three columns predates the 60-second quiet period #169 added to
 `cancelLeftoverRuns`.** After this change, teardown's cancel loop
@@ -577,3 +577,121 @@ better; neither combination did. The variable most likely left is the database p
 Starter gives dedicated CPU was not checked here (see "What this run does not prove"). The design
 document's scaling path (§ 12: separate engine replicas with RabbitMQ) is the other. The CTO
 decides whether to run either.
+
+## Both databases on the Launch plan (issue #175)
+
+What this is: the same `tenant-load` and `outbox-backlog` runs as issue #173, on the same engine
+machine (`<engine-machine-id>`, `performance-2x`) and the same harness image, after the CTO moved both
+managed Postgres clusters from Starter to Launch, a plan with dedicated CPU: the engine's
+`<engine-db>` (`<engine-cluster-id>`) and the harness's `<shop-harness-db>`
+(`<shop-cluster-id>`). Only the database plan changed since #173.
+
+### What this run does not prove
+
+- **This list was written after the run**, unlike the earlier sections on this page.
+- **Both clusters changed at once.** The engine's database and the shop's database both moved to
+  Launch, so this run cannot say which of the two mattered. The engine log (below) suggests only
+  that the engine's side is involved; it does not rule out the shop's cluster.
+- **One run.** Not repeated, not averaged.
+- **No CPU or database metrics were read.** That Launch gives dedicated CPU is the plan's own
+  description, not something measured here.
+- **The engine and harness logs are live tails saved during the run.** Whether a tail kept every
+  line was not checked.
+- **`engine-outage` and the other seven scenarios were not re-run.**
+
+### What was done
+
+A smoke-size `tenant-load` ran first, at 10:47:45Z (`harness-tail-175.log`'s `scenario-done` line
+gives `ts=10:49:09.155Z` and `durationMs=83746`, so start is 10:47:45.409Z; the `migrate-done` line
+immediately before reads 10:47:45.005Z), namespace `inregion175s_`: PASS, 83,746ms
+(plain 18,762ms, durable 18,768ms), 200 orders, no failures (`report-175-smoke.json`). The
+report-size run started at 10:54:22Z, namespace `inregion175_`, from the image built for #173 at
+commit `15542eb` (harness machine `<shop-harness-machine-id>`), both scenarios in one machine start:
+`tenant-load` from 10:54:25Z to 11:00:44Z, then `outbox-backlog` to 11:06:49Z. Both reports were
+collected, one part each, before the machine was stopped.
+
+### `tenant-load`
+
+PASS, 378,707ms, no failures. All 5,000 orders (4,905 from the large tenant, 5 from each small
+one) had their plain handler effects at 314,305ms, inside the 20-minute (1,200,000ms) window, and
+all 5,000 `watch-shipping` runs had a terminal row at 314,372ms, inside the 15-minute (900,000ms)
+window. That is about 80 handler rows a second (25,000 rows in 314 seconds), or about 16 orders a
+second. This is the first Fly run on this page to meet both windows. On the Starter plan (#173)
+the same scenario missed both, at 2,422,223ms; on Basic with the smaller engine (#166) it missed
+the durable window, at 2,300,934ms. Report sha256
+`42fc7ec8bdb00c66878814557f074b4d3ecbfd9a82a135ade7498c54d9ea211f` (of the report as collected,
+matching the harness's own `report-written` log line, as in earlier runs on this page), stored
+whole; the stored copy under `docs/proofs/data/` carries a trailing newline the collector's file
+does not, so its own sha256 differs.
+
+### `outbox-backlog`
+
+FAIL, 365,169ms. At the 5-minute (300,000ms) window, 600 of 50,000 rows (1.2%) were still pending;
+the report's 601 failure entries are those 600 rows plus the aggregate line `backlog of 50000
+rows never drained within 300000ms`. Rows drained: 49,400. Over the 305,169ms left after the
+60-second teardown quiet period, that is about **162 rows a second**: the same as the in-region
+run on Basic (#166, ~161) and the laptop-to-Fly run (~162), up from ~56 on Starter (#173), and
+still far below the laptop-only run's 996. The window needs about 167 rows a second (50,000 in
+300 seconds), so this is a near miss. Nothing here contradicts must-hold: every pending row was
+still in the outbox, not lost, not doubled.
+
+The relay pushes one batch of 100 rows at a time (`packages/sdk/src/relay/relay.ts`), so ~162 rows
+a second is about 0.6 seconds per batch, on Basic, on Launch, in-region and from New Zealand
+alike, where the same relay against a local engine took about 0.1 seconds. A better database did
+not make batches faster; a worse one (Starter) made them slower. That suggests this scenario's
+ceiling is the relay's one-batch-at-a-time push or the engine's intake of pushed events, not the
+database plan. This run does not tell those two apart.
+
+Report sha256 `a8e41de0d964e567377ba4ce59a3060f299d4f25445b770b70483dd48be01c40` (of the report as
+collected, matching the #173 precedent), 87,568 bytes.
+Stored copy capped `{ shown: 21, total: 601 }` (20 pending rows plus the aggregate line, the `#164`
+pattern); its own sha256 differs from the one above because the cap script drops rows and adds a
+trailing newline.
+
+### Engine log
+
+Machine `<engine-machine-id>`, 10:54:22Z to 11:07:00Z, counted with `grep` on the log with colour
+codes removed: 3,805 lines, every one a warning (`WRN`), **no `ERR` line**. By kind: 1,677
+`concurrency strategy … took longer than 100ms`; 727 `long transaction`; 353 `queue took longer
+than 100ms to process and flush items`; 236 `flushing items to database took longer than
+100ms (N items in Xms)`; 76 `processing internal event matches`; 54 `replenishing slots took
+longer than`; 50 `listing actions for workers`; 30 `connecting to localhost:7077 without TLS`.
+Four more kinds exceed 12: 237 `flushing N items to database took longer than 100ms`
+(a second, distinct message from the 236 above — this one carries `ack_duration`/`item_count`
+fields instead of the `(N items in Xms)` suffix); 219 `queue processing took longer than
+100ms`; 81 `marking queue items processed took longer than 100ms`; 38 `listing N queue items
+for queue …`. The remaining 27 lines are three smaller kinds: 14 `processing batch of N queue
+items took longer than 100ms`, 11 `assigning queue items took longer than 100ms`, 2 `long lock`.
+`tenant-load` accounts for 2,769 of them, `outbox-backlog` for 1,036. None of the
+#173 error kinds appears: no `failed to send callback completed message`, `error adding message
+for queue`, `error binding queue`, `context deadline exceeded`, or connection-slot error. The one
+`ERR` line in the whole tail (`error replenishing slots … context deadline exceeded`) is at
+10:50:21Z, between the smoke run and the report run.
+
+### Harness log
+
+From the smoke run's start (10:47:45Z, see above) to the end: no `ERROR` line and no `invalid auth token`
+line; 2 heartbeat-delay warnings. The earlier lines in the saved tail belong to the #173 run.
+#173 had one `invalid auth token` line during a run whose engine log showed queue timeouts; this
+run had neither. That fits the token error being a symptom of the engine's queue falling behind,
+not a separate token fault. It does not prove it.
+
+### What this supports
+
+For `tenant-load`, the first of issue #175's three readings: **on the engine's Postgres-backed
+queue, the database plan was the ceiling.** With only the plan changed, the scenario went from
+missing both windows to meeting both with about 10 minutes to spare, and the engine's queue errors
+went from hundreds to none.
+
+For `outbox-backlog`, none of the three readings fits cleanly. The drain rate is back where it was
+on Basic, so the database plan is not what holds it at ~162 rows a second; a 1.2% miss makes it a
+near miss rather than a collapse. For scale, the design's release-one target (N4) is 10 messages
+a second sustained and 100 a second in bursts; this scenario asks for about 167.
+
+**Issue #162, criterion 3** (the three load scenarios pass at report size on the deployed engine):
+still not met. `engine-outage` passed (laptop to Fly) and `tenant-load` now passes in-region;
+`outbox-backlog` still misses its window. For the decision issue #162 is waiting on, the evidence
+says: Launch, or better, is the database plan for the engine's cluster in any environment that
+runs this load on the Postgres-backed queue. The next run (issue #176) moves the engine's internal
+queue to RabbitMQ, which tests whether the engine's side of the push is what holds
+`outbox-backlog` back. The CTO decides what follows.

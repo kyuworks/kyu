@@ -1,0 +1,37 @@
+{
+  "commitSha": "15542eb42d14840690501f5004958e8b498fcd1e",
+  "machine": {
+    "platform": "linux",
+    "arch": "x64",
+    "cpuCount": 2,
+    "totalMemBytes": 4106903552
+  },
+  "engineVersion": "hatchet-lite:v0.107.0",
+  "reportBuiltAt": "2026-09-23T10:49:09.172Z",
+  "scenarios": [
+    {
+      "name": "tenant-load",
+      "passed": true,
+      "durationMs": 83746,
+      "observation": {
+        "tenantCount": 20,
+        "totalOrders": 200,
+        "largeTenantOrders": 105,
+        "smallTenantOrders": 5,
+        "effectsSettledInTime": true,
+        "plainEffectsMs": 18762,
+        "durableSettledInTime": true,
+        "durableEffectsMs": 18768,
+        "durableSlots": 200,
+        "plainSlots": 50,
+        "watchShippingTerminalRows": 200,
+        "runOutcomeSampleSize": 200,
+        "runOutcomeSampledOfTotal": 200,
+        "handlerRowCount": 1000,
+        "maxLastHandledAgoMs": 9172,
+        "minLastHandledAgoMs": 1144
+      },
+      "failures": []
+    }
+  ]
+}
