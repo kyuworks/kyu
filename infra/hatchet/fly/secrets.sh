@@ -28,6 +28,10 @@ Secrets this app needs, and where each value comes from:
     Chosen by the CTO for the dashboard admin account.
   SERVER_AUTH_ADMIN_PASSWORD
     Chosen by the CTO for the dashboard admin account.
+  SERVER_MSGQUEUE_RABBITMQ_URL
+    Needed while fly.toml sets SERVER_MSGQUEUE_KIND = 'rabbitmq'. Built from
+    the two values set on <rabbitmq-app> (infra/hatchet/fly/rabbitmq/secrets.sh):
+    amqp://<user>:<pass>@<rabbitmq-app>.internal:5672/
 
   Optional (see the block below): SERVER_AUTH_COOKIE_SECRETS,
   SERVER_ENCRYPTION_MASTER_KEYSET, SERVER_ENCRYPTION_JWT_PRIVATE_KEYSET,
@@ -38,6 +42,7 @@ Commands to run:
 fly secrets set --stage -a ${APP} DATABASE_URL='<REPLACE_ME>'
 fly secrets set --stage -a ${APP} SERVER_AUTH_ADMIN_EMAIL='<REPLACE_ME>'
 fly secrets set --stage -a ${APP} SERVER_AUTH_ADMIN_PASSWORD='<REPLACE_ME>'
+fly secrets set --stage -a ${APP} SERVER_MSGQUEUE_RABBITMQ_URL='<REPLACE_ME>'
 
 Optional overrides (not needed for a normal deploy):
   The engine generates these into /config on first boot and the
