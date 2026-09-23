@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { V1TaskStatus } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
 import { cancelUnsettledRunsInNamespace, readUnsettledRunsInNamespace } from './namespaceRuns.js'
 import type { NamespaceRunsClient } from './namespaceRuns.js'
+import { runDetailFixture } from './__tests__/runDetailFixture.js'
+import type { EngineRunDetail } from './__tests__/runDetailFixture.js'
 
 // Copied from runOutcomes.test.ts's own fixtureRow: production source does
 // not export test fixtures, and tests do not count toward the size gate.
@@ -56,6 +59,7 @@ interface FakeCalls {
   listCalls: () => Array<Parameters<HatchetClient['runs']['list']>[0]>
   cancelCalls: () => Array<Parameters<HatchetClient['runs']['cancel']>[0]>
   workflowListCalls: () => Array<Parameters<HatchetClient['workflows']['list']>[0]>
+  detailCalls: () => string[]
 }
 
 type CancelProcedure = (
@@ -68,12 +72,14 @@ function fakeNamespaceRunsClient(options: {
   workflowPages?: EngineWorkflowRow[][]
   runPages?: EngineRunRow[][]
   cancelError?: Error
+  details?: ReadonlyMap<string, EngineRunDetail>
 }): FakeCalls {
   const workflowPages = options.workflowPages ?? [[fixtureWorkflow(`${options.namespace}sample-run`)]]
   const runPages = options.runPages ?? [[]]
   const listCalls: Array<Parameters<HatchetClient['runs']['list']>[0]> = []
   const cancelCalls: Array<Parameters<HatchetClient['runs']['cancel']>[0]> = []
   const workflowListCalls: Array<Parameters<HatchetClient['workflows']['list']>[0]> = []
+  const detailCalls: string[] = []
 
   const cancel: CancelProcedure = (opts) => {
     cancelCalls.push(opts)
@@ -90,6 +96,10 @@ function fakeNamespaceRunsClient(options: {
         return { pagination: { num_pages: runPages.length }, rows }
       },
       cancel,
+      getDetails: async (runId: string) => {
+        detailCalls.push(runId)
+        return options.details?.get(runId) ?? runDetailFixture()
+      },
     },
     workflows: {
       list: async (opts) => {
@@ -104,6 +114,7 @@ function fakeNamespaceRunsClient(options: {
     listCalls: () => listCalls,
     cancelCalls: () => cancelCalls,
     workflowListCalls: () => workflowListCalls,
+    detailCalls: () => detailCalls,
   }
 }
 
@@ -237,5 +248,44 @@ describe('readUnsettledRunsInNamespace', () => {
     expect(outcomes).toEqual([])
     expect(workflowListCalls()).toHaveLength(0)
     expect(listCalls()).toHaveLength(0)
+  })
+
+  it('leaves out a run the run detail says completed or failed, and never reads the detail for another namespace', async () => {
+    const id = (n: number): string => `018f0000-0000-7000-8000-0000000000${String(n)}`
+    const rows = [
+      fixtureRow({ workflowName: 'ns_stale', status: 'RUNNING', taskExternalId: id(31) }),
+      fixtureRow({ workflowName: 'ns_failed', status: 'RUNNING', taskExternalId: id(32) }),
+      fixtureRow({ workflowName: 'ns_live', status: 'QUEUED', taskExternalId: id(33) }),
+      fixtureRow({ workflowName: 'ns_cancelled', status: 'RUNNING', taskExternalId: id(34) }),
+      fixtureRow({ workflowName: 'other_done', status: 'RUNNING', taskExternalId: id(35) }),
+    ]
+    const details = new Map([
+      [id(31), runDetailFixture(V1TaskStatus.COMPLETED)],
+      [id(32), runDetailFixture(V1TaskStatus.FAILED)],
+      [id(33), runDetailFixture(V1TaskStatus.QUEUED)],
+      [id(34), runDetailFixture(V1TaskStatus.CANCELLED)],
+      [id(35), runDetailFixture(V1TaskStatus.COMPLETED)],
+    ])
+    const { client, detailCalls } = fakeNamespaceRunsClient({ namespace: 'ns_', runPages: [rows], details })
+
+    const outcomes = await readUnsettledRunsInNamespace(client, { since: new Date('2026-01-01') })
+
+    expect(outcomes.map((outcome) => outcome.subscription)).toEqual(['live', 'cancelled'])
+    expect(detailCalls()).toEqual([id(31), id(32), id(33), id(34)])
+  })
+
+  it('reads the run detail for at most 100 runs per call, across pages', async () => {
+    const id = (n: number): string => `018f0000-0000-7000-8000-${String(n).padStart(12, '0')}`
+    const all = Array.from({ length: 101 }, (_unused, n) => fixtureRow({ status: 'RUNNING', taskExternalId: id(n) }))
+    const { client, detailCalls } = fakeNamespaceRunsClient({
+      namespace: 'ns_',
+      runPages: [all.slice(0, 100), all.slice(100)],
+    })
+
+    const outcomes = await readUnsettledRunsInNamespace(client, { since: new Date('2026-01-01') })
+
+    expect(outcomes).toHaveLength(101)
+    expect(detailCalls()).toHaveLength(100)
+    expect(detailCalls().at(-1)).toBe(id(99))
   })
 })

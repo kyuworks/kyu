@@ -1,12 +1,12 @@
 import { KyuError, V1TaskStatus } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
-import { toRunOutcome } from './runOutcomes.js'
-import type { RunOutcome } from './runOutcomes.js'
+import { toCheckedRunOutcomes } from './runOutcomes.js'
+import type { RunDetailReader, RunOutcome } from './runOutcomes.js'
 
 // Narrowed to what this file needs, so the unit test's fake is a plain object.
 export interface NamespaceRunsClient {
   config: Pick<HatchetClient['config'], 'namespace'>
-  runs: Pick<HatchetClient['runs'], 'list' | 'cancel'>
+  runs: Pick<HatchetClient['runs'], 'list' | 'cancel'> & RunDetailReader['runs']
   workflows: Pick<HatchetClient['workflows'], 'list'>
 }
 
@@ -57,7 +57,7 @@ export async function readUnsettledRunsInNamespace(
   const workflowNames = await namespaceWorkflowNames(hatchet, namespace, 'runs.unsettledInNamespace')
   if (workflowNames.length === 0) return []
 
-  const outcomes: RunOutcome[] = []
+  const rows: Awaited<ReturnType<NamespaceRunsClient['runs']['list']>>['rows'] = []
   for (let page = 0; page < RUN_MAX_PAGES; page += 1) {
     const result = await hatchet.runs.list({
       workflowNames: [...workflowNames],
@@ -67,11 +67,11 @@ export async function readUnsettledRunsInNamespace(
       offset: page * RUN_PAGE_LIMIT,
       includePayloads: false,
     })
-    for (const row of result.rows) {
-      const outcome = toRunOutcome(row, namespace)
-      if (outcome !== undefined) outcomes.push(outcome)
+    rows.push(...result.rows)
+    if (page + 1 >= (result.pagination.num_pages ?? 1)) {
+      const outcomes = await toCheckedRunOutcomes(hatchet, rows, namespace, 'runs.unsettledInNamespace')
+      return outcomes.filter((outcome) => outcome.status === 'queued' || outcome.status === 'running')
     }
-    if (page + 1 >= (result.pagination.num_pages ?? 1)) return outcomes
   }
   throw new KyuError(
     `runs.unsettledInNamespace: more than ${String(RUN_MAX_PAGES * RUN_PAGE_LIMIT)} runs; narrow the window with options.since`,

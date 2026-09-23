@@ -80,6 +80,16 @@ database cluster `<engine-db>` (cluster id `<engine-cluster-id>`).
 3. Deploy dev: `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`
 4. Soak for a day: watch the dashboard, worker logs, and `/api/ready` for anything unusual.
 5. Only then promote the same tag to any later environment.
+6. Check every entry under *Known engine defects* against the new release before promoting it;
+   drop an entry only once its proof page's queries come back empty after a load run.
+
+### Known engine defects
+
+**v0.107.0 — the run list keeps an ended run as queued or running.** 294 runs on the local engine
+and 18 on Fly dev (#165, #170). Not reproducible from a fresh namespace; it follows the engine
+stopping between writing its own state and the list's copy. The SDK's run readers read the
+engine's run detail for such runs (README). Evidence, queries and what to raise upstream:
+`docs/proofs/2026-09-23-engine-run-list-stale-rows.md`.
 
 ## Backup and restore rehearsal
 
@@ -325,7 +335,9 @@ prefix across the whole tenant.
 **A namespace can stay above 0 forever.** The engine's REST run list can keep showing a run as
 RUNNING or QUEUED after it has actually completed or been cancelled; this command's cancel and
 `left` count cannot detect or clear that state, so a namespace that never reaches 0 after repeated
-runs is not necessarily still doing anything (issue #165).
+runs is not necessarily still doing anything (issues #165, #170). `left` now leaves out runs the
+engine's run detail says completed or failed; what remains is either live or a durable run the
+engine stopped tracking — see Known engine defects.
 
 ### Destroying the cluster
 

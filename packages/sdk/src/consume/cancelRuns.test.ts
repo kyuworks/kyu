@@ -4,6 +4,7 @@ import { KyuError } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
 import { cancelRunsFor } from './cancelRuns.js'
 import type { RunsCanceller } from './cancelRuns.js'
+import { runDetailFixture } from './__tests__/runDetailFixture.js'
 
 // Copied from runOutcomes.test.ts's own fixtureRow: production source does
 // not export test fixtures, and tests do not count toward the size gate.
@@ -75,6 +76,7 @@ function fakeRunsCanceller(namespace: string, rows: EngineRunRow[], cancelError?
         return { pagination: {}, rows }
       },
       cancel,
+      getDetails: async () => runDetailFixture(),
     },
   }
   return { canceller, listCalls: () => listCalls, cancelCalls: () => cancelCalls }
@@ -98,6 +100,7 @@ function fakePagedRunsCanceller(namespace: string, pages: EngineRunRow[][]): Fak
         return { pagination: { num_pages: pages.length }, rows }
       },
       cancel,
+      getDetails: async () => runDetailFixture(),
     },
   }
   return { canceller, listCalls: () => listCalls, cancelCalls: () => cancelCalls }

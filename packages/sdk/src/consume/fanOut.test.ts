@@ -7,6 +7,7 @@ import { OrCondition, SleepCondition, UserEventCondition } from '../hatchet.js'
 import type { DurableContext, HatchetClient, JsonObject } from '../hatchet.js'
 import { buildChildConditions, waitForChildMessages } from './fanOut.js'
 import type { RunsReader } from './runOutcomes.js'
+import { runDetailFixture } from './__tests__/runDetailFixture.js'
 
 const childReplied = defineEvent({
   name: 'kyu.fan_out.child_replied',
@@ -179,6 +180,7 @@ function fakeRunsReader(namespace: string, rowsByEnvelopeId: ReadonlyMap<string,
         const rows = envelopeId !== undefined ? (rowsByEnvelopeId.get(envelopeId) ?? []) : []
         return { pagination: {}, rows }
       },
+      getDetails: async () => runDetailFixture(),
     },
   }
 }

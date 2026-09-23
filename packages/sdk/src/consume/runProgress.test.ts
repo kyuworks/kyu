@@ -4,6 +4,7 @@ import type { HatchetClient } from '../hatchet.js'
 import { readRunProgressForCorrelation } from './runProgress.js'
 import type { RunProgressReader } from './runProgress.js'
 import type { DurableLogReader } from './runWaits.js'
+import { runDetailFixture } from './__tests__/runDetailFixture.js'
 
 type EngineRunRow = Awaited<ReturnType<HatchetClient['runs']['list']>>['rows'][number]
 type LogEntry = Awaited<ReturnType<DurableLogReader['api']['v1DurableTaskEventLogList']>>['data'][number]
@@ -51,6 +52,7 @@ function fakeProgressReader(namespace: string, rows: EngineRunRow[], logEntries:
     tenantId: 'tenant-1',
     runs: {
       list: async () => ({ pagination: {}, rows }),
+      getDetails: async () => runDetailFixture(),
     },
     api: {
       v1DurableTaskEventLogList: async (_tenant, durableTask) => {

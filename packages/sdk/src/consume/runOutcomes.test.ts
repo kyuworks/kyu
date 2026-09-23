@@ -1,9 +1,11 @@
 import { uuidv7 } from '@kyuworks/schemas'
 import { describe, expect, it } from 'vitest'
-import { KyuError } from '../hatchet.js'
+import { KyuError, V1TaskStatus } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
 import { readRunOutcomes, readRunOutcomesFor, toRunOutcome } from './runOutcomes.js'
 import type { RunsReader } from './runOutcomes.js'
+import { runDetailFixture } from './__tests__/runDetailFixture.js'
+import type { EngineRunDetail } from './__tests__/runDetailFixture.js'
 
 type EngineRunRow = Awaited<ReturnType<HatchetClient['runs']['list']>>['rows'][number]
 
@@ -222,6 +224,7 @@ function fakeRunsReader(namespace: string, rows: EngineRunRow[], listError?: Err
         if (listError !== undefined) throw listError
         return { pagination: {}, rows }
       },
+      getDetails: async () => runDetailFixture(),
     },
   }
   return { reader, listCalls: () => calls }
@@ -240,6 +243,7 @@ function fakePagedRunsReader(namespace: string, pages: EngineRunRow[][]): FakeRu
         calls.push(opts)
         return { pagination: { num_pages: pages.length }, rows }
       },
+      getDetails: async () => runDetailFixture(),
     },
   }
   return { reader, listCalls: () => calls }
@@ -366,6 +370,95 @@ describe('readRunOutcomes', () => {
     const outcomes = await readRunOutcomes(reader, envelopeId)
 
     expect(outcomes.map((o) => o.subscription)).toEqual(['first', 'third'])
+  })
+})
+
+interface FakeCheckedRunsReaderCalls {
+  reader: RunsReader
+  detailCalls: () => string[]
+}
+
+function fakeCheckedRunsReader(
+  namespace: string,
+  rows: EngineRunRow[],
+  details: ReadonlyMap<string, EngineRunDetail>,
+  detailError?: Error,
+): FakeCheckedRunsReaderCalls {
+  const detailCalls: string[] = []
+  const reader: RunsReader = {
+    config: { namespace },
+    runs: {
+      list: async () => ({ pagination: {}, rows }),
+      getDetails: async (runId: string) => {
+        detailCalls.push(runId)
+        if (detailError !== undefined) throw detailError
+        return details.get(runId) ?? runDetailFixture()
+      },
+    },
+  }
+  return { reader, detailCalls: () => detailCalls }
+}
+
+describe('readRunOutcomes: engine run detail cross-check', () => {
+  const staleId = '018f0000-0000-7000-8000-000000000021'
+  const liveId = '018f0000-0000-7000-8000-000000000022'
+  const youngId = '018f0000-0000-7000-8000-000000000023'
+  const settledId = '018f0000-0000-7000-8000-000000000024'
+
+  it('reads a run listed running for over a minute as completed when the run detail says so, and reads the detail only for such rows', async () => {
+    const rows = [
+      fixtureRow({ status: 'RUNNING', taskExternalId: staleId, finishedAt: undefined }),
+      fixtureRow({ status: 'RUNNING', taskExternalId: liveId, finishedAt: undefined }),
+      fixtureRow({
+        status: 'RUNNING',
+        taskExternalId: youngId,
+        startedAt: new Date().toISOString(),
+        finishedAt: undefined,
+      }),
+      fixtureRow({ status: 'COMPLETED', taskExternalId: settledId }),
+    ]
+    const details = new Map([
+      [staleId, runDetailFixture(V1TaskStatus.COMPLETED)],
+      [youngId, runDetailFixture(V1TaskStatus.COMPLETED)],
+    ])
+    const { reader, detailCalls } = fakeCheckedRunsReader('ns_', rows, details)
+
+    const outcomes = await readRunOutcomes(reader, uuidv7())
+
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(['completed', 'running', 'running', 'completed'])
+    expect(outcomes.at(0)?.finishedAt).toBeUndefined()
+    expect(detailCalls()).toEqual([staleId, liveId])
+  })
+
+  it('reads failed from the run detail, and keeps the listed status when the detail says cancelled or queued', async () => {
+    const rows = [
+      fixtureRow({ status: 'RUNNING', taskExternalId: staleId, finishedAt: undefined }),
+      fixtureRow({ status: 'QUEUED', taskExternalId: liveId, startedAt: undefined, finishedAt: undefined }),
+      fixtureRow({ status: 'RUNNING', taskExternalId: youngId, finishedAt: undefined }),
+    ]
+    const details = new Map([
+      [staleId, runDetailFixture(V1TaskStatus.FAILED)],
+      [liveId, runDetailFixture(V1TaskStatus.QUEUED)],
+      [youngId, runDetailFixture(V1TaskStatus.CANCELLED)],
+    ])
+    const { reader, detailCalls } = fakeCheckedRunsReader('ns_', rows, details)
+
+    const outcomes = await readRunOutcomes(reader, uuidv7())
+
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(['failed', 'queued', 'running'])
+    expect(detailCalls()).toEqual([staleId, liveId, youngId])
+  })
+
+  it('throws a KyuError naming the caller when the run detail cannot be read', async () => {
+    const cause = new Error('unavailable')
+    const rows = [fixtureRow({ status: 'RUNNING', taskExternalId: staleId, finishedAt: undefined })]
+    const { reader } = fakeCheckedRunsReader('ns_', rows, new Map(), cause)
+
+    const read = readRunOutcomes(reader, uuidv7())
+
+    await expect(read).rejects.toThrow(KyuError)
+    await expect(read).rejects.toThrow(`runs.forEnvelope: could not read the run detail for run ${staleId}`)
+    await expect(read).rejects.toHaveProperty('cause', cause)
   })
 })
 

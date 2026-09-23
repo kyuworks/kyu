@@ -9,7 +9,7 @@ import type { HatchetClient } from '../hatchet.js'
 import { durable } from './durable.js'
 import type { DurableHandlerContext } from './durable.js'
 import type { HandlerContext } from './handlerContext.js'
-import { readRunOutcomes } from './runOutcomes.js'
+import { readEngineEndedRunStatus, readRunOutcomes } from './runOutcomes.js'
 import type { RunOutcome } from './runOutcomes.js'
 import { subscribe } from './subscribe.js'
 import { createWorker } from './worker.js'
@@ -184,6 +184,16 @@ describe('runOutcomes: plain subscriptions', () => {
     const outcomes = await readRunOutcomes(hatchet, uuidv7())
     expect(outcomes).toEqual([])
   })
+
+  it('flow 8: the engine run detail reads a completed run completed and a failed run failed', async () => {
+    const completed = await push(completedDef, { seq: 8 })
+    const failed = await push(failedDef, { seq: 8 })
+    const completedRun = (await waitForOutcomes(completed.id, (o) => o.at(0)?.status === 'completed', 60_000)).at(0)
+    const failedRun = (await waitForOutcomes(failed.id, (o) => o.at(0)?.status === 'failed', 60_000)).at(0)
+
+    expect(await readEngineEndedRunStatus(hatchet, completedRun?.runId ?? '', 'runs.forEnvelope')).toBe('completed')
+    expect(await readEngineEndedRunStatus(hatchet, failedRun?.runId ?? '', 'runs.forEnvelope')).toBe('failed')
+  }, 90_000)
 })
 
 describe('runOutcomes: durable parked run', () => {
@@ -270,5 +280,12 @@ describe('runOutcomes: queued run', () => {
     // Observed value, recorded in the PR body: the engine's own `attempt`
     // field already reads 1 on a run no worker has picked up yet.
     expect(outcome?.attempts).toBe(1)
+  }, 30_000)
+
+  it('flow 9: the engine run detail reads a queued run as not ended', async () => {
+    const envelope = await push(neverStarted, { seq: 9 })
+    const queuedRun = (await waitForOutcomes(envelope.id, (o) => o.at(0)?.status === 'queued', 10_000)).at(0)
+
+    expect(await readEngineEndedRunStatus(hatchet, queuedRun?.runId ?? '', 'runs.forEnvelope')).toBeUndefined()
   }, 30_000)
 })
