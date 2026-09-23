@@ -253,8 +253,8 @@ from `infra/shop-harness/fly/`.
 
 **This section is written in two passes, the same as the page's first section.** What this run
 does not prove, immediately below, is written and committed before any in-region command runs.
-The comparison table and the per-scenario results are filled in from the actual run in this pull
-request's second commit.
+The comparison table and the per-scenario results are filled in from the actual run in a
+follow-up pull request.
 
 ### What this run does not prove
 
@@ -281,7 +281,7 @@ request's second commit.
 
 ### How this was produced
 
-_Filled in from the actual run (pull request's second commit)._
+_Filled in from the actual run (in a follow-up pull request)._
 
 ### Comparison table
 
@@ -299,4 +299,4 @@ _Filled in from the actual run (pull request's second commit)._
 
 ### Per-scenario results
 
-_Filled in from the actual run (pull request's second commit)._
+_Filled in from the actual run (in a follow-up pull request)._

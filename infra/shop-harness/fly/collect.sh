@@ -86,6 +86,8 @@ process.stdin.on("end", () => {
 '
 }
 
+# $(...) strips trailing newlines; run.ts writes the report with none, so
+# this never diverges from what sha256sum hashed on the machine.
 if ! CONTENT="$(fly machine exec "${MACHINE}" "cat ${REPORT_PATH}" --json -a "${APP}" | extract_stdout)"; then
   echo "FAIL: could not read ${REPORT_PATH} from machine ${MACHINE}" >&2
   exit 1

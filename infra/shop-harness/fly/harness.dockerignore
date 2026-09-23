@@ -18,6 +18,10 @@
 
 # Re-excluded even under a re-included directory: never ship a host build
 # into the image, and never let a stale .tsbuildinfo skip the in-image build.
+# Also never a .env* file: examples/shop/.env.local in the main checkout
+# holds a real token and database URL.
 **/node_modules
 **/dist
 **/*.tsbuildinfo
+**/.env*
+**/.env.local

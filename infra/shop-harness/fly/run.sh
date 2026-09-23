@@ -46,7 +46,7 @@ if [ "${PREFLIGHT_RC}" -ne 0 ]; then
 fi
 log "preflight-ok url=${API_URL}/api/ready status=${PREFLIGHT_STATUS}"
 
-node "${SHOP_ROOT}/dist/bin/migrate.js"
+node "${SHOP_ROOT}/dist/bin/migrate.js" || { echo "FAIL: migrate" >&2; exit 4; }
 log "migrate-done"
 
 WORST_EXIT=0
@@ -57,10 +57,12 @@ for scenario in ${KYU_HARNESS_SCENARIOS}; do
   if [ "${rc}" -gt "${WORST_EXIT}" ]; then
     WORST_EXIT="${rc}"
   fi
-  sha="$(sha256sum "${out}" | awk '{print $1}')"
-  printf '%s  %s\n' "${sha}" "$(basename "${out}")" > "${out}.sha256"
-  bytes="$(wc -c < "${out}" | tr -d ' ')"
-  log "report-written scenario=${scenario} bytes=${bytes} sha256=${sha} exit=${rc}"
+  if [ -f "${out}" ]; then
+    sha="$(sha256sum "${out}" | awk '{print $1}')"
+    printf '%s  %s\n' "${sha}" "$(basename "${out}")" > "${out}.sha256"
+    bytes="$(wc -c < "${out}" | tr -d ' ')"
+    log "report-written scenario=${scenario} bytes=${bytes} sha256=${sha} exit=${rc}"
+  fi
 done
 
 : > "${REPORTS_DIR}/done"

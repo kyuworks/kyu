@@ -108,6 +108,18 @@ assert_exit "preflight failure exits 3" 3 env \
   bash "${RUN_SH}"
 gate_test_record "preflight failure runs before migrate" "$(grep -q 'migrate.js' "${CALLS}" && echo 1 || echo 0)"
 
+# --- migrate failure exits 4 before any scenario runs ---
+: > "${CALLS}"
+FAKE_ENV=(FAKE_MIGRATE_EXIT=1)
+assert_exit "migrate failure exits 4" 4 env \
+  "PATH=${TMP}/bin:${PATH}" "FAKE_NODE_CALLS=${CALLS}" "KYU_HARNESS_REPORTS_DIR=${TMP}/reports" \
+  "KYU_HARNESS_SHOP_ROOT=${TMP}/shop-root" "KYU_SHOP_DATABASE_URL=db-secret-value" \
+  "HATCHET_CLIENT_TOKEN=token-secret-value" "HATCHET_CLIENT_API_URL=http://engine.example" \
+  "KYU_HARNESS_SCENARIOS=outbox-backlog tenant-load" "KYU_HARNESS_SIZE=report" "KYU_HARNESS_HOLD_SECONDS=0" \
+  "FAKE_MIGRATE_EXIT=1" \
+  bash "${RUN_SH}"
+gate_test_record "no scenario ran after migrate failure" "$(grep -q 'run.js' "${CALLS}" && echo 1 || echo 0)"
+
 # --- worst scenario exit code wins, with HOLD_SECONDS=0 ---
 : > "${CALLS}"
 FAKE_ENV=(FAKE_EXIT_OUTBOX_BACKLOG=1 FAKE_EXIT_TENANT_LOAD=2)

@@ -177,8 +177,10 @@ Fly connection string or a token back once set — the checks below use names-on
    credentials:
    `fly mpg create -o <fly-org> -n <shop-harness-db> -r syd --plan Basic --pg-major-version 17 --volume-size 10 >/dev/null`
 3. Confirm it reached `ready` with names only: `fly mpg list -o <fly-org>`.
-4. Validate the config: `fly config validate -c infra/shop-harness/fly/fly.toml -a <shop-harness-app> --strict`
-5. Validate the image on Fly's remote builder, with no machine created and no secret needed:
+4. Create the database inside the cluster: `fly mpg databases create <shop-cluster-id> -n kyu_shop_inregion`
+   — the managed Postgres user lacks `CREATEDB`, so `migrate` cannot create it itself.
+5. Validate the config: `fly config validate -c infra/shop-harness/fly/fly.toml -a <shop-harness-app> --strict`
+6. Validate the image on Fly's remote builder, with no machine created and no secret needed:
    `fly deploy . -c infra/shop-harness/fly/fly.toml --dockerfile infra/shop-harness/fly/Dockerfile --ignorefile infra/shop-harness/fly/harness.dockerignore --build-arg KYU_HARNESS_COMMIT_SHA="$(git rev-parse HEAD)" --build-only -a <shop-harness-app>`
 
 **The CTO's steps, in order** (needed once, before the first real run):
@@ -212,8 +214,7 @@ create database "<name>"`, which names the database, not the credentials.
 **A `fly deploy` only starts a run the first time, when it creates the machine.** On every deploy
 after that, the machine already exists and is `stopped` (restart policy `never`); a deploy to an
 existing machine only updates its config (including applying any newly staged secret) and leaves
-it `stopped` — confirmed three times in the #166 session, including once where a deploy alone was
-mistaken for a run and produced nothing. **`fly machine start <id> -a <shop-harness-app>` is the
+it `stopped`. **`fly machine start <id> -a <shop-harness-app>` is the
 step that actually executes `run.sh` again.** There is no separate "create" step once the app and
 cluster above exist.
 

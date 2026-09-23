@@ -32,4 +32,17 @@ describe('assertShopDatabaseName', () => {
     expect(error).toBeInstanceOf(InvalidDatabaseUrlError)
     expect(error?.cause).toBeInstanceOf(TypeError)
   })
+
+  it('never puts the raw url in the error message', () => {
+    const badUrl = 'not a url with s3cret-token-abc123 in it'
+    let error: InvalidDatabaseUrlError | undefined
+    try {
+      assertShopDatabaseName(badUrl)
+    } catch (caught) {
+      if (caught instanceof InvalidDatabaseUrlError) error = caught
+      else throw caught
+    }
+    expect(error).toBeInstanceOf(InvalidDatabaseUrlError)
+    expect(error?.message).not.toContain('s3cret-token-abc123')
+  })
 })
