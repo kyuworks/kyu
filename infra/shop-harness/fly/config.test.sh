@@ -19,10 +19,10 @@ assert_output_lacks "no [http_service] block" "[http_service]" cat "${FLY_TOML}"
 assert_output_contains "restart policy is never" "policy = 'never'" cat "${FLY_TOML}"
 assert_output_contains "primary region is syd" "primary_region = 'syd'" cat "${FLY_TOML}"
 assert_output_contains "vm size is performance-2x" "size = 'performance-2x'" cat "${FLY_TOML}"
-assert_output_contains "HATCHET_CLIENT_HOST_PORT names .internal" ".internal" bash -c \
-  "grep HATCHET_CLIENT_HOST_PORT '${FLY_TOML}'"
-assert_output_contains "HATCHET_CLIENT_API_URL names .internal" ".internal" bash -c \
-  "grep HATCHET_CLIENT_API_URL '${FLY_TOML}'"
+assert_output_contains "HATCHET_CLIENT_HOST_PORT is the engine's internal address" \
+  "<engine-app>.internal:7077" bash -c "grep HATCHET_CLIENT_HOST_PORT '${FLY_TOML}'"
+assert_output_contains "HATCHET_CLIENT_API_URL is the engine's internal address" \
+  "http://<engine-app>.internal:8888" bash -c "grep HATCHET_CLIENT_API_URL '${FLY_TOML}'"
 assert_output_contains "TLS strategy is none" "HATCHET_CLIENT_TLS_STRATEGY = 'none'" cat "${FLY_TOML}"
 
 # --- Dockerfile ---
@@ -34,5 +34,10 @@ assert_output_contains "fails the build with no commit sha" 'test -n "$KYU_HARNE
 # --- harness.dockerignore ---
 assert_output_contains "re-includes infra/hatchet/compose.yaml" "infra/hatchet/compose.yaml" cat "${IGNOREFILE}"
 assert_output_contains "re-includes run.sh" "infra/shop-harness/fly/run.sh" cat "${IGNOREFILE}"
+assert_output_contains "re-excludes .env files" "**/.env*" cat "${IGNOREFILE}"
+REINCLUDE_LINE="$(grep -n '^!examples/shop/\*\*$' "${IGNOREFILE}" | head -1 | cut -d: -f1)"
+ENV_EXCLUDE_LINE="$(grep -n '^\*\*/\.env\*$' "${IGNOREFILE}" | head -1 | cut -d: -f1)"
+gate_test_record "env re-exclude comes after the examples/shop/** re-include" \
+  "$([ -n "${REINCLUDE_LINE}" ] && [ -n "${ENV_EXCLUDE_LINE}" ] && [ "${ENV_EXCLUDE_LINE}" -gt "${REINCLUDE_LINE}" ] && echo 0 || echo 1)"
 
 gate_test_finish
