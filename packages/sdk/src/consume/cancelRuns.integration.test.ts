@@ -1,11 +1,14 @@
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { createEnvelope, defineCommand, defineEvent, toEnvelopeMetadata, uuidv7 } from '@kyuworks/schemas'
 import type { Envelope, MessageData, MessageDefinition, MessageSchema } from '@kyuworks/schemas'
+import { Client } from 'pg'
 import { z } from 'zod'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { eventScope } from '../eventScope.js'
 import { createHatchetClient } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
+import { createPublisher } from '../outbox/publish.js'
+import { startRelay } from '../relay/relay.js'
 import { cancelRunsFor } from './cancelRuns.js'
 import { durable } from './durable.js'
 import type { DurableHandlerContext } from './durable.js'
@@ -102,6 +105,13 @@ describe('cancelRunsFor: durable and command runs', () => {
     version: 1,
     data: z.object({ seq: z.number() }),
   })
+  const resumeTrigger = defineEvent({
+    name: 'kyu.cancelruns.resume',
+    version: 1,
+    data: z.object({ seq: z.number() }),
+  })
+
+  const resumed: Array<{ id: string; tenantId: string | null }> = []
 
   let worker: KyuWorker | undefined
 
@@ -125,8 +135,14 @@ describe('cancelRunsFor: durable and command runs', () => {
       name: 'cancel-command',
       handler: (ctx: HandlerContext<{ seq: number }>) => sleepAbortable(120_000, ctx.signal),
     })
+    const resumeSubscription = subscribe(hatchet, resumeTrigger, {
+      name: 'cancel-resume',
+      handler: async (ctx: HandlerContext<{ seq: number }>) => {
+        resumed.push({ id: ctx.envelope.id, tenantId: ctx.envelope.tenantId })
+      },
+    })
     worker = await createWorker(hatchet, 'cancel-runs-worker', {
-      subscriptions: [sleeper, waiter, commandSubscription],
+      subscriptions: [sleeper, waiter, commandSubscription, resumeSubscription],
       durableSlots: 5,
       slots: 5,
       stopTimeoutMs: 10_000,
@@ -229,4 +245,67 @@ describe('cancelRunsFor: durable and command runs', () => {
     })
     expect(cancelled).toEqual([])
   })
+
+  it('flow 6: given the outbox, a cancel also cancels the scheduled continuation, so the relay never ships it (#180)', async () => {
+    const db = new Client({ connectionString: process.env['KYU_TEST_DATABASE_URL'] })
+    await db.connect()
+    const publisher = createPublisher({ source: 'sdk.test' })
+    const tenantId = randomUUID()
+    try {
+      const correlationId = uuidv7()
+      const parked = await push(sleeperTrigger, { seq: 6 }, correlationId)
+      await waitForOutcomes(parked.id, (o) => o.at(0)?.status === 'running', 30_000)
+
+      // The hand-off: a continuation under the same correlation, due in an hour; and another run's row.
+      const inAnHour = new Date(Date.now() + 3_600_000)
+      const continuation = await publisher.publish(
+        db,
+        resumeTrigger,
+        { seq: 6 },
+        { tenantId, correlationId, causationId: parked.id, publishAt: inAnHour },
+      )
+      const other = await publisher.publish(db, resumeTrigger, { seq: 7 }, { tenantId, publishAt: inAnHour })
+
+      await db.query('BEGIN')
+      await cancelRunsFor(
+        hatchet,
+        { key: 'correlationId', id: correlationId, caller: 'runs.cancelForCorrelation' },
+        { outbox: db },
+      )
+      await db.query('COMMIT')
+      await waitForOutcomes(parked.id, (o) => o.at(0)?.status === 'cancelled', 20_000)
+
+      await db.query('UPDATE kyu_outbox SET publish_at = now() WHERE id = ANY($1::uuid[])', [
+        `{${continuation.id},${other.id}}`,
+      ])
+      const relay = startRelay({ db, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
+      const tick = await relay.tick()
+      await relay.stop()
+      expect(tick.pushed).toBe(1)
+
+      const deadline = Date.now() + 20_000
+      while (!resumed.some((entry) => entry.id === other.id) && Date.now() < deadline) await sleep(200)
+      await sleep(3_000)
+      expect(resumed).toEqual([{ id: other.id, tenantId }])
+
+      const rows = z
+        .array(z.object({ id: z.uuid(), published_at: z.date().nullable(), cancelled_at: z.date().nullable() }))
+        .parse(
+          (await db.query('SELECT id, published_at, cancelled_at FROM kyu_outbox WHERE id = $1', [continuation.id]))
+            .rows,
+        )
+      expect(rows[0]?.published_at).toBeNull()
+      expect(rows[0]?.cancelled_at).toBeInstanceOf(Date)
+
+      await db.query('BEGIN')
+      await cancelRunsFor(
+        hatchet,
+        { key: 'correlationId', id: correlationId, caller: 'runs.cancelForCorrelation' },
+        { outbox: db },
+      )
+      await db.query('COMMIT')
+    } finally {
+      await db.end()
+    }
+  }, 90_000)
 })

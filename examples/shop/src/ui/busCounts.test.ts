@@ -336,7 +336,7 @@ describe('readBusCounts', () => {
     expect(counts.outbox).toEqual({ published: 5, waitingForRelay: 3, shipped: 1, retired: 1, scheduled: 0 })
     const producerQuery = queries.at(0)
     expect(producerQuery?.text).toContain(
-      'FILTER (WHERE published_at IS NULL AND dead_at IS NULL AND publish_at <= now())',
+      'FILTER (WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND publish_at <= now())',
     )
     expect(producerQuery?.text).toContain('FILTER (WHERE dead_at IS NOT NULL)')
   })

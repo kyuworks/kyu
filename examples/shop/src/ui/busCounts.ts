@@ -98,9 +98,9 @@ async function readProducerTotals(db: CountsSource): Promise<ProducerTotalsRow[]
   const result = await db.query(
     `SELECT coalesce(envelope->>'source', '(unknown)') AS source,
             count(*)::int AS published,
-            count(*) FILTER (WHERE published_at IS NULL AND dead_at IS NULL AND publish_at <= now())::int AS waiting,
+            count(*) FILTER (WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND publish_at <= now())::int AS waiting,
             count(*) FILTER (WHERE dead_at IS NOT NULL)::int AS retired,
-            count(*) FILTER (WHERE published_at IS NULL AND dead_at IS NULL AND publish_at > now())::int AS scheduled
+            count(*) FILTER (WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND publish_at > now())::int AS scheduled
      FROM kyu_outbox
      GROUP BY 1
      ORDER BY 1`,

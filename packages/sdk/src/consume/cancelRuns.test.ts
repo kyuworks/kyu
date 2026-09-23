@@ -2,6 +2,7 @@ import { uuidv7 } from '@kyuworks/schemas'
 import { describe, expect, it } from 'vitest'
 import { KyuError } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
+import type { Queryable, QueryParam } from '../db/queryable.js'
 import { cancelRunsFor } from './cancelRuns.js'
 import type { RunsCanceller } from './cancelRuns.js'
 import { runDetailFixture } from './__tests__/runDetailFixture.js'
@@ -253,5 +254,78 @@ describe('cancelRunsFor', () => {
 
     expect(cancelCalls()).toEqual([{ ids: ['018f0000-0000-7000-8000-000000000002'] }])
     expect(cancelled.map((outcome) => outcome.status)).toEqual(['running'])
+  })
+})
+
+interface OutboxCall {
+  text: string
+  params: readonly QueryParam[]
+  engineCancelsBefore: number
+}
+
+interface RecordingOutbox {
+  outbox: Queryable
+  calls: OutboxCall[]
+}
+
+// Records each statement and how many engine cancels had happened by then.
+function recordingOutbox(engineCancels: () => number, failWith?: Error): RecordingOutbox {
+  const calls: OutboxCall[] = []
+  const outbox: Queryable = {
+    query(text, params) {
+      calls.push({ text, params, engineCancelsBefore: engineCancels() })
+      if (failWith !== undefined) return Promise.reject(failWith)
+      return Promise.resolve({ rows: [], rowCount: 1 })
+    },
+  }
+  return { outbox, calls }
+}
+
+describe('cancelRunsFor with the caller’s outbox (#180)', () => {
+  it('cancels the scheduled rows under the correlation id, after the engine cancel', async () => {
+    const correlationId = uuidv7()
+    const { canceller, cancelCalls } = fakeRunsCanceller('ns_', [fixtureRow({ workflowName: 'ns_run-workflow' })])
+    const { outbox, calls } = recordingOutbox(() => cancelCalls().length)
+
+    await cancelRunsFor(
+      canceller,
+      { key: 'correlationId', id: correlationId, caller: 'runs.cancelForCorrelation' },
+      { outbox },
+    )
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.text).toContain('SET cancelled_at = now()')
+    expect(calls[0]?.params).toEqual(['correlationId', correlationId])
+    expect(calls[0]?.engineCancelsBefore).toBe(1)
+  })
+
+  it('a cancel by envelope id takes the rows that envelope caused, even with no run on the engine', async () => {
+    const envelopeId = uuidv7()
+    const { canceller, cancelCalls } = fakeRunsCanceller('ns_', [])
+    const { outbox, calls } = recordingOutbox(() => cancelCalls().length)
+
+    await cancelRunsFor(canceller, { key: 'envelopeId', id: envelopeId, caller: 'runs.cancelForEnvelope' }, { outbox })
+
+    expect(cancelCalls()).toEqual([])
+    expect(calls.map((call) => call.params)).toEqual([['causationId', envelopeId]])
+  })
+
+  it('leaves the outbox untouched when the engine cancel fails', async () => {
+    const { canceller, cancelCalls } = fakeRunsCanceller('ns_', [fixtureRow()], new Error('engine down'))
+    const { outbox, calls } = recordingOutbox(() => cancelCalls().length)
+
+    await expect(
+      cancelRunsFor(canceller, { key: 'correlationId', id: uuidv7(), caller: 'runs.cancelForCorrelation' }, { outbox }),
+    ).rejects.toThrow(KyuError)
+    expect(calls).toEqual([])
+  })
+
+  it('reports an outbox failure as a KyuError naming the caller', async () => {
+    const { canceller, cancelCalls } = fakeRunsCanceller('ns_', [])
+    const { outbox } = recordingOutbox(() => cancelCalls().length, new Error('connection lost'))
+
+    await expect(
+      cancelRunsFor(canceller, { key: 'correlationId', id: uuidv7(), caller: 'runs.cancelForCorrelation' }, { outbox }),
+    ).rejects.toThrow('runs.cancelForCorrelation: could not cancel scheduled outbox rows')
   })
 })

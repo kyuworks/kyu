@@ -224,13 +224,14 @@ CREATE TABLE kyu_outbox (
   dead_at       timestamptz,                -- set when the relay gives up on a row whose envelope never parses
   attempts      int NOT NULL DEFAULT 0,
   last_error    text,
+  cancelled_at  timestamptz,                -- set when a runs cancel, given the caller's transaction, cancels a row not yet due
   CONSTRAINT kyu_outbox_name_matches_envelope CHECK (name = envelope->>'name')
 );
-CREATE INDEX kyu_outbox_pending_idx ON kyu_outbox (publish_at, created_at) WHERE published_at IS NULL AND dead_at IS NULL;
+CREATE INDEX kyu_outbox_pending_idx ON kyu_outbox (publish_at, created_at) WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL;
 CREATE INDEX kyu_outbox_dead_idx ON kyu_outbox (dead_at) WHERE dead_at IS NOT NULL;
 ```
 
-This is the cumulative shape. `dead_at` and the two index definitions come from the second migration file, `publish_at` and the pending index's current definition from the third, not the first; migration files are immutable.
+This is the cumulative shape. `dead_at` and the two index definitions come from the second migration file, `publish_at` and the pending index's definition after it from the third, and `cancelled_at` and the pending index's current definition from the fourth, not the first; migration files are immutable.
 
 The same migration creates `kyu_processed` (section 9.1):
 
@@ -252,7 +253,7 @@ CREATE INDEX kyu_processed_processed_at_idx ON kyu_processed (processed_at);
 
 A loop that, every tick:
 
-1. Claims up to 100 pending rows with a single `UPDATE … SET claimed_at = now(), claimed_by = $workerId WHERE id IN (SELECT … ORDER BY created_at LIMIT 100 FOR UPDATE SKIP LOCKED) RETURNING *`, stamping the claim on the rows it takes. A row is pending when `published_at IS NULL`, its `dead_at` is unset, its `publish_at` has arrived, and its `claimed_at` is either unset or older than the relay's stale-claim window; any other in-progress claim is invisible to `SKIP LOCKED`.
+1. Claims up to 100 pending rows with a single `UPDATE … SET claimed_at = now(), claimed_by = $workerId WHERE id IN (SELECT … ORDER BY created_at LIMIT 100 FOR UPDATE SKIP LOCKED) RETURNING *`, stamping the claim on the rows it takes. A row is pending when `published_at IS NULL`, its `dead_at` and `cancelled_at` are unset, its `publish_at` has arrived, and its `claimed_at` is either unset or older than the relay's stale-claim window; any other in-progress claim is invisible to `SKIP LOCKED`.
 2. Groups the claimed rows by message name and calls Hatchet `events.bulkPush` once per name.
 3. Marks the pushed rows' `published_at = now()`, scoped to rows this relay instance still owns (`claimed_by = $workerId`). On failure it increments `attempts`, records `last_error`, and releases the claim (`claimed_at`/`claimed_by` cleared) so the row is claimable again. A claimed row whose `envelope` column does not parse cannot be shipped by any later attempt (the column is written once and never updated), so it records `last_error`, increments `attempts`, and on the third such claim sets `dead_at`. The row is then invisible to the claim, keeps its `attempts` and `last_error` for inspection, and is deleted by `pruneRetired`. A push failure is not retired: the engine being unavailable is transient, and a ceiling there would discard deliverable messages during an outage.
 4. Polls every 250 ms when idle; the relay re-ticks immediately only when the last batch was full and fully pushed. A batch with any push failure backs off (doubling, capped at 30 s) and alerts through `onError` instead.
@@ -272,19 +273,25 @@ The relay preserves insertion order within one relay instance. Cross-instance or
 **Oldest pending row.** Alert when older than 60 seconds; retired rows excluded:
 
 ```sql
-SELECT min(created_at) AS oldest_pending FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND publish_at <= now();
+SELECT min(created_at) AS oldest_pending FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND publish_at <= now();
 ```
 
 **Rows retrying too long.** Alert when any row is past 10 attempts (push failures retry for ever by design):
 
 ```sql
-SELECT id, name, attempts, last_error FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND publish_at <= now() AND attempts > 10;
+SELECT id, name, attempts, last_error FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND publish_at <= now() AND attempts > 10;
 ```
 
 **Scheduled rows.** Rows waiting on purpose for a future `publish_at`; never late, so never alerted on:
 
 ```sql
-SELECT id, name, publish_at FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND publish_at > now() ORDER BY publish_at;
+SELECT id, name, publish_at FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND publish_at > now() ORDER BY publish_at;
+```
+
+**Cancelled rows.** Scheduled rows a cancel stopped; never alerted on:
+
+```sql
+SELECT id, name, publish_at, cancelled_at FROM kyu_outbox WHERE cancelled_at IS NOT NULL ORDER BY cancelled_at DESC;
 ```
 
 **Retired rows.** The relay's own dead letter; alert on any row. A retired row is a message that will never be delivered, and a permanent gap in its key's order:
@@ -347,7 +354,7 @@ A durable handler waits on several message names at once with `waitForAny([{ def
 
 ### 9.6 Cancelling a run
 
-A run is cancelled through the SDK, never through the engine client: `kyu.runs.cancelForEnvelope(envelopeId)` for one message, `kyu.runs.cancelForCorrelation(correlationId)` for a whole workflow run — the durable run and the command runs it published. Both look the runs up by the engine's own metadata and cancel them by run id, so they never reach a run in another namespace or under another correlation id. Both return the runs they cancelled, and both are safe to call twice: the engine ignores a cancel for a run that has already finished.
+A run is cancelled through the SDK, never through the engine client: `kyu.runs.cancelForEnvelope(envelopeId)` for one message, `kyu.runs.cancelForCorrelation(correlationId)` for a whole workflow run — the durable run and the command runs it published. Both look the runs up by the engine's own metadata and cancel them by run id, so they never reach a run in another namespace or under another correlation id. Both return the runs they cancelled, and both are safe to call twice: the engine ignores a cancel for a run that has already finished. Given the caller's transaction as `outbox`, both also cancel outbox rows not yet due for the same id (section 8.5).
 
 A whole namespace is cancelled with `kyu.runs.cancelUnsettledInNamespace({ since })` — every run it still holds queued or running. This is an operational broom for a namespace nothing will serve again, such as a test lane; it is not part of normal delivery.
 
