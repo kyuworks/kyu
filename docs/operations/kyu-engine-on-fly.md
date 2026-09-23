@@ -15,7 +15,8 @@ stopped and kept as the rollback. Cluster plan: Launch, dedicated CPU (Basic unt
 **Database plan.** Run the engine's cluster on Launch or larger. Hatchet Lite keeps its internal
 queue in this database, so the plan sets the engine's ceiling under load: on Starter the
 report-size `tenant-load` missed both windows with hundreds of queue errors in the engine log;
-on Launch, with nothing else changed, it passed with none
+with only the database plans changed (both clusters, engine's and shop's, moved from Starter to
+Launch together), it passed with none
 (`docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`, issues #173 and #175). A cluster
 created by the command in First deploy starts on Basic; the plan is changed in the Fly
 dashboard.

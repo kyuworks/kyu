@@ -590,8 +590,8 @@ managed Postgres clusters from Starter to Launch, a plan with dedicated CPU: the
 
 - **This list was written after the run**, unlike the earlier sections on this page.
 - **Both clusters changed at once.** The engine's database and the shop's database both moved to
-  Launch, so this run cannot say which of the two mattered. The engine log (below) points at the
-  engine's side.
+  Launch, so this run cannot say which of the two mattered. The engine log (below) suggests only
+  that the engine's side is involved; it does not rule out the shop's cluster.
 - **One run.** Not repeated, not averaged.
 - **No CPU or database metrics were read.** That Launch gives dedicated CPU is the plan's own
   description, not something measured here.
@@ -601,7 +601,9 @@ managed Postgres clusters from Starter to Launch, a plan with dedicated CPU: the
 
 ### What was done
 
-A smoke-size `tenant-load` ran first, at 10:47:42Z, namespace `inregion175s_`: PASS, 83,746ms
+A smoke-size `tenant-load` ran first, at 10:47:45Z (`harness-tail-175.log`'s `scenario-done` line
+gives `ts=10:49:09.155Z` and `durationMs=83746`, so start is 10:47:45.409Z; the `migrate-done` line
+immediately before reads 10:47:45.005Z), namespace `inregion175s_`: PASS, 83,746ms
 (plain 18,762ms, durable 18,768ms), 200 orders, no failures (`report-175-smoke.json`). The
 report-size run started at 10:54:22Z, namespace `inregion175_`, from the image built for #173 at
 commit `15542eb` (harness machine `<shop-harness-machine-id>`), both scenarios in one machine start:
@@ -617,7 +619,10 @@ window. That is about 80 handler rows a second (25,000 rows in 314 seconds), or 
 second. This is the first Fly run on this page to meet both windows. On the Starter plan (#173)
 the same scenario missed both, at 2,422,223ms; on Basic with the smaller engine (#166) it missed
 the durable window, at 2,300,934ms. Report sha256
-`42fc7ec8bdb00c66878814557f074b4d3ecbfd9a82a135ade7498c54d9ea211f`, stored whole.
+`42fc7ec8bdb00c66878814557f074b4d3ecbfd9a82a135ade7498c54d9ea211f` (of the report as collected,
+matching the harness's own `report-written` log line, as in earlier runs on this page), stored
+whole; the stored copy under `docs/proofs/data/` carries a trailing newline the collector's file
+does not, so its own sha256 differs.
 
 ### `outbox-backlog`
 
@@ -637,9 +642,11 @@ not make batches faster; a worse one (Starter) made them slower. That suggests t
 ceiling is the relay's one-batch-at-a-time push or the engine's intake of pushed events, not the
 database plan. This run does not tell those two apart.
 
-Report sha256 `a8e41de0d964e567377ba4ce59a3060f299d4f25445b770b70483dd48be01c40`, 87,568 bytes.
+Report sha256 `a8e41de0d964e567377ba4ce59a3060f299d4f25445b770b70483dd48be01c40` (of the report as
+collected, matching the #173 precedent), 87,568 bytes.
 Stored copy capped `{ shown: 21, total: 601 }` (20 pending rows plus the aggregate line, the `#164`
-pattern).
+pattern); its own sha256 differs from the one above because the cap script drops rows and adds a
+trailing newline.
 
 ### Engine log
 
@@ -647,9 +654,15 @@ Machine `<engine-machine-id>`, 10:54:22Z to 11:07:00Z, counted with `grep` on th
 codes removed: 3,805 lines, every one a warning (`WRN`), **no `ERR` line**. By kind: 1,677
 `concurrency strategy … took longer than 100ms`; 727 `long transaction`; 353 `queue took longer
 than 100ms to process and flush items`; 236 `flushing items to database took longer than
-100ms`; 76 `processing internal event matches`; 54 `replenishing slots took longer than`; 50
-`listing actions for workers`; 30 `connecting to localhost:7077 without TLS`; the rest fewer
-than 12 each. `tenant-load` accounts for 2,769 of them, `outbox-backlog` for 1,036. None of the
+100ms (N items in Xms)`; 76 `processing internal event matches`; 54 `replenishing slots took
+longer than`; 50 `listing actions for workers`; 30 `connecting to localhost:7077 without TLS`.
+Four more kinds exceed 12: 237 `flushing N items to database took longer than 100ms`
+(a second, distinct message from the 236 above — this one carries `ack_duration`/`item_count`
+fields instead of the `(N items in Xms)` suffix); 219 `queue processing took longer than
+100ms`; 81 `marking queue items processed took longer than 100ms`; 38 `listing N queue items
+for queue …`. The remaining 27 lines are three smaller kinds: 14 `processing batch of N queue
+items took longer than 100ms`, 11 `assigning queue items took longer than 100ms`, 2 `long lock`.
+`tenant-load` accounts for 2,769 of them, `outbox-backlog` for 1,036. None of the
 #173 error kinds appears: no `failed to send callback completed message`, `error adding message
 for queue`, `error binding queue`, `context deadline exceeded`, or connection-slot error. The one
 `ERR` line in the whole tail (`error replenishing slots … context deadline exceeded`) is at
@@ -657,7 +670,7 @@ for queue`, `error binding queue`, `context deadline exceeded`, or connection-sl
 
 ### Harness log
 
-From the smoke run's start (10:47:41Z) to the end: no `ERROR` line and no `invalid auth token`
+From the smoke run's start (10:47:45Z, see above) to the end: no `ERROR` line and no `invalid auth token`
 line; 2 heartbeat-delay warnings. The earlier lines in the saved tail belong to the #173 run.
 #173 had one `invalid auth token` line during a run whose engine log showed queue timeouts; this
 run had neither. That fits the token error being a symptom of the engine's queue falling behind,
