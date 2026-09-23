@@ -1,0 +1,29 @@
+{
+  "commitSha": "15542eb42d14840690501f5004958e8b498fcd1e",
+  "machine": {
+    "platform": "linux",
+    "arch": "x64",
+    "cpuCount": 2,
+    "totalMemBytes": 4106903552
+  },
+  "engineVersion": "hatchet-lite:v0.107.0",
+  "reportBuiltAt": "2026-09-23T12:34:26.067Z",
+  "scenarios": [
+    {
+      "name": "outbox-backlog",
+      "passed": true,
+      "durationMs": 111221,
+      "observation": {
+        "backlogSize": 50000,
+        "drained": true,
+        "drainMs": 47431,
+        "ratePerSecond": 1054,
+        "peakPending": 50000,
+        "peakOldestSeconds": 47.021864,
+        "sampleCount": 48,
+        "lagSeriesJson": "[{\"atMs\":17,\"pending\":50000,\"oldestSeconds\":2.597954},{\"atMs\":1031,\"pending\":49000,\"oldestSeconds\":3.510345},{\"atMs\":2044,\"pending\":47900,\"oldestSeconds\":4.5238},{\"atMs\":3059,\"pending\":46700,\"oldestSeconds\":5.538226},{\"atMs\":4072,\"pending\":45300,\"oldestSeconds\":6.550959},{\"atMs\":5086,\"pending\":44100,\"oldestSeconds\":7.32175},{\"atMs\":6100,\"pending\":42800,\"oldestSeconds\":8.335858},{\"atMs\":7114,\"pending\":41400,\"oldestSeconds\":9.348587},{\"atMs\":8132,\"pending\":40200,\"oldestSeconds\":10.365184},{\"atMs\":9154,\"pending\":39100,\"oldestSeconds\":11.176592},{\"atMs\":10178,\"pending\":37800,\"oldestSeconds\":12.198227},{\"atMs\":11201,\"pending\":36300,\"oldestSeconds\":13.222354},{\"atMs\":12214,\"pending\":35000,\"oldestSeconds\":14.245592},{\"atMs\":13225,\"pending\":33700,\"oldestSeconds\":15.078908},{\"atMs\":14236,\"pending\":32400,\"oldestSeconds\":16.089187},{\"atMs\":15246,\"pending\":31300,\"oldestSeconds\":17.101499},{\"atMs\":16257,\"pending\":30000,\"oldestSeconds\":18.111778},{\"atMs\":17268,\"pending\":28600,\"oldestSeconds\":18.94542},{\"atMs\":18300,\"pending\":27400,\"oldestSeconds\":19.976476},{\"atMs\":19305,\"pending\":26200,\"oldestSeconds\":20.987156},{\"atMs\":20312,\"pending\":24700,\"oldestSeconds\":21.670718},{\"atMs\":21317,\"pending\":23300,\"oldestSeconds\":22.676349},{\"atMs\":22321,\"pending\":22000,\"oldestSeconds\":23.681233},{\"atMs\":23328,\"pending\":20800,\"oldestSeconds\":24.685571},{\"atMs\":24333,\"pending\":19300,\"oldestSeconds\":25.506807},{\"atMs\":25339,\"pending\":17900,\"oldestSeconds\":26.512375},{\"atMs\":26344,\"pending\":17000,\"oldestSeconds\":27.518091},{\"atMs\":27348,\"pending\":15600,\"oldestSeconds\":28.52223},{\"atMs\":28352,\"pending\":14300,\"oldestSeconds\":29.307589},{\"atMs\":29357,\"pending\":13000,\"oldestSeconds\":30.312518},{\"atMs\":30361,\"pending\":12000,\"oldestSeconds\":31.317069},{\"atMs\":31365,\"pending\":11000,\"oldestSeconds\":32.321394},{\"atMs\":32369,\"pending\":10300,\"oldestSeconds\":33.325629},{\"atMs\":33374,\"pending\":9200,\"oldestSeconds\":34.145142},{\"atMs\":34378,\"pending\":9000,\"oldestSeconds\":35.149526},{\"atMs\":35383,\"pending\":8800,\"oldestSeconds\":36.154386},{\"atMs\":36387,\"pending\":8700,\"oldestSeconds\":37.1586},{\"atMs\":37391,\"pending\":8600,\"oldestSeconds\":38.16294},{\"atMs\":38397,\"pending\":7600,\"oldestSeconds\":39.168909},{\"atMs\":39400,\"pending\":6500,\"oldestSeconds\":40.172022},{\"atMs\":40405,\"pending\":6000,\"oldestSeconds\":41.176834},{\"atMs\":41412,\"pending\":5100,\"oldestSeconds\":42.182604},{\"atMs\":42415,\"pending\":3800,\"oldestSeconds\":43.008683},{\"atMs\":43418,\"pending\":2800,\"oldestSeconds\":44.012072},{\"atMs\":44422,\"pending\":2400,\"oldestSeconds\":45.015604},{\"atMs\":45425,\"pending\":1500,\"oldestSeconds\":46.018611},{\"atMs\":46428,\"pending\":700,\"oldestSeconds\":47.021864},{\"atMs\":47431,\"pending\":0,\"oldestSeconds\":0}]"
+      },
+      "failures": []
+    }
+  ]
+}

@@ -425,6 +425,7 @@ Commands use the same `publish` and `subscribe` calls with `kind: 'command'`; th
 | Concern | Release one |
 |---|---|
 | Runtime | `hatchet-lite` as a Fly app per environment, region `syd`, one machine, no autostop; dev is `<engine-app>`, machine size `performance-2x` since 2026-09-23 (issue #173; was `performance-1x`); Fly org `<fly-org>`; deployed 2026-09-23 NZ time (the engine's own logged timestamps are UTC and read 2026-09-22), one machine, dedicated IPv4, health check on `/api/ready` |
+| Internal queue | dev: RabbitMQ (`<rabbitmq-app>`, `rabbitmq:3.13.7`, one `performance-1x` machine, private network only) since 2026-09-23 (issue #176). Only the local Docker stack still uses the Postgres-backed queue: on Fly it never met `outbox-backlog`'s window on any database plan tried, and on RabbitMQ both load scenarios met theirs (`docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`). Keeping RabbitMQ adds a datastore family (N1); the CTO decides |
 | Relay | One sidecar process per project per environment, on a small dedicated pool; supervised, restarted on exit; in-process only for a single-process project |
 | Database | Fly Managed Postgres, one cluster per environment, session-mode connection; not a project's own database or its transaction pooler; dev deployed as `<engine-db>` (Launch, dedicated CPU, since 2026-09-23, was Basic then Starter; with only the database plans changed on both this cluster and the shop's, the load run passed at this plan, issue #175; Postgres 17, 10 GB, `syd`), direct session-mode connection, no pooler |
 | Config | Every secret name and where its value comes from: `infra/hatchet/fly/secrets.sh`; deploy and operate steps: `docs/operations/kyu-engine-on-fly.md` |
@@ -432,7 +433,7 @@ Commands use the same `publish` and `subscribe` calls with `kind: 'command'`; th
 | Upgrades | Pin the image tag (dev is on `v0.107.0`); runbook: snapshot, upgrade dev, soak, staging, production; Hatchet migrates its schema on start |
 | Retention | Configure run and event retention to 30 days in production, 7 in dev — still deferred: this engine version does expose a data retention controller (`dataRetentionPeriod`, found by inspecting the deployed binary), but it is set per tenant, not by a global secret or env var, and choosing the actual period plus whether it needs a dashboard or API call is an open decision, not done in this deploy |
 | Monitoring | Hatchet failure alerts to Slack; scrape engine metrics if exposed; outbox-lag alert from each producer — still deferred: the deployed engine's own `/api/v1/meta` reports `"observabilityEnabled":false,"prometheusServerEnabled":false`, so there is nothing to scrape yet; no Slack alert or outbox-lag alert was wired up in this deploy either |
-| Scaling path | Compose or Helm topology with separate engine replicas and RabbitMQ when N4 is exceeded; no code change |
+| Scaling path | Compose or Helm topology with separate engine replicas and RabbitMQ when N4 is exceeded; no code change; dev already runs hatchet-lite on RabbitMQ (issue #176) |
 
 Harness numbers against this deployment: `docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`
 

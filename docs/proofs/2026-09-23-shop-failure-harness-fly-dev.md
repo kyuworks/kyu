@@ -352,19 +352,19 @@ silently:**
 
 ### Comparison table
 
-| | Laptop only | Laptop to Fly | In-region | In-region, performance-2x + Starter | In-region, performance-2x + Launch |
-|---|---|---|---|---|---|
-| Harness, relay, worker run | laptop (NZ) | laptop (NZ) | `<shop-harness-app>`, `syd` | `<shop-harness-app>`, `syd` | `<shop-harness-app>`, `syd` |
-| Machine size | laptop spec | laptop spec | `performance-2x` (2 dedicated vCPU, 4 GB) | `performance-2x` | `performance-2x` |
-| Shop database | local Docker Postgres | local Docker Postgres | `<shop-harness-db>`, Basic, `syd` | `<shop-harness-db>`, Starter | `<shop-harness-db>`, Launch |
-| Engine | local compose v0.107.0 | `<engine-app>`, `performance-1x` | same | `<engine-app>` machine `<engine-machine-id>`, `performance-2x`, database Starter | same machine `<engine-machine-id>`, `performance-2x`, database Launch |
-| Network path | loopback | NZ→`syd` public edge, TLS, median 143ms | `syd` internal 6PN, plaintext | same | same |
-| `outbox-backlog` | PASS, 50,221ms, 996 rows/sec | FAIL, 301,762ms, ~162 rows/sec | FAIL, 304,063ms, ~161 rows/sec | FAIL, 367,820ms, ~56 rows/sec adjusted for teardown (run alone, 10:04–10:10Z) | FAIL, 365,169ms, ~162 rows/sec adjusted for teardown; 600 of 50,000 rows left |
-| `tenant-load` | PASS, 221,426ms, 50/200 slots | FAIL, 1,813,911ms | FAIL, 2,300,934ms | FAIL, 2,422,223ms; plain window missed; durable window missed | **PASS**, 378,707ms; plain window met at 314,305ms, durable at 314,372ms; ~80 handler rows/sec |
-| Commit | — | `caa4dc1...-dirty` | `9c9ae54` | `15542eb` | `15542eb` (same image as #173) |
-| JSON file | `docs/proofs/data/report-155-*.json` | `docs/proofs/data/report-162b-*.json` | `docs/proofs/data/report-166-*.json` | `docs/proofs/data/report-173-*.json` | `docs/proofs/data/report-175-*.json` |
+| | Laptop only | Laptop to Fly | In-region | In-region, performance-2x + Starter | In-region, performance-2x + Launch | In-region, performance-2x + Launch + RabbitMQ |
+|---|---|---|---|---|---|---|
+| Harness, relay, worker run | laptop (NZ) | laptop (NZ) | `<shop-harness-app>`, `syd` | `<shop-harness-app>`, `syd` | `<shop-harness-app>`, `syd` | `<shop-harness-app>`, `syd` |
+| Machine size | laptop spec | laptop spec | `performance-2x` (2 dedicated vCPU, 4 GB) | `performance-2x` | `performance-2x` | `performance-2x` |
+| Shop database | local Docker Postgres | local Docker Postgres | `<shop-harness-db>`, Basic, `syd` | `<shop-harness-db>`, Starter | `<shop-harness-db>`, Launch | `<shop-harness-db>`, Launch |
+| Engine | local compose v0.107.0 | `<engine-app>`, `performance-1x` | same | `<engine-app>` machine `<engine-machine-id>`, `performance-2x`, database Starter | same machine `<engine-machine-id>`, `performance-2x`, database Launch | same machine `<engine-machine-id>`, `performance-2x`, database Launch, internal queue on RabbitMQ (`<rabbitmq-app>`, `performance-1x`) |
+| Network path | loopback | NZ→`syd` public edge, TLS, median 143ms | `syd` internal 6PN, plaintext | same | same | same |
+| `outbox-backlog` | PASS, 50,221ms, 996 rows/sec | FAIL, 301,762ms, ~162 rows/sec | FAIL, 304,063ms, ~161 rows/sec | FAIL, 367,820ms, ~56 rows/sec adjusted for teardown (run alone, 10:04–10:10Z) | FAIL, 365,169ms, ~162 rows/sec adjusted for teardown; 600 of 50,000 rows left | **PASS**, 111,221ms; drained in 47,431ms; ~976 rows/sec adjusted for teardown (1,054 by the harness's own drain timer) |
+| `tenant-load` | PASS, 221,426ms, 50/200 slots | FAIL, 1,813,911ms | FAIL, 2,300,934ms | FAIL, 2,422,223ms; plain window missed; durable window missed | **PASS**, 378,707ms; plain window met at 314,305ms, durable at 314,372ms; ~80 handler rows/sec | **PASS**, 314,404ms; plain window met at 141,525ms, durable at 250,261ms; ~100 handler rows/sec |
+| Commit | — | `caa4dc1...-dirty` | `9c9ae54` | `15542eb` | `15542eb` (same image as #173) | `15542eb` (same image as #173) |
+| JSON file | `docs/proofs/data/report-155-*.json` | `docs/proofs/data/report-162b-*.json` | `docs/proofs/data/report-166-*.json` | `docs/proofs/data/report-173-*.json` | `docs/proofs/data/report-175-*.json` | `docs/proofs/data/report-176-*.json` |
 
-The last two columns' durations include the 60-second teardown quiet period added by #169; the
+The last three columns' durations include the 60-second teardown quiet period added by #169; the
 #173 tenant-load miss is far larger than that.
 
 **Every duration in the first three columns predates the 60-second quiet period #169 added to
@@ -695,3 +695,47 @@ says: Launch, or better, is the database plan for the engine's cluster in any en
 runs this load on the Postgres-backed queue. The next run (issue #176) moves the engine's internal
 queue to RabbitMQ, which tests whether the engine's side of the push is what holds
 `outbox-backlog` back. The CTO decides what follows.
+
+## Engine queue on RabbitMQ (issue #176)
+
+What this is: the same `tenant-load` and `outbox-backlog` runs as issue #175, on the same engine machine (`<engine-machine-id>`, `performance-2x`), the same Launch plan on both clusters and the same harness image, after the engine's internal message queue moved from Postgres to RabbitMQ (`<rabbitmq-app>`). All times are 2026-09-23, UTC.
+
+### What this run does not prove
+- **This list was written after the run.**
+- **One run.** Not repeated, not averaged.
+- **The engine also restarted.** Switching the queue needs a deploy, and a deploy restarts the engine. The report run started about 13 minutes after the engine booted; #175's ran on an engine that had been up about two hours. The laptop proof saw a busy engine drain `outbox-backlog` slower than a fresh one (996 against 1,657 rows a second — the 1,657 figure is from a solo 5,000-row confirmation run against a freshly started engine, not a 50,000-row backlog). This run cannot separate the queue from the restart.
+- **It is not Hatchet's production shape.** It is hatchet-lite in RabbitMQ mode: one engine machine and one single-node RabbitMQ machine (`rabbitmq:3.13.7`, `performance-1x`), dev-sized. Not the separate engine and dashboard images, not more than one engine, not a RabbitMQ cluster.
+- **No CPU, memory, database or RabbitMQ metrics were read.** RabbitMQ's queue depths were not recorded.
+- **Nothing here tests RabbitMQ going away.** `engine-outage` and the other seven scenarios were not re-run on this queue; the engine-process restart case stays unproven.
+- **The logs are saved tails.** The engine tail starts at 12:15:46Z, after the engine booted, so the boot-log check below comes from reading the log at deploy time, not from the saved tail. Whether a tail kept every line was not checked.
+- **The rolled-back-transaction must-hold row is not exercised**, as in every in-region run.
+
+### What was done
+RabbitMQ app, machine `<rabbitmq-machine-id>`, volume `<rabbitmq-volume-id>` (3 GB, created with `--vm-size performance-1x`), credentials staged by the CTO before the first deploy, deployed 12:09Z, `amqp` check passing, listener and startup lines at 12:09:34Z, no public IP address. The CTO staged `SERVER_MSGQUEUE_RABBITMQ_URL` and destroyed the stopped rollback machine `<old-engine-machine-id>` and its volume; `fly deploy` at 12:14:31Z updated `<engine-machine-id>` in place on `<engine-config-volume-id>`; `/api/ready` 200; 14 AMQP connections from one private address at 12:14:45Z; boot log had no `Creating new Postgres message queue` line. Smoke: machine start 12:20:38Z (the harness log's own `Machine started in 994ms` line), scenario 12:20:40Z (six minutes after boot; the runbook's wait rule allows a smoke run instead of 10 minutes), namespace `inregion176s_`, PASS 83,109ms (plain 18,776ms, durable 18,781ms), 200 orders, no failures, `report-176-smoke.json`, sha256 `4a0317d219e668cd3a9305fe519a74dfc4519572c632bc01d9cfb1e79a599589` (as collected) — the same as #175's smoke (83,746ms), so at smoke size the queue made no visible difference. Report run: machine start 12:27:18Z (the harness log's own `Machine started in 1.048s` line), namespace `inregion176_`, `tenant-load` 12:27:20Z–12:32:34Z then `outbox-backlog` to 12:34:26Z, both reports collected, one part each, before the machine stopped at 12:35Z.
+
+### `tenant-load`
+PASS, 314,404ms, no failures: plain effects for all 5,000 orders at 141,525ms (window 1,200,000ms), a terminal `watch-shipping` row for all 5,000 at 250,261ms (window 900,000ms). About 100 handler rows a second (25,000 in 250 seconds), about 20 orders a second; #175 on the Postgres queue: about 80 and 16. Plain effects took 45% of #175's time (314,305ms), durable 80% (314,372ms). On the Postgres queue both waits ended together; here the durable wait ended 109 seconds after the plain one. Report sha256 `59899cd3af02e595b0a9fc6cd53ba64bc14d367ee64a85ef493e6534b08f007d` (as collected, 988 bytes, matching the harness's `report-written` line), stored whole; the stored copy carries a trailing newline, so its own sha256 differs.
+
+### `outbox-backlog`
+PASS, 111,221ms, no failures: 50,000 rows drained in 47,431ms (48 samples; the oldest row peaked at 47.0 seconds). Two rates, and why they differ: **1,054 rows a second** is the harness's own figure, 50,000 rows over the drain timer, which starts once the rows are in and the relay is started — the same timer behind the laptop's 996. **About 976 rows a second** is this page's method for the Fly columns, rows drained over the scenario time minus the 60-second quiet period (51,221ms); that time also includes seeding the rows and the closing reads, about 3.8 seconds here. The earlier Fly runs failed, and a failed run's report has no drain timer, so only this page's method exists for them; the same few seconds would change their ~162 by about 1%. Compared the same way, the drain went from ~162 (#175) to ~976 rows a second, about six times faster, with each 100-row batch taking about 0.1 seconds instead of about 0.6; the window needs about 167. Report sha256 `fec445a86fde13f54d79115f6b55bd9419acadade8eee012d7101963f86bb68a` (as collected, 3,643 bytes), stored whole, trailing newline added.
+
+### Engine log
+Machine `<engine-machine-id>`, lines stamped 12:27:16Z through 12:35:00Z (end of the tail), colour codes removed: 12,609 lines, all `WRN`, **no `ERR`** — and no `ERR` anywhere in the tail from 12:15:46Z, the smoke run included. `tenant-load`'s time holds 12,226, `outbox-backlog`'s 331, 52 fall after it (#175: 2,769 and 1,036). By kind: 4,424 `long transaction` (1,193 `optimistic_tx.go`, 1,118 `olap.go`, 888 `durable_events.go`, 519 `task.go`, 339 `match.go`, 298 `scheduler_queue.go`, 69 in three other `pkg/repository` files); 1,900 `concurrency strategy N took longer than 100ms` (1,820 processed 0 items); 1,527 `flushing items to database took longer than 100ms (N items in Xms)` (1,151 for 0 items); 1,524 `flushing N items to database took longer than 100ms` (1,240 of exactly 50 items); 1,342 `queue took longer than 100ms to process and flush items`; 524 `queue processing took longer than 100ms`; 397 `marking queue items processed`; 251 `processing batch of N queue items`; 211 `assigning queue items`; 179 `replenishing slots`; 100 `processing internal event matches`; 82 `checking is_active on concurrency strategy`; 63 `listing N queue items for queue`; 46 `listing actions for workers`; 30 `connecting to localhost:7077 without TLS`; 9 `long lock`. None of the #173 error kinds appears.
+
+These are timers: each line means one step took longer than 100ms. Many are steps with nothing to do — 1,820 of the 1,900 concurrency-strategy lines processed 0 items, and 1,151 of the 1,527 `flushing items to database … (N items in Xms)` lines flushed 0 items. The long-transaction lines all name files under `hatchet/pkg/repository/`, the engine's database code, and 1,361 of them report 50 database connections in use, the highest figure in the log; whether 50 is the engine's limit was not checked. There are more of these lines than in #175 (12,609 against 3,805) although the run was far shorter and faster. They are not failures: every scenario passed with no failure entry and no `ERR` line. They show the engine's database work slowing under this load.
+
+### RabbitMQ log
+Machine `<rabbitmq-machine-id>`, saved tail of 100 lines from 12:09:31Z to 12:14:45Z, read after the run: no `alarm` line and no error line. Three warning lines, all at boot: one first-boot `rebuilding indices from scratch` and two `Reaped child process` lines from Fly's init. The tail has no line after 12:14:45Z, so RabbitMQ logged nothing at all during either run, no memory or disk alarm included.
+
+### Harness log
+From the smoke run's start to the end: no `ERROR` line and no `invalid auth token` line; one heartbeat-delay warning (4,936ms against 4,000ms) at 12:20:46Z, during the smoke run, and none during the report run.
+
+### What this supports
+- **With the queue on RabbitMQ, every scenario met its window in-region, with room to spare**: `tenant-load` in 142 of 1,200 seconds (plain) and 250 of 900 (durable); `outbox-backlog` in 47 of 300.
+- **The ceiling for `outbox-backlog` was on the engine's side, not the relay's push path.** The relay code, its 100-row batch and its one-batch-at-a-time push did not change (same image); only the engine's queue and its restart did, and the two cannot be separated (see above). The drain went from ~162 to ~976 rows a second, back to what the laptop reached against a local engine.
+- **Plain handler effects settled in a little under half the time** (141,525 against 314,305ms). The durable wait improved less (250,261 against 314,372ms).
+- **The remaining warnings are slow steps in the engine's database work**, not failures. They are the next thing to watch at larger scale, starting with the database connections in use.
+
+**Issue #162, criterion 3** (the three load scenarios pass at report size on the deployed engine): **met: two scenarios on this topology, `engine-outage` from the #162 Postgres-queue run, not re-run.** `tenant-load` and `outbox-backlog` pass in-region with the queue on RabbitMQ; `engine-outage` passed against the deployed engine in #162's laptop-to-Fly run, on the Postgres queue, and was not re-run on RabbitMQ.
+
+**For the Camba decision**, the evidence supports: the dev engine on hatchet-lite, with its queue on RabbitMQ and both clusters on Launch, handled this report-size load with no lost or doubled effect, no error line and all windows met. It does not support: any claim about production — one run; hatchet-lite in RabbitMQ mode, not Hatchet's separate-image production shape; one engine machine and one RabbitMQ node; dev-sized machines; no metrics; and an engine restart that coincided with the queue change. Keeping RabbitMQ adds a datastore family, which requirement N1 in the design document rules out as written. The CTO decides whether RabbitMQ stays and what follows.

@@ -8,24 +8,26 @@ Today there is one environment: dev, app `<engine-app>`, org `<fly-org>`, region
 database cluster `<engine-db>` (cluster id `<engine-cluster-id>`).
 
 The engine runs on machine `<engine-machine-id>` (`performance-2x`, 4 GB) with config volume
-`kyu_hatchet_config_2x` (`<engine-config-volume-id>`) since 2026-09-23 (issue #173). Machine
-`<old-engine-machine-id>` (`performance-1x`) with volume `kyu_hatchet_config` (`<old-engine-volume-id>`) is
-stopped and kept as the rollback. Cluster plan: Launch, dedicated CPU (Basic until 2026-09-23, then Starter the same day). Once the
-"Switching the engine to RabbitMQ" step below destroys this machine, the resize rollback path in
-"Resizing the engine machine" no longer exists — the rollback for the queue switch itself is the
-`SERVER_MSGQUEUE_KIND` setting, not this machine.
+`kyu_hatchet_config_2x` (`<engine-config-volume-id>`) since 2026-09-23 (issue #173). The
+`performance-1x` rollback machine `<old-engine-machine-id>` and its volume `<old-engine-volume-id>` were
+destroyed on 2026-09-23 before the queue switch (issue #176), so the rollback path in "Resizing
+the engine machine" no longer exists; the rollback for the queue switch is the
+`SERVER_MSGQUEUE_KIND` setting. Cluster plan: Launch, dedicated CPU (Basic until 2026-09-23, then
+Starter the same day).
 
-Queue: from issue #176 the engine's `fly.toml` selects RabbitMQ (`<rabbitmq-app>`). Until the
-CTO runs *Switching the engine to RabbitMQ* below, the live machine still runs the Postgres queue.
+Queue: RabbitMQ (`<rabbitmq-app>`) since 2026-09-23 (issue #176), on the same machine and
+volume; the Postgres queue before that. Harness numbers on both:
+`docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`.
 
-**Database plan.** Run the engine's cluster on Launch or larger. Hatchet Lite keeps its internal
-queue in this database, so the plan sets the engine's ceiling under load: on Starter the
-report-size `tenant-load` missed both windows with hundreds of queue errors in the engine log;
-with only the database plans changed (both clusters, engine's and shop's, moved from Starter to
-Launch together), it passed with none
+**Database plan.** Run the engine's cluster on Launch or larger. On the Postgres queue, Hatchet
+Lite kept its internal queue in this database, so the plan set the engine's ceiling under load: on
+Starter the report-size `tenant-load` missed both windows with hundreds of queue errors in the
+engine log; with only the database plans changed (both clusters, engine's and shop's, moved from
+Starter to Launch together), it passed with none
 (`docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`, issues #173 and #175). A cluster
 created by the command in First deploy starts on Basic; the plan is changed in the Fly
-dashboard.
+dashboard. With the queue on RabbitMQ the database still does the engine's scheduling work; its
+slow-step warnings under load are what to watch next (issue #176).
 
 ## Who does what
 
@@ -126,7 +128,8 @@ engine's run detail for such runs (README). Evidence, queries and what to raise 
    2026-09-23 the Starter cluster refused connections ("remaining connection slots are
    reserved…", "too many clients"); one engine machine hit the same error under `tenant-load`
    load later, alone. Stop the old machine first.
-4. Roll back (CTO): `fly machine stop <engine-machine-id> -a <engine-app>`, wait for `stopped` in
+4. Roll back (CTO; no longer possible — `<old-engine-machine-id>` was destroyed on 2026-09-23, issue #176):
+   `fly machine stop <engine-machine-id> -a <engine-app>`, wait for `stopped` in
    `fly machine list`, `fly machine start <old-engine-machine-id> -a <engine-app>`, revert `fly.toml`'s
    `source`/`size`.
 5. Do not `fly deploy` the engine while both machines exist: flyctl replaces a machine whose
@@ -205,12 +208,13 @@ Work through these in order:
 
 ## Queue on RabbitMQ
 
-Hatchet's internal message queue can run on Postgres or on RabbitMQ. The engine has run on
-Postgres since the first deploy; every failed run on Fly failed inside that Postgres-backed queue
-(issue #173). Hatchet's documented default and production queue is RabbitMQ, and the hatchet-lite
-image we run supports it. Issue #176 adds a private RabbitMQ app, `<rabbitmq-app>`, so the CTO
-can run the shop harness once with the queue on RabbitMQ, everything else unchanged, before the
-Camba decision.
+Hatchet's internal message queue can run on Postgres or on RabbitMQ. The engine ran on Postgres
+from the first deploy until 2026-09-23; every failed run on Fly failed inside that Postgres-backed
+queue (issue #173). Hatchet's documented default and production queue is RabbitMQ, and the
+hatchet-lite image we run supports it. Issue #176 adds a private RabbitMQ app, `<rabbitmq-app>`,
+so the CTO can run the shop harness once with the queue on RabbitMQ, everything else unchanged,
+before the Camba decision. The switch was made on 2026-09-23 and the run passed both load
+scenarios (proof page, issue #176).
 
 hatchet-lite (`cmd/hatchet-lite/main.go` at v0.107.0) forces the Postgres queue only when none of
 the four queue variables is set in the environment — `SERVER_MSGQUEUE_KIND`,
@@ -273,12 +277,22 @@ from that window are not clean; the proof page must say so. Note that quickstart
 `/config/server.yaml` with the RabbitMQ URL on every boot, the same way it already holds
 `DATABASE_URL`.
 
+**Observed on 2026-09-23 (issue #176):** RabbitMQ logged `started TCP listener on [::]:5672` and
+`Server startup complete; 4 plugins started.`, its `amqp` check passed and `fly ips list` was
+empty. After `fly deploy` of the engine at 12:14:31Z, `/api/ready` answered 200, the engine's boot
+log had no `Creating new Postgres message queue` line, and RabbitMQ's log showed 14 `accepting
+AMQP connection` lines, each followed by an `authenticated and granted access` line, all from one
+private address, 14 seconds later. RabbitMQ logged nothing more through the end of the harness
+run: no `alarm` line. Read RabbitMQ's connection lines yourself rather than pasting them: they
+print the user name.
+
 **Switching back to the Postgres queue:** a PR that sets `SERVER_MSGQUEUE_KIND = 'postgres'` in
 `infra/hatchet/fly/fly.toml`; confirm no harness run is in progress; `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`.
 The `SERVER_MSGQUEUE_RABBITMQ_URL` secret can stay set — hatchet-lite ignores it once the kind is
 `postgres`. Check `list_connections` on `<rabbitmq-app>` shows nothing from the engine anymore.
 
-**After the run:** if RabbitMQ is not kept, switch the engine back to Postgres and check it, then
+**After the run:** as of 2026-09-24 the engine still runs on RabbitMQ; whether to keep it is the
+CTO's decision, not made here. If RabbitMQ is not kept, switch the engine back to Postgres and check it, then
 the CTO runs `fly secrets unset --stage SERVER_MSGQUEUE_RABBITMQ_URL -a <engine-app>` (applied
 at the next deploy); once the CTO accepts the run, an engineer runs
 `fly apps destroy <rabbitmq-app>` (this removes the machine and its volume together) and
