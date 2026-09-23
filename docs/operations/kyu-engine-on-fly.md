@@ -195,6 +195,14 @@ Fly connection string or a token back once set — the checks below use names-on
 4. Run the token line `secrets.sh` prints exactly as written, so the token never reaches the
    screen or shell history as an argument:
    `printf 'HATCHET_CLIENT_TOKEN=%s\n' "$(bash infra/hatchet/fly/token.sh -a <engine-app>)" | fly secrets import --stage -a <shop-harness-app>`
+
+   `hatchet-admin token create` with no expiry flag mints a token that lasts 90 days, measured as
+   `exp` minus `iat` on v0.107.0 (the admin tool's own default is 2160h — the same 90 days). Re-mint
+   before then. `invalid auth token` in the harness logs, seen only at report size and not at smoke
+   size (#165), is an open hypothesis — engine-side token validation under load — not a confirmed
+   cause: a smoke-size run with zero such lines shows only that the token was accepted at smoke
+   size that day, not why the report-size lines appeared. Whether to re-mint before the 90 days are
+   up is the CTO's decision.
 5. Reply "done" on the tracking issue, with no values in the reply.
 
 Whether the two secrets are staged can be checked with names only, never by reading a value:
@@ -274,6 +282,50 @@ fly machine start <id> -a <shop-harness-app>
 If a run used this fallback, the proof page says so and labels that column "in-region via edge".
 If the fallback becomes the standing path, also edit `fly.toml`'s `[env]` block, or the next
 `fly deploy` reverts it.
+
+### Cancelling a harness namespace
+
+A scenario run can leave runs queued or running on the engine under its own namespace after the
+harness exits — a durable run whose worker stopped mid-retry is invisible to a single check (#165).
+`fly machine start <id>` cannot be used to clean these up: starting `<shop-harness-machine-id>` runs the image's
+own `CMD`, `bash infra/shop-harness/fly/run.sh`, which is the full report-size scenario suite, not a
+one-off command.
+
+Instead, build and push an image without touching any machine:
+
+```bash
+fly deploy . -c infra/shop-harness/fly/fly.toml --dockerfile infra/shop-harness/fly/Dockerfile \
+  --ignorefile infra/shop-harness/fly/harness.dockerignore \
+  --build-arg KYU_HARNESS_COMMIT_SHA="$(git rev-parse HEAD)" \
+  --build-only --push --image-label <image-label> -a <shop-harness-app>
+```
+
+Then run the cancel CLI as a throwaway machine that removes itself, naming each namespace to cancel:
+
+```bash
+fly machine run -a <shop-harness-app> -r syd --vm-size shared-cpu-1x --rm \
+  -e HATCHET_CLIENT_HOST_PORT=<engine-app>.internal:7077 \
+  -e HATCHET_CLIENT_API_URL=http://<engine-app>.internal:8888 \
+  -e HATCHET_CLIENT_TLS_STRATEGY=none \
+  registry.fly.io/<shop-harness-app>:<image-label> \
+  node examples/shop/dist/__tests__/harness/cancelNamespaceCli.js <namespace>...
+```
+
+Each namespace takes at least 60 seconds to settle, and that settle wait counts toward whatever
+scenario duration you are comparing it against — see the proof page's comparison-table note. The
+log line `cancel-namespace` gives `found` (runs before cancelling), `acceptedByEngine` (the sum of
+what the engine's own cancel call accepted) and `left` (what the engine's list still shows after
+cancelling); an exit code of 1 means at least one namespace still holds runs. The machine removes
+itself when it exits — confirm with `fly machine list -a <shop-harness-app>`.
+
+**This command only accepts a scenario namespace** (a prefix ending `_<6 hex chars>_`, the shape
+`scenarioNamespace` mints) — not a bare project prefix like `shop_`, which the SDK would cancel by
+prefix across the whole tenant.
+
+**A namespace can stay above 0 forever.** The engine's REST run list can keep showing a run as
+RUNNING or QUEUED after it has actually completed or been cancelled; this command's cancel and
+`left` count cannot detect or clear that state, so a namespace that never reaches 0 after repeated
+runs is not necessarily still doing anything (issue #165).
 
 ### Destroying the cluster
 

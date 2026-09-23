@@ -18,6 +18,7 @@
     "publish-cli": "node dist/bin/publish.js",
     "ui": "node dist/ui.js",
     "harness": "node dist/__tests__/harness/run.js",
+    "harness:cancel-namespace": "node dist/__tests__/harness/cancelNamespaceCli.js",
     "web:dev": "vite",
     "web:build": "vite build"
   },
