@@ -1,0 +1,89 @@
+{
+  "commitSha": "9c9ae54c2d31ab90db8f9f5435821a6e8c20e25d",
+  "machine": {
+    "platform": "linux",
+    "arch": "x64",
+    "cpuCount": 2,
+    "totalMemBytes": 4106903552
+  },
+  "engineVersion": "hatchet-lite:v0.107.0",
+  "reportBuiltAt": "2026-09-23T00:21:16.404Z",
+  "scenarios": [
+    {
+      "name": "tenant-load",
+      "passed": false,
+      "durationMs": 2300934,
+      "observation": {},
+      "failures": [
+        {
+          "check": "no-unsettled-run",
+          "detail": "envelope 01a0cb80-9bfd-7000-b7d5-624d63ffa0cf run dadc4fa0-91e9-4cee-8458-97e2d66bd2eb (record-order) is still running"
+        },
+        {
+          "check": "no-unsettled-run",
+          "detail": "envelope 01a0cb80-a381-7000-a55a-9e1d40bdc517 run aa4eac07-01cf-4c80-a098-e71846d73ba6 (watch-shipping) is still running"
+        },
+        {
+          "check": "no-unsettled-run",
+          "detail": "envelope 01a0cb80-a600-7000-902f-2eab88a3ea12 run b613ac2e-788d-4458-9c13-aab3f2fc2172 (watch-shipping) is still running"
+        },
+        {
+          "check": "no-unsettled-run",
+          "detail": "envelope 01a0cb80-bfbb-7000-aa69-285e7a7024ab run 494b6920-aa83-4d6a-891f-79696ad5c36f (record-order) is still running"
+        },
+        {
+          "check": "no-unsettled-run",
+          "detail": "envelope 01a0cb80-c0e6-7000-ac67-431a7c85e119 run 7adbeef7-515b-4d0f-af89-75a3648d6203 (record-order) is still running"
+        },
+        {
+          "check": "no-unsettled-run",
+          "detail": "envelope 01a0cb80-c47c-7000-9960-8a85b23875ca run 7f73c1b2-4e21-46e2-be6a-15382c36ddc3 (record-order) is still running"
+        },
+        {
+          "check": "no-unsettled-run",
+          "detail": "envelope 01a0cb80-cd0d-7000-80e8-f11f583af067 run 069ed56c-6552-430c-9ba6-39b9005b6b54 (record-order) is still running"
+        },
+        {
+          "check": "no-unsettled-run",
+          "detail": "envelope 01a0cb80-d8fe-7000-b115-3fe869635403 run 60761c59-7f7a-47a7-b3ed-a6e15bdee684 (watch-shipping) is still running"
+        },
+        {
+          "check": "no-effect-lost",
+          "detail": "handler \"watch-shipping:timeout\" never ran for envelope 01a0cb80-a3d6-7000-b88c-9a01d825ef46"
+        },
+        {
+          "check": "no-effect-lost",
+          "detail": "handler \"watch-shipping:timeout\" never ran for envelope 01a0cb80-a410-7000-876d-6a8fd1afb0fe"
+        },
+        {
+          "check": "no-effect-lost",
+          "detail": "handler \"watch-shipping:timeout\" never ran for envelope 01a0cb80-a548-7000-a5fe-f33f717559c3"
+        },
+        {
+          "check": "no-effect-lost",
+          "detail": "handler \"watch-shipping:timeout\" never ran for envelope 01a0cb80-a556-7000-9ac2-8f33cd50d167"
+        },
+        {
+          "check": "no-effect-lost",
+          "detail": "handler \"watch-shipping:timeout\" never ran for envelope 01a0cb80-a5cf-7000-9848-e3e77b37ccbc"
+        },
+        {
+          "check": "no-effect-lost",
+          "detail": "handler \"watch-shipping:timeout\" never ran for envelope 01a0cb80-a5e9-7000-a851-2d8927380c3b"
+        },
+        {
+          "check": "no-effect-lost",
+          "detail": "handler \"watch-shipping:timeout\" never ran for envelope 01a0cb80-a61e-7000-9d80-a9aa786b5e8e"
+        },
+        {
+          "check": "no-effect-lost",
+          "detail": "watch-shipping never reached a terminal row for 5000 orders within 900000ms"
+        },
+        {
+          "check": "harness-leaves-nothing",
+          "detail": "the engine still holds 19 queued or running run(s) in namespace inregion166_tenant_load_593c3d_"
+        }
+      ]
+    }
+  ]
+}
