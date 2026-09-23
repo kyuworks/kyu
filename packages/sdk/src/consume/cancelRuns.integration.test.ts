@@ -304,6 +304,8 @@ describe('cancelRunsFor: durable and command runs', () => {
         { outbox: db },
       )
       await db.query('COMMIT')
+
+      await db.query('DELETE FROM kyu_outbox WHERE id = ANY($1::uuid[])', [`{${continuation.id},${other.id}}`])
     } finally {
       await db.end()
     }
