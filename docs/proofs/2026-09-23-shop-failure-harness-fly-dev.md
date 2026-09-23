@@ -281,22 +281,123 @@ request's second commit.
 
 ### How this was produced
 
-_Filled in from the actual run (pull request's second commit)._
+```bash
+fly apps create <shop-harness-app> -o <fly-org>
+fly mpg create -o <fly-org> -n <shop-harness-db> -r syd --plan Basic --pg-major-version 17 --volume-size 10 >/dev/null
+fly config validate -c infra/shop-harness/fly/fly.toml -a <shop-harness-app> --strict
+fly deploy . -c infra/shop-harness/fly/fly.toml --dockerfile infra/shop-harness/fly/Dockerfile \
+  --ignorefile infra/shop-harness/fly/harness.dockerignore \
+  --build-arg KYU_HARNESS_COMMIT_SHA="$(git rev-parse HEAD)" --ha=false -a <shop-harness-app>
+fly machine start <machine-id> -a <shop-harness-app>
+bash infra/shop-harness/fly/collect.sh -a <shop-harness-app> -m <machine-id> -s tenant-load -o docs/proofs/data/report-166-tenant-load.json
+bash infra/shop-harness/fly/collect.sh -a <shop-harness-app> -m <machine-id> -s outbox-backlog -o docs/proofs/data/report-166-outbox-backlog.json
+fly machine stop <machine-id> -a <shop-harness-app>
+```
+
+- App `<shop-harness-app>`, machine `<shop-harness-machine-id>`, `performance-2x`, `syd`, image built on Fly's
+  remote builder from `infra/shop-harness/fly/Dockerfile`. Database cluster
+  `<shop-harness-db>` (id `<shop-cluster-id>`), Basic, Postgres 17, 10 GB, `syd`, database
+  `kyu_shop_inregion`.
+- Network path used: the engine's internal 6PN address, plaintext — `HATCHET_CLIENT_HOST_PORT =
+  '<engine-app>.internal:7077'`, `HATCHET_CLIENT_API_URL = 'http://<engine-app>.internal:8888'`,
+  `HATCHET_CLIENT_TLS_STRATEGY = 'none'`. The preflight (`GET /api/ready`) answered 200 on every
+  attempt and every scenario ran to completion over this path — **the public-edge fallback (D3) was
+  never needed.**
+- **A `fly deploy` alone does not start a run on this app.** With no service block and `[[restart]]
+  policy = 'never'`, a deploy that only updates an already-stopped machine's config leaves it
+  `stopped` — confirmed three times in this session. `fly machine start <id>` is the step that
+  actually executes `run.sh`; the runbook section below states this explicitly.
+- Commit: each collected report's `commitSha` reads `9c9ae54c2d31ab90db8f9f5435821a6e8c20e25d`
+  (this pull request's second commit — the migrate database-name logging change, kept in for this
+  run). `engineVersion` reads `hatchet-lite:v0.107.0`, the pinned tag, same as the laptop-to-Fly run.
+
+**Two blockers hit before either scenario could run, both recorded here rather than worked around
+silently:**
+
+1. **The harness cluster's app role cannot `CREATE DATABASE`.** `ensureDatabase`
+   (`examples/shop/src/db/migrate.ts`) connects to `/postgres` and issues `CREATE DATABASE` when a
+   lookup finds no matching row; on a fresh Managed Postgres cluster the app role has no database
+   it can create for itself. Fixed by creating the database through the platform, once, with no
+   secret involved: `fly mpg databases create <shop-cluster-id> -n kyu_shop_inregion`.
+2. **The CTO's first `KYU_SHOP_DATABASE_URL` pointed at the wrong cluster.** Even with the database
+   created, migrate kept failing with `permission denied to create database` — the same error
+   `CREATE DATABASE` gives without privilege, meaning the existence lookup still found nothing. The
+   digest of the staged secret was identical before and after the CTO's first "fix" attempt (an
+   unchanged digest is an unchanged value), which ruled out a typo in that same string. To settle
+   it without reading the secret, `migrateLogFields()` was added
+   (`examples/shop/src/db/migrate.ts`, `examples/shop/src/bin/migrate.ts`) so `fly logs` shows the
+   database name migrate is actually targeting — never the connection string. That line showed the
+   name was already correct (`kyu_shop_inregion`), which meant the connection string as a whole,
+   not just the database name, was wrong: it was still naming the **engine's** cluster
+   (`<engine-db>`, which has no `kyu_shop_inregion` database), left over from an earlier
+   staging step. The CTO re-staged the direct connection string of the correct cluster
+   (`<shop-harness-db>`, `<shop-cluster-id>`) — a new secret digest confirmed the value had
+   actually changed — and migrate then applied all 10 pending SQL files cleanly.
 
 ### Comparison table
 
 | | Laptop only | Laptop to Fly | In-region |
 |---|---|---|---|
 | Harness, relay, worker run | laptop (NZ) | laptop (NZ) | `<shop-harness-app>`, `syd` |
-| Machine size | laptop spec | laptop spec | `performance-2x` |
+| Machine size | laptop spec | laptop spec | `performance-2x` (2 dedicated vCPU, 4 GB) |
 | Shop database | local Docker Postgres | local Docker Postgres | `<shop-harness-db>`, Basic, `syd` |
 | Engine | local compose v0.107.0 | `<engine-app>`, `performance-1x` | same |
-| Network path | loopback | NZ→`syd` public edge, TLS, median 143ms | _pending_ |
-| `outbox-backlog` | PASS, 50,221ms, 996 rows/sec | FAIL, 301,762ms, ~162 rows/sec | _pending_ |
-| `tenant-load` | PASS, 221,426ms, 50/200 slots | FAIL, 1,813,911ms | _pending_ |
-| Commit | — | `caa4dc1...-dirty` | _pending_ |
-| JSON file | `docs/proofs/data/report-155-*.json` | `docs/proofs/data/report-162b-*.json` | _pending_ |
+| Network path | loopback | NZ→`syd` public edge, TLS, median 143ms | `syd` internal 6PN, plaintext |
+| `outbox-backlog` | PASS, 50,221ms, 996 rows/sec | FAIL, 301,762ms, ~162 rows/sec | FAIL, 304,063ms, ~161 rows/sec |
+| `tenant-load` | PASS, 221,426ms, 50/200 slots | FAIL, 1,813,911ms | FAIL, 2,300,934ms |
+| Commit | — | `caa4dc1...-dirty` | `9c9ae54` |
+| JSON file | `docs/proofs/data/report-155-*.json` | `docs/proofs/data/report-162b-*.json` | `docs/proofs/data/report-166-*.json` |
+
+**The in-region numbers are not faster than the laptop-to-Fly run, and `outbox-backlog`'s
+throughput is essentially unchanged (~161 vs ~162 rows/sec).** Cutting the network hop did not fix
+either miss. The engine logs for this run show recurring `HeartbeatController` and `Dispatcher`
+errors during the run (`Failed to send heartbeat: ... invalid auth token`, `/EventsService/BulkPush
+INTERNAL: An internal error occurred`, `/Dispatcher/SendStepActionEvent INTERNAL`), the same shape
+the laptop-to-Fly proof attributed to engine-side queueing under load rather than round-trip
+latency — this run is consistent with that reading, not a contradiction of it: removing the
+network hop did not remove the bottleneck, which points at the engine's own capacity at this load
+level rather than the link between the harness and the engine. **The issue's windows are not
+widened and the scenario's size is not shrunk to make either pass** — both ran once, at the same
+5,000-order / 50,000-row sizes and the same windows every other run in this page used.
 
 ### Per-scenario results
 
-_Filled in from the actual run (pull request's second commit)._
+#### `outbox-backlog` — FAILED at report size
+
+50,000 outbox rows were inserted with the relay stopped, then the relay started alone and the
+drain sampled once a second, the same as every other run of this scenario. At 304,063ms (5.07
+minutes), 901 of 50,000 rows (1.8%) were still pending, past the 5-minute (300,000ms) window — a
+narrower miss than the laptop-to-Fly run's 2.4% (1,201 rows), but still a miss. Rows drained:
+49,099, for roughly **161 rows/sec**, essentially identical to the laptop-to-Fly run's ~162
+rows/sec and nowhere close to the laptop-only run's 996 rows/sec. Nothing here contradicts
+must-hold: every pending row was still sitting in the outbox, not lost, not doubled, and would have
+drained given more time. The committed JSON's `failures` array is capped at the first 20 of the
+901 real entries (`failuresCappedForReview: { shown: 20, total: 901 }`), the same `#164` pattern;
+all 20 shown, and a spot check of the full set, read `outbox-settled: outbox row <id> is still
+pending`.
+
+#### `tenant-load` — FAILED at report size
+
+20 tenants (one large, nineteen small) published 5,000 orders at once, against a worker sized
+`KYU_SHOP_SLOTS=50` / `KYU_SHOP_DURABLE_SLOTS=200`, the same as every other run of this scenario.
+Total wall time: 2,300,934ms (38.3 minutes) — longer than both the laptop-only run (3.7 minutes)
+and the laptop-to-Fly run (30.2 minutes). The committed JSON carries no entry for a missed
+plain-handler window (`tenantLoad.ts` only pushes one when that wait itself times out), so the
+20-minute plain-handler wait (`record-order`, `audit-order`, `send-invoice`) was met, the same as
+both earlier runs; the 15-minute (900,000ms) durable-wait window for every order's `watch-shipping`
+run was not. 17 failure entries resulted: 8 runs still `running` at teardown (5 `record-order`, 3
+`watch-shipping`), 7 individual orders whose `watch-shipping:timeout` handler never ran, the
+scenario's own aggregate line (`watch-shipping never reached a terminal row for 5000 orders within
+900000ms`), and one `harness-leaves-nothing` entry: the engine still held 19 queued or running runs
+in this run's namespace after teardown — the same #165 teardown-requeue gap the laptop-to-Fly run
+hit, not fixed here, recorded as instructed. Against 5,000 orders each expected to produce four
+handler rows, this is a small tail, the same shape as both earlier runs, not a bulk loss — nothing
+here shows a doubled effect or a lost outbox row.
+
+**Reading the two results together:** neither scenario got faster or more accurate by moving the
+harness, the relay and the worker into `syd`. That rules out the cross-Tasman network hop as the
+sole or even primary cause of the laptop-to-Fly misses; the engine's own queueing under this load
+size, on a `performance-1x` machine, is the more likely ceiling, consistent with the
+`HeartbeatController`/`Dispatcher` error pattern logged during this run. A larger engine machine or
+a smaller load size were not tried here — #166 asked only for the in-region measurement, not a
+capacity fix.

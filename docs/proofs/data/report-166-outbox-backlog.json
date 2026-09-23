@@ -1,0 +1,105 @@
+{
+  "commitSha": "9c9ae54c2d31ab90db8f9f5435821a6e8c20e25d",
+  "machine": {
+    "platform": "linux",
+    "arch": "x64",
+    "cpuCount": 2,
+    "totalMemBytes": 4106903552
+  },
+  "engineVersion": "hatchet-lite:v0.107.0",
+  "reportBuiltAt": "2026-09-23T00:26:20.901Z",
+  "scenarios": [
+    {
+      "name": "outbox-backlog",
+      "passed": false,
+      "durationMs": 304063,
+      "observation": {},
+      "failures": [
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-70bd-9704-1f11a5869f4a is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-70ba-ad90-e148561c36eb is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-709b-af7c-264c8da51a13 is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-708b-a349-4ecb670a010c is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-7078-8f0d-10299a2c4a96 is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-70a1-841e-db8cdcd29500 is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-70c4-8520-4094fbb49acc is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-7083-af43-de088e4d7b4f is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-708f-8de4-f953a8bdf336 is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-7091-9919-8534bc9f31e1 is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-70b2-8f62-edfe183e901a is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-70a2-8749-15c2c03c4324 is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-7090-98a1-b4f5d53684f7 is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-70b3-bfaf-48a6ff65b9e1 is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-7088-8ff6-fd5411ed5c33 is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-7096-9efc-9dd719d7e2f2 is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-70a9-ae65-04732235fff6 is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-7099-8727-df47d42d076b is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-7065-8c97-9136bacbca8a is still pending"
+        },
+        {
+          "check": "outbox-settled",
+          "detail": "outbox row 01a0cba3-67b6-7086-aff5-fe8958977f50 is still pending"
+        }
+      ],
+      "failuresCappedForReview": {
+        "shown": 20,
+        "total": 901
+      }
+    }
+  ]
+}
