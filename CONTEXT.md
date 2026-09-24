@@ -30,6 +30,7 @@
 | processed table | `kyu_processed` in a consumer's database. `onceById()` records handled ids there, inside the handler's transaction. |
 | concurrency key | A CEL expression on the payload or metadata that groups runs. `maxRuns: 1` per key gives FIFO per key. |
 | coalescing | `CANCEL_IN_PROGRESS` (only the newest run matters) or `CANCEL_NEWEST` (drop if one is already running). |
+| rate limit | A cap on how many runs of one subscription start per window. `rateLimit: { per, limit, window }` counts per business tenant, per correlation or per payload field; `rateLimits` takes any CEL key. A run over the cap is queued, not failed, until its `scheduleTimeout`. |
 | failed run | The dead letter. Alerted on, replayable from the dashboard, never silently dropped. |
 
 ## Tenancy

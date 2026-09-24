@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { createKyu } from './createKyu.js'
 import type { KyuRelayOptions } from './createKyu.js'
 import type { Queryable, QueryParam, QueryRows } from './db/queryable.js'
+import { RateLimitDuration } from './hatchet.js'
 import type {
   CreateDurableTaskWorkflowOpts,
   CreateTaskWorkflowOpts,
@@ -212,6 +213,21 @@ describe('createKyu', () => {
 
     expect(capturedDurableOptions()?.name).toBe('follow-up')
     expect(capturedDurableOptions()?.onEvents).toEqual(['shop.order.placed'])
+  })
+
+  it('durable resolves rateLimit with the namespaced subscription name as the bucket', () => {
+    const { client, capturedDurableOptions } = fakeHatchetClient()
+    const kyu = createKyu({ hatchet: client, source: 'shop-service' })
+
+    kyu.durable(orderPlaced, {
+      name: 'follow-up',
+      rateLimit: { per: 'correlation', limit: 3, window: 'day' },
+      handler: () => undefined,
+    })
+
+    expect(capturedDurableOptions()?.rateLimits).toEqual([
+      { dynamicKey: '"shop_follow-up:" + input.correlationId', units: 1, limit: 3, duration: RateLimitDuration.DAY },
+    ])
   })
 
   it('runs.forEnvelope forwards to the underlying function with the bound client', async () => {

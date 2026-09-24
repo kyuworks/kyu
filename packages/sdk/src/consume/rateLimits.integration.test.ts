@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { createEnvelope, defineEvent, toEnvelopeMetadata } from '@kyuworks/schemas'
 import { z } from 'zod'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -27,6 +27,12 @@ const definition = defineEvent({
   data: z.object({ seq: z.number() }),
 })
 
+const perTenantDefinition = defineEvent({
+  name: 'kyu.ratelimit.pertenant',
+  version: 1,
+  data: z.object({ seq: z.number() }),
+})
+
 const handled: Array<{ envelopeId: string; atMs: number }> = []
 let worker: KyuWorker | undefined
 
@@ -41,6 +47,19 @@ async function publishFor(tenantId: string, seq: number): Promise<string> {
     scope: eventScope(envelope),
   })
   return envelope.id
+}
+
+async function publishPerTenant(tenantId: string, seq: number): Promise<string> {
+  const envelope = await createEnvelope(perTenantDefinition, { seq }, { tenantId, source: 'sdk.test' })
+  await hatchet.events.push(perTenantDefinition.name, envelope, {
+    additionalMetadata: toEnvelopeMetadata(envelope),
+    scope: eventScope(envelope),
+  })
+  return envelope.id
+}
+
+function handledAt(envelopeId: string): number {
+  return handled.find((entry) => entry.envelopeId === envelopeId)?.atMs ?? 0
 }
 
 async function waitForHandled(envelopeId: string, timeoutMs: number): Promise<boolean> {
@@ -62,21 +81,33 @@ async function waitForQueued(envelopeId: string, timeoutMs: number): Promise<str
   }
 }
 
+const recordHandled = (ctx: HandlerContext<{ seq: number }>) => {
+  handled.push({ envelopeId: ctx.envelope.id, atMs: Date.now() })
+}
+
 beforeAll(async () => {
   const subscription = subscribe(hatchet, definition, {
     name: 'tenant-rate-limited',
     rateLimits: [{ key: `'lane103rl${suffix}:' + additional_metadata.tenantId`, limit: 1, period: 'minute' }],
-    handler: (ctx: HandlerContext<{ seq: number }>) => {
-      handled.push({ envelopeId: ctx.envelope.id, atMs: Date.now() })
-    },
+    handler: recordHandled,
   })
-  worker = await createWorker(hatchet, 'lane103-rate-limits', { subscriptions: [subscription] })
+  const perTenant = subscribe(hatchet, perTenantDefinition, {
+    name: 'tenant-rate-limited-per',
+    rateLimit: { per: 'tenant', limit: 2, window: 'minute' },
+    handler: recordHandled,
+  })
+  worker = await createWorker(hatchet, 'lane103-rate-limits', { subscriptions: [subscription, perTenant] })
   void worker.start()
   await worker.waitUntilReady()
 }, 60_000)
 
 afterAll(async () => {
   await worker?.stop()
+  // Rate-limit rows live on the bus tenant, outside the namespace: remove this run's own.
+  const listed = await hatchet.api.rateLimitList(hatchet.tenantId, { search: `lane103rl${suffix}`, limit: 100 })
+  for (const row of listed.data.rows ?? []) {
+    await hatchet.api.rateLimitDelete(hatchet.tenantId, { key: row.key })
+  }
 })
 
 describe('subscribe: rate limits', () => {
@@ -99,5 +130,31 @@ describe('subscribe: rate limits', () => {
     expect(await waitForHandled(secondA, 150_000)).toBe(true)
     const secondAt = handled.find((entry) => entry.envelopeId === secondA)?.atMs ?? 0
     expect(secondAt - firstAt).toBeGreaterThanOrEqual(55_000)
+  }, 300_000)
+
+  it("rateLimit per tenant: a tenant's third run in a minute waits while another tenant runs at once", async () => {
+    const tenantA = randomUUID()
+    const tenantB = randomUUID()
+    const firstA = await publishPerTenant(tenantA, 1)
+    const secondA = await publishPerTenant(tenantA, 2)
+    const thirdA = await publishPerTenant(tenantA, 3)
+    const firstB = await publishPerTenant(tenantB, 4)
+
+    expect(await waitForHandled(firstA, 60_000)).toBe(true)
+    expect(await waitForHandled(secondA, 60_000)).toBe(true)
+    expect(await waitForHandled(firstB, 60_000)).toBe(true)
+
+    // Reached: tenant A's third run is held, and tenant B already ran.
+    expect(await waitForQueued(thirdA, 10_000)).toBe('queued')
+    expect(handled.some((entry) => entry.envelopeId === thirdA)).toBe(false)
+
+    // Held, not dropped: it runs in a later window. Observed on the local
+    // stack: 39.9s and 42.0s over two runs of this file (limit 2, sharing a
+    // worker with the other subscription) — faster than the explicit-form
+    // test above (limit 1, alone on the worker, ~76-99s), so the floor below
+    // is set under the faster shape's own observed minimum, not the other
+    // test's.
+    expect(await waitForHandled(thirdA, 150_000)).toBe(true)
+    expect(handledAt(thirdA) - handledAt(firstA)).toBeGreaterThanOrEqual(25_000)
   }, 300_000)
 })

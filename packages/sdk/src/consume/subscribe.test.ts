@@ -13,6 +13,7 @@ import type {
 import { ConcurrencyLimitStrategy, KyuError, Priority, RateLimitDuration } from '../hatchet.js'
 import { decodeIncomingEnvelope, subscribe } from './subscribe.js'
 import { toHatchetRateLimit } from './taskOptions.js'
+import type { SharedTaskOptions, SubscriptionRateLimitOption } from './taskOptions.js'
 
 const orderPlaced = defineEvent({
   name: 'shop.order.placed',
@@ -175,13 +176,14 @@ interface FakeHatchetClient {
 // it structurally; a Pick of just `task` is comparable to the class type in
 // one direction (the real class has a `task` method too), which is enough
 // for a single, unchained `as` cast.
-function fakeHatchetClient(): FakeHatchetClient {
+function fakeHatchetClient(namespace = ''): FakeHatchetClient {
   let captured: CreateTaskWorkflowOpts | undefined
-  const stub: Pick<HatchetClient, 'task'> = {
+  const stub: Pick<HatchetClient, 'config' | 'task'> = {
     task: (options: CreateTaskWorkflowOpts) => {
       captured = options
       return {} as TaskWorkflowDeclaration
     },
+    config: { namespace } as HatchetClient['config'],
   }
   return { client: stub as HatchetClient, capturedOptions: () => captured }
 }
@@ -252,6 +254,77 @@ describe('subscribe: option wiring', () => {
       subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined, scheduleTimeout: value }),
     ).toThrow(KyuError)
     expect(capturedOptions()).toBeUndefined()
+  })
+})
+
+function engineRateLimits(options: SharedTaskOptions): CreateTaskWorkflowOpts['rateLimits'] {
+  const { client, capturedOptions } = fakeHatchetClient('shop_')
+  subscribe(client, orderPlaced, { ...options, name: 'invoice-recorder', handler: () => undefined })
+  return capturedOptions()?.rateLimits
+}
+
+describe('subscribe: rateLimit in product units', () => {
+  it('resolves per tenant to the same engine rate limit the explicit rateLimits form produces', () => {
+    const sugar = engineRateLimits({ rateLimit: { per: 'tenant', limit: 100, window: 'hour' } })
+    const explicit = engineRateLimits({
+      rateLimits: [{ key: '"shop_invoice-recorder:" + input.tenantId', limit: 100, period: 'hour' }],
+    })
+    expect(sugar).toEqual([
+      {
+        dynamicKey: '"shop_invoice-recorder:" + input.tenantId',
+        units: 1,
+        limit: 100,
+        duration: RateLimitDuration.HOUR,
+      },
+    ])
+    expect(sugar).toEqual(explicit)
+  })
+
+  it('keys per correlation on the envelope correlation id', () => {
+    expect(engineRateLimits({ rateLimit: { per: 'correlation', limit: 3, window: 'day' } })).toEqual([
+      {
+        dynamicKey: '"shop_invoice-recorder:" + input.correlationId',
+        units: 1,
+        limit: 3,
+        duration: RateLimitDuration.DAY,
+      },
+    ])
+  })
+
+  it('keys per field on a payload path, counted by its text', () => {
+    expect(
+      engineRateLimits({ rateLimit: { per: 'field', field: 'data.orderId', limit: 500, window: 'minute' } }),
+    ).toEqual([
+      {
+        dynamicKey: '"shop_invoice-recorder:" + string(input.data.orderId)',
+        units: 1,
+        limit: 500,
+        duration: RateLimitDuration.MINUTE,
+      },
+    ])
+  })
+
+  it('refuses a subscription that sets both rateLimit and rateLimits', () => {
+    expect(() =>
+      engineRateLimits({
+        rateLimit: { per: 'tenant', limit: 1, window: 'minute' },
+        rateLimits: [{ key: "'shop-api'", limit: 1, period: 'minute' }],
+      }),
+    ).toThrow(/both rateLimit and rateLimits/)
+  })
+
+  it('refuses a limit that is not a whole number above zero, an unknown window and a field that is not a payload path', () => {
+    const invalid: SubscriptionRateLimitOption[] = [
+      { per: 'tenant', limit: 0, window: 'minute' },
+      { per: 'tenant', limit: 1.5, window: 'minute' },
+      JSON.parse('{"per":"tenant","limit":1,"window":"fortnight"}') as SubscriptionRateLimitOption,
+      JSON.parse('{"per":"tenant","limit":1,"window":"hour","field":"data.orderId"}') as SubscriptionRateLimitOption,
+      { per: 'field', field: 'data.orderId) || true', limit: 1, window: 'minute' },
+      { per: 'field', field: 'input.data.orderId', limit: 1, window: 'minute' },
+    ]
+    for (const rateLimit of invalid) {
+      expect(() => engineRateLimits({ rateLimit })).toThrow(KyuError)
+    }
   })
 })
 
