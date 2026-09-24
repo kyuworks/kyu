@@ -456,7 +456,7 @@ describe('handleUiRequest', () => {
     expect(parsed.topology).toEqual(fakeTopology)
     expect(parsed.counts).toEqual({
       producers: [{ source: 'shop', published: 7 }],
-      outbox: { published: 7, waitingForRelay: 0, shipped: 7, retired: 0, scheduled: 0 },
+      outbox: { published: 7, waitingForRelay: 0, shipped: 7, retired: 0, scheduled: 0, cancelled: 0 },
       subscriptions: [
         { name: 'record-order', queued: 0, running: 0, completed: 1, failed: 0, cancelled: 0 },
         {

@@ -79,7 +79,14 @@ describe('readBusCounts', () => {
     const counts = await readBusCounts(db, runs, topologyWithDurable)
 
     expect(counts.producers).toEqual([{ source: 'shop', published: 9 }])
-    expect(counts.outbox).toEqual({ published: 9, waitingForRelay: 2, shipped: 7, retired: 0, scheduled: 0 })
+    expect(counts.outbox).toEqual({
+      published: 9,
+      waitingForRelay: 2,
+      shipped: 7,
+      retired: 0,
+      scheduled: 0,
+      cancelled: 0,
+    })
     expect(counts.window).toEqual({ limit: ENGINE_WINDOW_LIMIT, envelopes: 1, engineCalls: 1 })
     expect(queries).toHaveLength(3)
   })
@@ -325,7 +332,14 @@ describe('readBusCounts', () => {
       { source: 'other', published: 1 },
       { source: 'shop', published: 3 },
     ])
-    expect(counts.outbox).toEqual({ published: 4, waitingForRelay: 2, shipped: 2, retired: 0, scheduled: 0 })
+    expect(counts.outbox).toEqual({
+      published: 4,
+      waitingForRelay: 2,
+      shipped: 2,
+      retired: 0,
+      scheduled: 0,
+      cancelled: 0,
+    })
   })
 
   it('never counts a retired row as waiting, and counts it under retired', async () => {
@@ -333,7 +347,14 @@ describe('readBusCounts', () => {
 
     const counts = await readBusCounts(db, fakeRuns({}), topologyWithDurable)
 
-    expect(counts.outbox).toEqual({ published: 5, waitingForRelay: 3, shipped: 1, retired: 1, scheduled: 0 })
+    expect(counts.outbox).toEqual({
+      published: 5,
+      waitingForRelay: 3,
+      shipped: 1,
+      retired: 1,
+      scheduled: 0,
+      cancelled: 0,
+    })
     const producerQuery = queries.at(0)
     expect(producerQuery?.text).toContain(
       'FILTER (WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND publish_at <= now())',
@@ -346,7 +367,36 @@ describe('readBusCounts', () => {
 
     const counts = await readBusCounts(db, fakeRuns({}), topologyWithDurable)
 
-    expect(counts.outbox).toEqual({ published: 5, waitingForRelay: 2, shipped: 0, retired: 0, scheduled: 3 })
+    expect(counts.outbox).toEqual({
+      published: 5,
+      waitingForRelay: 2,
+      shipped: 0,
+      retired: 0,
+      scheduled: 3,
+      cancelled: 0,
+    })
+  })
+
+  // #184 review: shipped was published − waiting − retired − scheduled, so a
+  // cancelled row (removed from waiting/scheduled but still in published)
+  // read as shipped even though the relay never sent it.
+  it('never counts a cancelled row as shipped, waiting or scheduled', async () => {
+    const { db } = fakeDb([
+      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0, cancelled: 1 }],
+      [],
+      [],
+    ])
+
+    const counts = await readBusCounts(db, fakeRuns({}), topologyWithDurable)
+
+    expect(counts.outbox).toEqual({
+      published: 1,
+      waitingForRelay: 0,
+      shipped: 0,
+      retired: 0,
+      scheduled: 0,
+      cancelled: 1,
+    })
   })
 
   // Postgres returns NULL for envelope->>'source' when the envelope has no such
@@ -362,7 +412,14 @@ describe('readBusCounts', () => {
     const counts = await readBusCounts(db, fakeRuns({}), topologyWithDurable)
 
     expect(counts.producers).toEqual([{ source: '(unknown)', published: 1 }])
-    expect(counts.outbox).toEqual({ published: 1, waitingForRelay: 0, shipped: 0, retired: 1, scheduled: 0 })
+    expect(counts.outbox).toEqual({
+      published: 1,
+      waitingForRelay: 0,
+      shipped: 0,
+      retired: 1,
+      scheduled: 0,
+      cancelled: 0,
+    })
     expect(queries.at(0)?.text).toContain("coalesce(envelope->>'source', '(unknown)')")
   })
 })
