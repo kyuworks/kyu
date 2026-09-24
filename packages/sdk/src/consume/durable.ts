@@ -260,7 +260,7 @@ export function durable<S extends MessageSchema>(
       runDurableHandler(definition, options.handler, input, ctx, () => stopping, hatchet),
   }
 
-  applySharedTaskOptions(taskOptions, options)
+  applySharedTaskOptions(taskOptions, options, hatchet)
   // The engine's own default execution timeout is 60s; without an explicit
   // value here, a wait past a minute would be cancelled.
   taskOptions.executionTimeout ??= '24h'

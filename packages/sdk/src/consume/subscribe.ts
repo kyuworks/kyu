@@ -122,7 +122,7 @@ export function subscribe<S extends MessageSchema>(
     fn: (input: JsonObject, ctx: Context<JsonObject>) => runHandler(definition, options.handler, input, ctx),
   }
 
-  applySharedTaskOptions(taskOptions, options)
+  applySharedTaskOptions(taskOptions, options, hatchet)
 
   const workflow = hatchet.task<JsonObject, void>(taskOptions)
 

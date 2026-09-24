@@ -346,7 +346,7 @@ A workflow run is one durable run plus the command runs it published, and they a
 
 ### 9.4 Priority and rate limits
 
-Priority is 1 to 3, default 1, and only orders runs within one workflow. Lanes that must not compete, such as interactive sends versus bulk sweeps, are separate workflows rather than priorities. Rate limits are declared per subscription as `rateLimits: [{ key, limit, period }]`, where `key` is a CEL expression over the event: `'mailer:' + additional_metadata.tenantId` gives each business tenant its own bucket at its quota with the provider, and a constant such as `'marketplace'` gives every run one shared bucket. A run that would pass the limit is queued and starts in a later period; the engine never fails it. The two queue limits interact: a run held by a rate limit is queued rather than failed, but its schedule timeout keeps counting, and the engine checks that timeout when it next tries to schedule the run. A rate limit that holds runs longer than the subscription's `scheduleTimeout` turns held runs into dead letters, so size the two together.
+Priority is 1 to 3, default 1, and only orders runs within one workflow. Lanes that must not compete, such as interactive sends versus bulk sweeps, are separate workflows rather than priorities. Rate limits are declared per subscription in product units, `rateLimit: { per: 'tenant' | 'correlation' | 'field', limit, window }`, counted in a bucket of the subscription's own; the explicit form `rateLimits: [{ key, limit, period }]`, where `key` is a CEL expression over the event, shares a bucket or keys on anything else: `'mailer:' + additional_metadata.tenantId` gives each business tenant its own bucket at its quota with the provider, and a constant such as `'marketplace'` gives every run one shared bucket. A run that would pass the limit is queued and starts in a later period; the engine never fails it. The two queue limits interact: a run held by a rate limit is queued rather than failed, but its schedule timeout keeps counting, and the engine checks that timeout when it next tries to schedule the run. A rate limit that holds runs longer than the subscription's `scheduleTimeout` turns held runs into dead letters, so size the two together.
 
 ### 9.5 Timers and correlation
 
@@ -393,7 +393,7 @@ export const sendInvoice = kyu.subscribe(orderPlaced, {
   concurrency: { key: 'input.data.orderId', maxRuns: 1, strategy: 'cancel_in_progress' },
   retries: 5,
   backoff: { factor: 2, maxSeconds: 600 },
-  rateLimits: [{ key: "'invoices:' + additional_metadata.tenantId", limit: 50, period: 'minute' }],
+  rateLimit: { per: 'tenant', limit: 50, window: 'minute' },
   handler: (ctx) => { /* open tenant-scoped tx with ctx.envelope.tenantId */ },
 });
 
