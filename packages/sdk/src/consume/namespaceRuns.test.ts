@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { V1TaskStatus } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
-import { cancelUnsettledRunsInNamespace, readUnsettledRunsInNamespace } from './namespaceRuns.js'
+import type { Queryable, QueryParam } from '../db/queryable.js'
+import {
+  cancelUnsettledRunsForTenant,
+  cancelUnsettledRunsInNamespace,
+  readUnsettledRunsForTenant,
+  readUnsettledRunsInNamespace,
+} from './namespaceRuns.js'
 import type { NamespaceRunsClient } from './namespaceRuns.js'
 import { runDetailFixture } from './__tests__/runDetailFixture.js'
 import type { EngineRunDetail } from './__tests__/runDetailFixture.js'
@@ -287,5 +293,103 @@ describe('readUnsettledRunsInNamespace', () => {
     expect(outcomes).toHaveLength(101)
     expect(detailCalls()).toHaveLength(100)
     expect(detailCalls().at(-1)).toBe(id(99))
+  })
+})
+
+interface OutboxCall {
+  text: string
+  params: readonly QueryParam[]
+  engineCancelsBefore: number
+}
+
+interface RecordingOutbox {
+  outbox: Queryable
+  calls: OutboxCall[]
+}
+
+// Copied from cancelRuns.test.ts: records each statement and how many engine cancels had happened by then.
+function recordingOutbox(engineCancels: () => number, failWith?: Error): RecordingOutbox {
+  const calls: OutboxCall[] = []
+  const outbox: Queryable = {
+    query(text, params) {
+      calls.push({ text, params, engineCancelsBefore: engineCancels() })
+      if (failWith !== undefined) return Promise.reject(failWith)
+      return Promise.resolve({ rows: [], rowCount: 1 })
+    },
+  }
+  return { outbox, calls }
+}
+
+const TENANT = '018f0000-0000-7000-8000-0000000000a1'
+const since = new Date('2026-01-01')
+
+describe('cancelUnsettledRunsForTenant (#182)', () => {
+  it('never sends a cancel when the namespace has no registered workflow', async () => {
+    const { client, cancelCalls } = fakeNamespaceRunsClient({ namespace: 'ns_', workflowPages: [[]] })
+    expect(await cancelUnsettledRunsForTenant(client, TENANT, { since })).toBe(0)
+    expect(cancelCalls()).toHaveLength(0)
+  })
+
+  it('sends one cancel naming this namespace’s workflows and the tenant id as run metadata', async () => {
+    const { client, cancelCalls } = fakeNamespaceRunsClient({
+      namespace: 'ns_',
+      workflowPages: [[fixtureWorkflow('ns_record-order'), fixtureWorkflow('other_thing')]],
+    })
+    expect(await cancelUnsettledRunsForTenant(client, TENANT, { since })).toBe(2)
+    expect(cancelCalls()).toHaveLength(1)
+    expect(cancelCalls()[0]?.filters?.workflowNames).toEqual(['ns_record-order'])
+    expect(cancelCalls()[0]?.filters?.additionalMetadata).toEqual({ tenantId: TENANT })
+  })
+
+  it('throws KyuError and never lists workflows for a tenant id that is not a uuid', async () => {
+    const { client, workflowListCalls, cancelCalls } = fakeNamespaceRunsClient({ namespace: 'ns_' })
+    await expect(cancelUnsettledRunsForTenant(client, 'tenant-a', { since })).rejects.toThrow(
+      'runs.cancelForTenant: "tenant-a" is not a uuid tenant id',
+    )
+    expect(workflowListCalls()).toHaveLength(0)
+    expect(cancelCalls()).toHaveLength(0)
+  })
+
+  it('with the outbox, cancels that tenant’s scheduled rows after the engine cancel', async () => {
+    const { client, cancelCalls } = fakeNamespaceRunsClient({ namespace: 'ns_' })
+    const { outbox, calls } = recordingOutbox(() => cancelCalls().length)
+    await cancelUnsettledRunsForTenant(client, TENANT, { since, outbox })
+    expect(calls.map((call) => [call.params, call.engineCancelsBefore])).toEqual([[['tenantId', TENANT], 1]])
+  })
+
+  it('leaves the outbox untouched when the engine cancel fails', async () => {
+    const { client, cancelCalls } = fakeNamespaceRunsClient({ namespace: 'ns_', cancelError: new Error('engine down') })
+    const { outbox, calls } = recordingOutbox(() => cancelCalls().length)
+    await expect(cancelUnsettledRunsForTenant(client, TENANT, { since, outbox })).rejects.toThrow(
+      'runs.cancelForTenant: could not cancel runs in namespace "ns_"',
+    )
+    expect(calls).toEqual([])
+  })
+})
+
+describe('readUnsettledRunsForTenant (#182)', () => {
+  it('lists runs by this namespace’s workflows and the tenant id as run metadata', async () => {
+    const { client, listCalls } = fakeNamespaceRunsClient({
+      namespace: 'ns_',
+      runPages: [[fixtureRow({ workflowName: 'ns_sample-run', status: 'QUEUED' })]],
+    })
+    const outcomes = await readUnsettledRunsForTenant(client, TENANT, { since })
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(['queued'])
+    expect(listCalls()[0]?.workflowNames).toEqual(['ns_sample-run'])
+    expect(listCalls()[0]?.additionalMetadata).toEqual({ tenantId: TENANT })
+  })
+
+  it('returns an empty array and never lists runs when the namespace has no registered workflow', async () => {
+    const { client, listCalls } = fakeNamespaceRunsClient({ namespace: 'ns_', workflowPages: [[]] })
+    expect(await readUnsettledRunsForTenant(client, TENANT, { since })).toEqual([])
+    expect(listCalls()).toHaveLength(0)
+  })
+})
+
+describe('cancelUnsettledRunsInNamespace after #182', () => {
+  it('still names no tenant in its cancel', async () => {
+    const { client, cancelCalls } = fakeNamespaceRunsClient({ namespace: 'ns_' })
+    await cancelUnsettledRunsInNamespace(client, { since })
+    expect(cancelCalls()[0]?.filters?.additionalMetadata).toEqual({})
   })
 })

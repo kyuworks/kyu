@@ -45,8 +45,8 @@ export async function insertOutboxRow<TData extends MessageDataShape = EnvelopeD
 }
 
 export interface ScheduledRowMatch {
-  /** The envelope field the id is matched on. */
-  field: 'correlationId' | 'causationId'
+  /** The envelope field the id is matched on; a tenant cancel matches `tenantId`. */
+  field: 'correlationId' | 'causationId' | 'tenantId'
   id: string
 }
 

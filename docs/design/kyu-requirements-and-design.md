@@ -364,6 +364,8 @@ A run is cancelled through the SDK, never through the engine client: `kyu.runs.c
 
 A whole namespace is cancelled with `kyu.runs.cancelUnsettledInNamespace({ since })` — every run it still holds queued or running. This is an operational broom for a namespace nothing will serve again, such as a test lane; it is not part of normal delivery.
 
+One business tenant is cancelled with `kyu.runs.cancelForTenant(tenantId, { since })`: the namespace cancel narrowed by the `tenantId` run metadata the relay sets, so another tenant's runs and another namespace's are never sent to the engine. Given `outbox`, it also cancels that tenant's outbox rows not yet due. It is a request, not a settlement; poll `kyu.runs.unsettledForTenant` to see the tenant empty.
+
 A cancelled run ends as `cancelled`, not `failed`, and is not retried, so it never joins the dead-letter set. A durable run parked in `sleepFor` or `waitFor` has that wait rejected as soon as the cancel reaches its worker; a handler between two steps is not interrupted and finishes the step it is in, which is what keeps a cancel from landing inside an `onceById` transaction. The engine drops that late result.
 
 ## 10. SDK surface
