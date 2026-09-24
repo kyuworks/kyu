@@ -37,6 +37,7 @@ Because every queue is private to its project, no project can subscribe to anoth
 - 7 Sep 2026: keep an existing Postgres queue for one third-party integration and defer BullMQ. Every interaction with that third party stays routed through the queue with an ops ledger and a wire log.
 - 15 Sep 2026: build the bus as a standalone company system, not as a library extracted from any one project. Consumers use it for events, outbound integration commands and workflow orchestration.
 - 16 Sep 2026: engine is Hatchet, self-hosted, MIT-licensed. BullMQ was rejected because it has no topics, no correlation waits, and per-key ordering is a paid feature. Postgres-only alternatives (pg-boss) cover less.
+- 25 Sep 2026: the engine's internal queue runs on RabbitMQ in every deployed environment; the local stack keeps the Postgres queue. Requirement N1 is amended for it ([ADR](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md)).
 
 ### 2.3 Terminology
 
@@ -100,7 +101,7 @@ Priority uses MoSCoW: M must, S should, C could.
 
 | ID | Requirement | Pri |
 |---|---|---|
-| N1 | Self-hosted on infrastructure the company already runs (Fly.io, managed Postgres); no new datastore family | M |
+| N1 | Self-hosted on infrastructure the company already runs (Fly.io, managed Postgres); no new datastore family, except RabbitMQ as the engine's internal queue in deployed environments (amended 2026-09-25, [ADR](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md)) | M |
 | N2 | Open-source, permissive licence with no per-run cost | M |
 | N3 | Producer side stays available when the bus is down: the outbox absorbs the backlog and drains when the bus returns | M |
 | N4 | Throughput target for release one: 10 messages/second sustained, 100/second burst. The first consumer's current load is well under this | M |
@@ -114,6 +115,8 @@ Priority uses MoSCoW: M must, S should, C could.
 ## 5. Engine decision
 
 Hatchet was chosen because it natively covers F1, F4, F5, F7, F8, F9, F10, F11, F12, F13, F14, F15 and F20, leaving only the outbox (F3), the envelope and schema conventions (F16 to F19) and the company SDK to build. It is MIT licensed with no self-hosting fee (N2), runs on Postgres alone in its Lite form (N1), has a dashboard with run history and replay (F8), and offers TypeScript, Python, Go and Ruby SDKs.
+
+Note added 2026-09-25: deployed environments no longer run on Postgres alone. Their internal queue runs on RabbitMQ, and N1 is amended for it ([ADR](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md)). The paragraph above is the reasoning as of 16 September 2026.
 
 Traceability from requirement to Hatchet feature is in Appendix B.
 
@@ -440,9 +443,9 @@ Commands use the same `publish` and `subscribe` calls with `kind: 'command'`; th
 | Concern | Release one |
 |---|---|
 | Runtime | `hatchet-lite` as a Fly app per environment, region `syd`, one machine, no autostop; dev is `<engine-app>`, machine size `performance-2x` since 2026-09-23 (issue #173; was `performance-1x`); Fly org `<fly-org>`; deployed 2026-09-23 NZ time (the engine's own logged timestamps are UTC and read 2026-09-22), one machine, dedicated IPv4, health check on `/api/ready` |
-| Internal queue | dev: RabbitMQ (`<rabbitmq-app>`, `rabbitmq:3.13.7`, one `performance-1x` machine, private network only) since 2026-09-23 (issue #176). Only the local Docker stack still uses the Postgres-backed queue: on Fly it never met `outbox-backlog`'s window on any database plan tried, and on RabbitMQ with both clusters on Launch, both load scenarios met theirs (`docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`). Keeping RabbitMQ adds a datastore family (N1); the CTO decides |
+| Internal queue | RabbitMQ in every deployed environment, decided 2026-09-25 ([ADR](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md)); N1 is amended for it. dev: `<rabbitmq-app>` (`rabbitmq:3.13.7`, one `performance-1x` machine, private network only) since 2026-09-23 (issue #176). Only the local Docker stack uses the Postgres-backed queue: on Fly it never met `outbox-backlog`'s window on any database plan tried, and on RabbitMQ with both clusters on Launch, both load scenarios met theirs (`docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`) |
 | Relay | One sidecar process per project per environment, on a small dedicated pool; supervised, restarted on exit; in-process only for a single-process project |
-| Database | Fly Managed Postgres, one cluster per environment, session-mode connection; not a project's own database or its transaction pooler; dev deployed as `<engine-db>` (Basic since 2026-09-24 for issue #198, was Basic, Starter, then Launch on 2026-09-23; the shop harness's cluster is on Basic too since the same day; on Launch the report-size `tenant-load` passed on both queues (issues #175 and #176) and `outbox-backlog` passed only on RabbitMQ (issue #176); on Basic with RabbitMQ both failed (issue #198); the plan it stays on is the CTO's decision; Postgres 17, 10 GB, `syd`), direct session-mode connection, no pooler |
+| Database | Fly Managed Postgres, one cluster per environment, session-mode connection; not a project's own database or its transaction pooler; dev deployed as `<engine-db>` (Basic since 2026-09-24 for issue #198, was Basic, Starter, then Launch on 2026-09-23; the shop harness's cluster, on Basic from the same day, was destroyed on 2026-09-25; on Launch the report-size `tenant-load` passed on both queues (issues #175 and #176) and `outbox-backlog` passed only on RabbitMQ (issue #176); on Basic with RabbitMQ both failed (issue #198); the plan it stays on is the CTO's decision; Postgres 17, 10 GB, `syd`), direct session-mode connection, no pooler |
 | Config | Every secret name and where its value comes from: `infra/hatchet/fly/secrets.sh`; deploy and operate steps: `docs/operations/kyu-engine-on-fly.md` |
 | Backups | Daily snapshot; restore rehearsed on dev 2026-09-23 NZ time into a throwaway cluster and recorded in `docs/operations/kyu-engine-on-fly.md` (the restore itself completed in about 3.5 minutes; the restored cluster was destroyed on 2026-09-23 without the data check) |
 | Upgrades | Pin the image tag (dev is on `v0.107.0`); runbook: snapshot, upgrade dev, soak, staging, production; Hatchet migrates its schema on start |
@@ -541,6 +544,6 @@ Synchronous third-party lookups get a shared HTTP client with timeouts, retries 
 | F15 | Inbound webhooks with HMAC, CEL key expression | Docs, Webhooks |
 | F16 to F19 | Envelope and metadata conventions | Design |
 | F20 | Child workflows from a durable context | Docs, Client reference |
-| N1, N2 | Hatchet Lite on Postgres, MIT | Docs, LICENSE |
+| N1, N2 | Hatchet Lite on Postgres, MIT; N1 amended on 2026-09-25: deployed environments run the internal queue on RabbitMQ ([ADR](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md)) | Docs, LICENSE, ADR |
 
 Sources: Hatchet self-hosting, Hatchet Lite, Docker Compose, High Availability, Events, Durable Event Waits, Concurrency, Rate Limits, Retry Policies, Priority, Webhooks and TypeScript client reference pages at docs.hatchet.run; repository LICENSE at github.com/hatchet-dev/hatchet; hatchet.run/pricing. All read on 16 September 2026.

@@ -4,22 +4,30 @@ This page covers the deployed Hatchet engine for the Kyu message bus: `infra/hat
 (issue #162). It does not cover the local stack — see `infra/hatchet/compose.yaml` and
 `infra/hatchet/token.sh` for that.
 
-Today there is one environment: dev, app `<engine-app>`, org `<fly-org>`, region `syd`,
-database cluster `<engine-db>` (cluster id `<engine-cluster-id>`).
+Today there is one environment: dev, org `<fly-org>`, region `syd`. What exists on Fly for it
+as of 2026-09-25:
 
-The engine runs on machine `<engine-machine-id>` (`performance-2x`, 4 GB) with config volume
-`kyu_hatchet_config_2x` (`<engine-config-volume-id>`) since 2026-09-23 (issue #173). The
-`performance-1x` rollback machine `<old-engine-machine-id>` and its volume `<old-engine-volume-id>` were
-destroyed on 2026-09-23 before the queue switch (issue #176), so the rollback path in "Resizing
-the engine machine" no longer exists; the rollback for the queue switch is the
-`SERVER_MSGQUEUE_KIND` setting. Cluster plan: Basic since 2026-09-24, moved down from Launch by
-the CTO for the issue #198 run (Basic until 2026-09-23, then Starter, then Launch the same day).
-The shop harness's cluster moved to Basic the same day, after that run, so both managed clusters
-are on Basic.
+- the engine app `<engine-app>`, machine `<engine-machine-id>` (`performance-2x`, 4 GB), config
+  volume `kyu_hatchet_config_2x` (`<engine-config-volume-id>`), queue on RabbitMQ;
+- the RabbitMQ app `<rabbitmq-app>`, machine `<rabbitmq-machine-id>` (`performance-1x`), data volume
+  `<rabbitmq-volume-id>`, no public IP address;
+- the engine's database cluster `<engine-db>` (cluster id `<engine-cluster-id>`), on Basic.
+
+The shop harness app `<shop-harness-app>` and its cluster `<shop-harness-db>`
+(`<shop-cluster-id>`) were destroyed on 2026-09-25; "Running the shop harness in-region" below says
+how to recreate them.
+
+The engine has run on machine `<engine-machine-id>` since 2026-09-23 (issue #173). The `performance-1x`
+rollback machine `<old-engine-machine-id>` and its volume `<old-engine-volume-id>` were destroyed on
+2026-09-23 before the queue switch (issue #176), so the rollback path in "Resizing the engine
+machine" no longer exists; the rollback for the queue switch is the `SERVER_MSGQUEUE_KIND`
+setting. Cluster plan: Basic since 2026-09-24, moved down from Launch by the CTO for the issue #198
+run (Basic until 2026-09-23, then Starter, then Launch the same day).
 
 Queue: RabbitMQ (`<rabbitmq-app>`) since 2026-09-23 (issue #176), on the same machine and
-volume; the Postgres queue before that. Harness numbers on both:
-`docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`.
+volume; the Postgres queue before that. RabbitMQ stays, see
+[`20260925-engine-queue-runs-on-rabbitmq.md`](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md).
+Harness numbers on both: `docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`.
 
 **Database plan.** Run the engine's cluster on Launch or larger. On the Postgres queue, Hatchet
 Lite kept its internal queue in this database, so the plan set the engine's ceiling under load: on
@@ -39,11 +47,12 @@ fits the limit moving from the queue tables to the engine's own state writes; on
 also shows lines saying the database was in recovery, in a read-only transaction and terminating a
 connection on an administrator command (09:57Z–10:21Z), which was not checked.
 
-**Before a report-size harness run, move both clusters up.** Both managed clusters are on Basic
-since 2026-09-24 (after issue #198). Basic failed at report size (issue #198) and Starter has not
-been tried with the queue on RabbitMQ; the only report-size run that passed had both clusters on
-Launch (issue #176), so move both to Launch first. A smoke-size run passes on Basic (issue #198).
-The shop's cluster on Basic with the queue on RabbitMQ has not been measured at report size.
+**Before a report-size harness run, have both clusters on Launch.** The engine's cluster is on
+Basic since 2026-09-24 (after issue #198). Basic failed at report size (issue #198) and Starter has
+not been tried with the queue on RabbitMQ; the only report-size run that passed had both clusters
+on Launch (issue #176), so move the engine's cluster to Launch first, and put a recreated shop
+cluster on Launch too. A smoke-size run passes with the engine's cluster on Basic (issue #198). A
+shop cluster on Basic with the queue on RabbitMQ has not been measured at report size.
 
 ## Who does what
 
@@ -229,8 +238,8 @@ from the first deploy until 2026-09-23; every failed run on Fly failed inside th
 queue (issue #173). Hatchet's documented default and production queue is RabbitMQ, and the
 hatchet-lite image we run supports it. Issue #176 adds a private RabbitMQ app, `<rabbitmq-app>`,
 so the CTO can run the shop harness once with the queue on RabbitMQ, everything else unchanged,
-before the Camba decision. The switch was made on 2026-09-23 and the run passed both load
-scenarios (proof page, issue #176).
+before deciding which queue to keep. The switch was made on 2026-09-23 and the run passed both load
+scenarios (proof page, issue #176). On 2026-09-25 RabbitMQ was kept (see "After the run" below).
 
 hatchet-lite (`cmd/hatchet-lite/main.go` at v0.107.0) forces the Postgres queue only when none of
 the four queue variables is set in the environment — `SERVER_MSGQUEUE_KIND`,
@@ -302,30 +311,38 @@ private address, 14 seconds later. RabbitMQ logged nothing more through the end 
 run: no `alarm` line. Read RabbitMQ's connection lines yourself rather than pasting them: they
 print the user name.
 
-**Switching back to the Postgres queue:** a PR that sets `SERVER_MSGQUEUE_KIND = 'postgres'` in
-`infra/hatchet/fly/fly.toml`; confirm no harness run is in progress; `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`.
-The `SERVER_MSGQUEUE_RABBITMQ_URL` secret can stay set — hatchet-lite ignores it once the kind is
+**Switching back to the Postgres queue:** for an emergency only — staying on the Postgres queue in
+a deployed environment needs a new ADR (see "After the run" below). A PR that sets
+`SERVER_MSGQUEUE_KIND = 'postgres'` in `infra/hatchet/fly/fly.toml`; confirm no harness run is in
+progress; `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`. The
+`SERVER_MSGQUEUE_RABBITMQ_URL` secret can stay set — hatchet-lite ignores it once the kind is
 `postgres`. Check `list_connections` on `<rabbitmq-app>` shows nothing from the engine anymore.
 
-**After the run:** as of 2026-09-24 the engine still runs on RabbitMQ; whether to keep it is the
-CTO's decision, not made here. If RabbitMQ is not kept, switch the engine back to Postgres and check it, then
-the CTO runs `fly secrets unset --stage SERVER_MSGQUEUE_RABBITMQ_URL -a <engine-app>` (applied
-at the next deploy); once the CTO accepts the run, an engineer runs
-`fly apps destroy <rabbitmq-app>` (this removes the machine and its volume together) and
-confirms with `fly apps list -o <fly-org>`. The stale URL still sitting in
-`/config/server.yaml` on `<engine-app>` then points at nothing, same as a stale `DATABASE_URL`
-would. If RabbitMQ is kept instead, there is nothing to destroy, and the Camba decision updates
-the design doc's queue description.
+**After the run:** decided on 2026-09-25: the engine's queue stays on RabbitMQ in every deployed
+environment, see
+[`20260925-engine-queue-runs-on-rabbitmq.md`](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md).
+`<rabbitmq-app>` and the engine's `SERVER_MSGQUEUE_RABBITMQ_URL` secret stay. The switch-back
+and teardown steps this paragraph listed before that date are not needed.
 
 ## Running the shop harness in-region
 
 This runs the shop's failure harness (`examples/shop/src/__tests__/harness/`) from inside `syd`,
-beside `<engine-app>`, instead of from a laptop (issue #166, following #165 option 1). It is a
+beside `<engine-app>`, instead of from a laptop (issue #166, following #165 option 1). It uses a
 second, separate app — `<shop-harness-app>` — plus its own database cluster
-(`<shop-harness-db>`, cluster id `<shop-cluster-id>`, Basic since 2026-09-24, after issue
-#198 (was Basic, then Starter, then Launch on 2026-09-23; see **Database plan** above before a
-report-size run), Postgres 17, 10 GB, `syd`). It
-does not change `<engine-app>` or `<engine-db>` at all.
+(`<shop-harness-db>`, Postgres 17, 10 GB, `syd`). It does not change `<engine-app>` or
+`<engine-db>` at all.
+
+**Destroyed on 2026-09-25.** The app and its cluster (cluster id `<shop-cluster-id>`; Basic from
+2026-09-24 after issue #198, before that Basic, then Starter, then Launch on 2026-09-23) were
+destroyed on the CTO's instruction; see "Destroying the cluster" below. Neither exists now. Machine
+ids and the cluster id below are from before that date. To run the harness again, recreate both
+with the steps that follow, in order: "One-time setup" (the app, a new cluster and its
+`kyu_shop_inregion` database), then "The CTO's steps, in order" (the two secrets through
+`infra/shop-harness/fly/secrets.sh`, from the new cluster's direct connection string and a newly
+minted engine token), then "Running it". A new cluster gets a new cluster id: use it wherever this
+section or the text `infra/shop-harness/fly/secrets.sh` prints says `<shop-cluster-id>`. Before a
+report-size run, move the new cluster to Launch (see
+**Before a report-size harness run** at the top of this page).
 
 **Who does what:** an engineer (or an agent, for the parts that touch no secret) creates the app,
 the cluster, and the image, and drives every deploy, start, collect and stop below. The CTO sets
@@ -340,8 +357,8 @@ Fly connection string or a token back once set — the checks below use names-on
    (destroyed 2026-09-23). Redirect stdout to `/dev/null`; it carries one-time
    credentials:
    `fly mpg create -o <fly-org> -n <shop-harness-db> -r syd --plan Basic --pg-major-version 17 --volume-size 10 >/dev/null`
-   (this cluster was later moved to Starter through the dashboard, 2026-09-23 — the command line
-   cannot change a cluster's plan; see the note at the top of this page).
+   (the command line cannot change a cluster's plan; before a report-size run, move the cluster to
+   Launch in the Fly dashboard, see the note at the top of this page).
 3. Confirm it reached `ready` with names only: `fly mpg list -o <fly-org>`.
 4. Create the database inside the cluster: `fly mpg databases create <shop-cluster-id> -n kyu_shop_inregion`
    — the managed Postgres user lacks `CREATEDB`, so `migrate` cannot create it itself.
@@ -524,8 +541,13 @@ engine stopped tracking — see Known engine defects.
 
 ### Destroying the cluster
 
-This lane created `<shop-harness-db>`, so this lane may destroy it once the CTO accepts the
-in-region proof — no CTO step is needed for that part: `fly mpg destroy <cluster-id>`, then
-confirm with `fly mpg list -o <fly-org>` that it is gone and every other cluster is unaffected.
-The app `<shop-harness-app>` can be left in place (its machine stays `stopped` at no cost) for
-the next run, or destroyed the same way with `fly apps destroy <shop-harness-app>`.
+Done on 2026-09-25, on the CTO's instruction: `fly apps destroy <shop-harness-app>` removed the
+app and its machine, and `fly mpg destroy <shop-cluster-id>` destroyed `<shop-harness-db>`.
+Confirmed: `fly apps list -o <fly-org>` no longer lists `<shop-harness-app>`, and
+`fly mpg list -o <fly-org>` no longer lists `<shop-harness-db>`; both still list the engine
+app, `<rabbitmq-app>` and `<engine-db>` respectively.
+
+After a future run, the lane that recreated the cluster may destroy it once the CTO accepts that
+run's proof, with no CTO step: `fly mpg destroy <cluster-id>`, then the same `fly mpg list` check.
+The app can be destroyed the same way with `fly apps destroy <shop-harness-app>`, or left in
+place (its machine stays `stopped` at no cost).

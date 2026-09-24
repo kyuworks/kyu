@@ -743,6 +743,8 @@ From the smoke run's start to the end: no `ERROR` line and no `invalid auth toke
 
 **For the Camba decision**, the evidence supports: the dev engine on hatchet-lite, with its queue on RabbitMQ and both clusters on Launch, handled this report-size load with no lost or doubled effect, no error line and all windows met. It does not support: any claim about production — one run; hatchet-lite in RabbitMQ mode, not Hatchet's separate-image production shape; one engine machine and one RabbitMQ node; dev-sized machines; no metrics; and an engine restart that coincided with the queue change. Keeping RabbitMQ adds a datastore family, which requirement N1 in the design document rules out as written. The CTO decides whether RabbitMQ stays and what follows.
 
+**Decided on 2026-09-25:** RabbitMQ stays as the engine's queue in every deployed environment, and requirement N1 is amended for it: [`20260925-engine-queue-runs-on-rabbitmq.md`](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md). The shop harness app and its cluster were destroyed the same day.
+
 ## Engine database on Basic, queue on RabbitMQ (issue #198)
 
 What this is: the #176 runs again, same engine machine `<engine-machine-id>` (`performance-2x`), same RabbitMQ queue (`<rabbitmq-app>`), same harness image and commit `15542eb`, same report payload, after the CTO moved the engine's cluster `<engine-db>` (`<engine-cluster-id>`) from Launch to Basic on 2026-09-24. The shop's cluster `<shop-harness-db>` stayed on Launch, so one variable changed. Times 2026-09-24 UTC.
