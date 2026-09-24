@@ -124,7 +124,7 @@ function rateLimitSubject(option: SubscriptionRateLimitOption): string {
 }
 
 /** Resolves `rateLimit` to the explicit form, keyed under `bucket`. */
-export function resolveSubscriptionRateLimit(bucket: string, option: SubscriptionRateLimitOption): RateLimitOption {
+function resolveSubscriptionRateLimit(bucket: string, option: SubscriptionRateLimitOption): RateLimitOption {
   const parsed = subscriptionRateLimitSchema.safeParse(option)
   if (!parsed.success) {
     throw new KyuError(`rateLimit on subscription ${bucket} is not valid: ${z.prettifyError(parsed.error)}`)

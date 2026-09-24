@@ -58,10 +58,6 @@ async function publishPerTenant(tenantId: string, seq: number): Promise<string> 
   return envelope.id
 }
 
-function handledAt(envelopeId: string): number {
-  return handled.find((entry) => entry.envelopeId === envelopeId)?.atMs ?? 0
-}
-
 async function waitForHandled(envelopeId: string, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   for (;;) {
@@ -135,26 +131,31 @@ describe('subscribe: rate limits', () => {
   it("rateLimit per tenant: a tenant's third run in a minute waits while another tenant runs at once", async () => {
     const tenantA = randomUUID()
     const tenantB = randomUUID()
+    // The window counts from when the engine first saw the key, about
+    // publish time — not from when A1's handler ran, which trails publish
+    // by its own queue start delay (unrelated to the limit; ~20-39s
+    // observed on the local stack). Time the hold from publish instead.
+    const publishedAt = Date.now()
     const firstA = await publishPerTenant(tenantA, 1)
     const secondA = await publishPerTenant(tenantA, 2)
     const thirdA = await publishPerTenant(tenantA, 3)
     const firstB = await publishPerTenant(tenantB, 4)
 
-    expect(await waitForHandled(firstA, 60_000)).toBe(true)
-    expect(await waitForHandled(secondA, 60_000)).toBe(true)
-    expect(await waitForHandled(firstB, 60_000)).toBe(true)
+    expect(await waitForHandled(firstA, 120_000)).toBe(true)
+    expect(await waitForHandled(secondA, 120_000)).toBe(true)
+    expect(await waitForHandled(firstB, 120_000)).toBe(true)
 
     // Reached: tenant A's third run is held, and tenant B already ran.
     expect(await waitForQueued(thirdA, 10_000)).toBe('queued')
     expect(handled.some((entry) => entry.envelopeId === thirdA)).toBe(false)
 
-    // Held, not dropped: it runs in a later window. Observed on the local
-    // stack: 39.9s and 42.0s over two runs of this file (limit 2, sharing a
-    // worker with the other subscription) — faster than the explicit-form
-    // test above (limit 1, alone on the worker, ~76-99s), so the floor below
-    // is set under the faster shape's own observed minimum, not the other
-    // test's.
+    // Held, not dropped: it runs in a later window.
     expect(await waitForHandled(thirdA, 150_000)).toBe(true)
-    expect(handledAt(thirdA) - handledAt(firstA)).toBeGreaterThanOrEqual(25_000)
+    const thirdOutcomes = await readRunOutcomes(hatchet, thirdA)
+    const thirdStartedAt = thirdOutcomes[0]?.startedAt
+    if (thirdStartedAt === undefined) {
+      throw new Error('thirdA has no startedAt after waitForHandled reported it handled')
+    }
+    expect(thirdStartedAt.getTime() - publishedAt).toBeGreaterThanOrEqual(55_000)
   }, 300_000)
 })
