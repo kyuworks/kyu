@@ -29,7 +29,7 @@ pnpm check
 | Package | Purpose |
 | --- | --- |
 | `@kyuworks/schemas` | The envelope contract, naming rules, schema adapters |
-| `@kyuworks/sdk` | Publish through a transactional outbox, subscribe with Hatchet, run durable handlers, read a run's outcome by envelope id, read every run for one correlation id, cancel a run by envelope id or correlation id, pause and resume a business tenant |
+| `@kyuworks/sdk` | Publish through a transactional outbox, subscribe with Hatchet, run durable handlers, rate-limit a subscription in product units (per business tenant, correlation id or payload field), read a run's outcome by envelope id, read every run for one correlation id, cancel the runs for one envelope id, every run under one correlation id, every unsettled run for one business tenant or every unsettled run in the namespace, pause and resume a business tenant |
 
 A process that only publishes needs no engine credentials. `createPublisher({ source })` returns
 just `publish`, writes the outbox row inside the caller's transaction and never builds an engine
