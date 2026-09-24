@@ -12,8 +12,10 @@ The engine runs on machine `<engine-machine-id>` (`performance-2x`, 4 GB) with c
 `performance-1x` rollback machine `<old-engine-machine-id>` and its volume `<old-engine-volume-id>` were
 destroyed on 2026-09-23 before the queue switch (issue #176), so the rollback path in "Resizing
 the engine machine" no longer exists; the rollback for the queue switch is the
-`SERVER_MSGQUEUE_KIND` setting. Cluster plan: Launch, dedicated CPU (Basic until 2026-09-23, then
-Starter the same day).
+`SERVER_MSGQUEUE_KIND` setting. Cluster plan: Basic since 2026-09-24, moved down from Launch by
+the CTO for the issue #198 run (Basic until 2026-09-23, then Starter, then Launch the same day).
+The shop harness's cluster moved to Basic the same day, after that run, so both managed clusters
+are on Basic.
 
 Queue: RabbitMQ (`<rabbitmq-app>`) since 2026-09-23 (issue #176), on the same machine and
 volume; the Postgres queue before that. Harness numbers on both:
@@ -26,8 +28,21 @@ engine log; with only the database plans changed (both clusters, engine's and sh
 Starter to Launch together), it passed with none
 (`docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`, issues #173 and #175). A cluster
 created by the command in First deploy starts on Basic; the plan is changed in the Fly
-dashboard. With the queue on RabbitMQ the database still does the engine's scheduling work; its
-slow-step warnings under load are what to watch next (issue #176).
+dashboard. With the queue on RabbitMQ the database still holds the engine's own state: task and
+run records, concurrency, run history. On 2026-09-24 (issue #198), with only the engine's cluster
+moved from Launch to Basic, a smoke-size run passed both scenarios, but at report size
+`tenant-load` failed after about 36 minutes and `outbox-backlog` drained about 44 rows a second,
+against about 976 on Launch. From about two minutes into `tenant-load` the engine lost its
+connections to the cluster (55,172 failed connections, almost all `unexpected EOF`, no
+connection-slot error), and the CTO saw the cluster's CPU throttled in the Fly dashboard. So on
+RabbitMQ the limit moved from the queue tables to the engine's own state writes, and Basic does
+not carry this load.
+
+**Before a report-size harness run, move both clusters up.** Both managed clusters are on Basic
+since 2026-09-24 (after issue #198). A report-size run needs the engine's cluster on Launch
+(measured, issue #198), and it has only ever passed with the shop's cluster on Launch too (issues
+#175 and #176), so move both to Launch first. A smoke-size run passes on Basic (issue #198). The
+shop's cluster on Basic with the queue on RabbitMQ has not been measured at report size.
 
 ## Who does what
 
@@ -306,8 +321,9 @@ the design doc's queue description.
 This runs the shop's failure harness (`examples/shop/src/__tests__/harness/`) from inside `syd`,
 beside `<engine-app>`, instead of from a laptop (issue #166, following #165 option 1). It is a
 second, separate app — `<shop-harness-app>` — plus its own database cluster
-(`<shop-harness-db>`, cluster id `<shop-cluster-id>`, Launch (was Basic, then Starter, on 2026-09-23),
-Postgres 17, 10 GB, `syd`). It
+(`<shop-harness-db>`, cluster id `<shop-cluster-id>`, Basic since 2026-09-24, after issue
+#198 (was Basic, then Starter, then Launch on 2026-09-23; see **Database plan** above before a
+report-size run), Postgres 17, 10 GB, `syd`). It
 does not change `<engine-app>` or `<engine-db>` at all.
 
 **Who does what:** an engineer (or an agent, for the parts that touch no secret) creates the app,
@@ -454,7 +470,7 @@ fly deploy . -c infra/shop-harness/fly/fly.toml --dockerfile infra/shop-harness/
   --build-only --push --image-label <image-label> -a <shop-harness-app>
 ```
 
-Then run the cancel CLI as a throwaway machine that removes itself, naming each namespace to cancel:
+Then run the cancel CLI as a throwaway machine that removes itself, naming one namespace to cancel:
 
 ```bash
 fly machine run -a <shop-harness-app> -r syd --vm-size shared-cpu-1x --rm \
@@ -462,8 +478,30 @@ fly machine run -a <shop-harness-app> -r syd --vm-size shared-cpu-1x --rm \
   -e HATCHET_CLIENT_API_URL=http://<engine-app>.internal:8888 \
   -e HATCHET_CLIENT_TLS_STRATEGY=none \
   registry.fly.io/<shop-harness-app>:<image-label> \
-  node examples/shop/dist/__tests__/harness/cancelNamespaceCli.js <namespace>...
+  node examples/shop/dist/__tests__/harness/cancelNamespaceCli.js <namespace>
 ```
+
+**One namespace per `fly machine run`.** On 2026-09-24 (issue #198) two namespaces given this way
+reached the CLI as one argument, `"<first> <second> "`, and it exited 1 with `is not a harness
+namespace`. For more than one, loop:
+
+```bash
+for ns in <namespace> <namespace>; do
+  fly machine run -a <shop-harness-app> -r syd --vm-size shared-cpu-1x --rm \
+    -e HATCHET_CLIENT_HOST_PORT=<engine-app>.internal:7077 \
+    -e HATCHET_CLIENT_API_URL=http://<engine-app>.internal:8888 \
+    -e HATCHET_CLIENT_TLS_STRATEGY=none \
+    registry.fly.io/<shop-harness-app>:<image-label> \
+    node examples/shop/dist/__tests__/harness/cancelNamespaceCli.js "$ns"
+done
+```
+
+**Finding a run's namespaces.** The harness log does not print them. Each scenario namespace
+prefixes the worker and queue names in the engine's log, so search a saved engine log tail:
+`grep -oh '<prefix>_[a-z_]*_[0-9a-f]\{6\}_' <engine log> | sort -u`, where `<prefix>` is
+`KYU_SHOP_NAMESPACE` without its last underscore (`inregion198` finds
+`inregion198_tenant_load_7d76f5_`). A scenario that starts no worker, such as `outbox-backlog`,
+does not appear.
 
 Each namespace takes at least 60 seconds to settle, and that settle wait counts toward whatever
 scenario duration you are comparing it against — see the proof page's comparison-table note. The

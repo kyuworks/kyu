@@ -1,0 +1,26 @@
+{
+  "commitSha": "15542eb42d14840690501f5004958e8b498fcd1e",
+  "machine": {
+    "platform": "linux",
+    "arch": "x64",
+    "cpuCount": 2,
+    "totalMemBytes": 4106903552
+  },
+  "engineVersion": "hatchet-lite:v0.107.0",
+  "reportBuiltAt": "2026-09-24T10:31:55.490Z",
+  "scenarios": [
+    {
+      "name": "tenant-load",
+      "passed": false,
+      "durationMs": 2187669,
+      "observation": {},
+      "failures": [
+        {
+          "check": "harness-leaves-nothing",
+          "detail": "cancelling leftover engine runs failed: Request failed with status code 500"
+        }
+      ],
+      "error": "runs.forEnvelope for 01a0d2d7-7320-7000-9915-bf845c53c001 failed after 3 attempts: runs.forEnvelope: could not read runs for envelopeId 01a0d2d7-7320-7000-9915-bf845c53c001: Request failed with status code 500: runs.forEnvelope: could not read runs for envelopeId 01a0d2d7-7320-7000-9915-bf845c53c001: Request failed with status code 500"
+    }
+  ]
+}
