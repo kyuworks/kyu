@@ -149,11 +149,8 @@ describe('subscribe: rate limits', () => {
 
     // Held, not dropped: it runs in a later window.
     expect(await waitForHandled(thirdA, 150_000)).toBe(true)
-    const thirdOutcomes = await readRunOutcomes(hatchet, thirdA)
-    const thirdStartedAt = thirdOutcomes[0]?.startedAt
-    if (thirdStartedAt === undefined) {
-      throw new Error('thirdA has no startedAt after waitForHandled reported it handled')
-    }
-    expect(thirdStartedAt.getTime() - publishedAt).toBeGreaterThanOrEqual(55_000)
+    // The handler's own clock: the engine's run list can still lack startedAt here.
+    const thirdAt = handled.find((entry) => entry.envelopeId === thirdA)?.atMs ?? 0
+    expect(thirdAt - publishedAt).toBeGreaterThanOrEqual(55_000)
   }, 300_000)
 })
