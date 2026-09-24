@@ -3,7 +3,7 @@
 **Status:** accepted on 2026-09-25
 **Date:** 2026-09-25
 **Parent:** [#202](https://github.com/Camba-nz/kyu/issues/202)
-**This is not** a decision about the engine's database plan, the production topology, or the engine itself: [`20260916-hatchet-is-the-engine.md`](20260916-hatchet-is-the-engine.md) stands (hatchet-lite, a dedicated Postgres cluster per environment).
+**This is not** a decision about the engine's database plan, Hatchet's separate-image production topology, or the engine itself: [`20260916-hatchet-is-the-engine.md`](20260916-hatchet-is-the-engine.md) stands (hatchet-lite, a dedicated Postgres cluster per environment).
 
 Every deployed Kyu engine keeps Hatchet's internal message queue on a RabbitMQ broker of its own, not in its Postgres database. This amends requirement N1 ("no new datastore family") for the engine's queue only.
 
@@ -17,11 +17,11 @@ The shop's failure harness ran at report size in `syd`, beside the dev engine `<
 
 - **Postgres queue** (issues #166 on Basic, #173 on Starter, #175 on Launch): `outbox-backlog` failed every time. On Launch it drained about 162 rows a second and left 600 of 50,000 rows. `tenant-load` passed only on Launch.
 - **RabbitMQ, both clusters on Launch** (issue #176): both scenarios passed. `outbox-backlog` drained about 976 rows a second and finished in 47 of 300 seconds. No error line in the engine or RabbitMQ log.
-- **RabbitMQ, engine cluster on Basic** (issue #198): passed at smoke size, failed both scenarios at report size. The engine lost its connections to its own database; the limit moved from the queue to the engine's own state writes.
+- **RabbitMQ, engine cluster on Basic** (issue #198): passed at smoke size, failed both scenarios at report size. The engine lost its connections to its own database. One run; this fits the limit moving from the queue to the engine's own state writes, and the database's recovery and read-only lines were not checked.
 
 The evidence has limits (proof page, #176 "What this run does not prove"): one run per topology; hatchet-lite in RabbitMQ mode, not Hatchet's separate-image production shape; one engine machine and one single-node broker; the queue switch and an engine restart happened together; no metrics were read; the broker going away was never tested.
 
-Dev has run the broker since 2026-09-23: app `<rabbitmq-app>`, `rabbitmq:3.13.7`, one `performance-1x` machine, a 3 GB volume, no public address (`infra/hatchet/fly/rabbitmq/fly.toml`). Hatchet documents RabbitMQ as its default production queue (runbook, "Queue on RabbitMQ").
+Dev has run the broker since 2026-09-23: app `<rabbitmq-app>`, `rabbitmq:3.13.7`, one `performance-1x` machine, a 3 GB volume (runbook, `-s 3`), no public address. Hatchet documents RabbitMQ as its default production queue (runbook, "Queue on RabbitMQ").
 
 ---
 
@@ -52,8 +52,8 @@ Dev has run the broker since 2026-09-23: app `<rabbitmq-app>`, `rabbitmq:3.13.7`
 
 **Positive**
 
-- On the same engine machine and database plan, the measured backlog drain went from about 162 to about 976 rows a second (#175 to #176).
-- The queue no longer shares the engine's database, so the database plan limits only the engine's own state writes (#198).
+- On the same engine machine and database plan, the measured backlog drain went from about 162 to about 976 rows a second (#175 to #176). The queue switch and an engine restart happened together, so the run does not separate the two.
+- The queue no longer shares the engine's database. In one run on Basic (#198), the limit fits the engine's own state writes rather than the queue.
 - Hatchet's full production topology, when it is needed, uses the same kind of broker.
 
 **Negative**

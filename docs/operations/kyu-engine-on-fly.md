@@ -5,7 +5,7 @@ This page covers the deployed Hatchet engine for the Kyu message bus: `infra/hat
 `infra/hatchet/token.sh` for that.
 
 Today there is one environment: dev, org `<fly-org>`, region `syd`. What exists on Fly for it
-since 2026-09-25:
+as of 2026-09-25:
 
 - the engine app `<engine-app>`, machine `<engine-machine-id>` (`performance-2x`, 4 GB), config
   volume `kyu_hatchet_config_2x` (`<engine-config-volume-id>`), queue on RabbitMQ;
@@ -340,7 +340,8 @@ with the steps that follow, in order: "One-time setup" (the app, a new cluster a
 `kyu_shop_inregion` database), then "The CTO's steps, in order" (the two secrets through
 `infra/shop-harness/fly/secrets.sh`, from the new cluster's direct connection string and a newly
 minted engine token), then "Running it". A new cluster gets a new cluster id: use it wherever this
-section says `<shop-cluster-id>`. Before a report-size run, move the new cluster to Launch (see
+section or the text `infra/shop-harness/fly/secrets.sh` prints says `<shop-cluster-id>`. Before a
+report-size run, move the new cluster to Launch (see
 **Before a report-size harness run** at the top of this page).
 
 **Who does what:** an engineer (or an agent, for the parts that touch no secret) creates the app,
@@ -542,8 +543,9 @@ engine stopped tracking — see Known engine defects.
 
 Done on 2026-09-25, on the CTO's instruction: `fly apps destroy <shop-harness-app>` removed the
 app and its machine, and `fly mpg destroy <shop-cluster-id>` destroyed `<shop-harness-db>`.
-Confirmed: `fly apps list -o <fly-org>` and `fly mpg list -o <fly-org>` list neither,
-and still list `<engine-app>`, `<rabbitmq-app>` and `<engine-db>`.
+Confirmed: `fly apps list -o <fly-org>` no longer lists `<shop-harness-app>`, and
+`fly mpg list -o <fly-org>` no longer lists `<shop-harness-db>`; both still list the engine
+app, `<rabbitmq-app>` and `<engine-db>` respectively.
 
 After a future run, the lane that recreated the cluster may destroy it once the CTO accepts that
 run's proof, with no CTO step: `fly mpg destroy <cluster-id>`, then the same `fly mpg list` check.
