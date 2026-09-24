@@ -14,7 +14,6 @@ import type { HatchetClient } from './hatchet.js'
 import { onceById } from './outbox/onceById.js'
 import { createPublisher } from './outbox/publish.js'
 import type { Publisher } from './outbox/publish.js'
-import { isTenantPaused, pauseTenant, resumeTenant } from './outbox/tenantPause.js'
 import type { KyuTenants } from './outbox/tenantPause.js'
 import { startRelay } from './relay/index.js'
 import type { Relay, RelayOptions } from './relay/index.js'
@@ -79,7 +78,7 @@ export function createKyu(options: CreateKyuOptions): Kyu {
       unsettledInNamespace: (namespaceOptions) => readUnsettledRunsInNamespace(hatchet, namespaceOptions),
       cancelUnsettledInNamespace: (namespaceOptions) => cancelUnsettledRunsInNamespace(hatchet, namespaceOptions),
     },
-    tenants: { pause: pauseTenant, resume: resumeTenant, isPaused: isTenantPaused },
+    tenants: publisher.tenants,
     worker: (name, workerOptions) => createWorker(hatchet, name, workerOptions),
     startRelay: (relayOptions) => startRelay({ ...relayOptions, hatchet }),
     schedules: createSchedules(hatchet),

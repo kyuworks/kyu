@@ -1,4 +1,4 @@
-import type { Publisher, Queryable, Unparsed } from '@kyuworks/sdk'
+import type { KyuTenants, Publisher, Queryable, Unparsed } from '@kyuworks/sdk'
 import { createEnvelope } from '@kyuworks/sdk'
 import type { Pool, PoolClient } from 'pg'
 import { describe, expect, it } from 'vitest'
@@ -73,7 +73,13 @@ function fakePublisher(
     if (failOnCall === calls) throw new Error('publish failed')
     return createEnvelope(definition, data, { tenantId: options.tenantId, source: 'test' })
   }
-  return { publish }
+  // placeOrder never reaches tenants; unused here, present only to satisfy Publisher.
+  const tenants: KyuTenants = {
+    pause: () => Promise.reject(new Error('fakePublisher.tenants.pause is not implemented')),
+    resume: () => Promise.reject(new Error('fakePublisher.tenants.resume is not implemented')),
+    isPaused: () => Promise.reject(new Error('fakePublisher.tenants.isPaused is not implemented')),
+  }
+  return { publish, tenants }
 }
 
 const input = { tenantId: '018f0000-0000-7000-8000-000000000001', customerId: '018f0000-0000-7000-8000-000000000002' }

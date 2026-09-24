@@ -75,4 +75,11 @@ describe('isTenantPaused', () => {
     const db = recordingQueryable([{ paused: true }])
     await expect(isTenantPaused(db, '018f0000-0000-7000-8000-000000000001')).resolves.toBe(true)
   })
+
+  it('wraps a malformed row in a KyuError instead of leaking a ZodError', async () => {
+    const db = recordingQueryable([{ paused: 'not-a-boolean' }])
+    await expect(isTenantPaused(db, '018f0000-0000-7000-8000-000000000001')).rejects.toThrow(
+      new KyuError('tenants.isPaused: malformed row from kyu_paused_tenant'),
+    )
+  })
 })

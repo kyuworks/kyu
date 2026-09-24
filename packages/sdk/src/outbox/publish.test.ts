@@ -82,6 +82,11 @@ describe('createPublisher', () => {
     ).rejects.toThrow(RangeError)
     expect(calls).toBe(0)
   })
+
+  it('exposes tenants alongside publish, so a database-only process (no engine token) can pause/resume a tenant', () => {
+    const publisher = createPublisher({ source: 'shop-service' })
+    expect(Object.keys(publisher).sort()).toEqual(['publish', 'tenants'])
+  })
 })
 
 describe('publishEnvelope', () => {

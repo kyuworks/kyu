@@ -33,5 +33,8 @@ export async function resumeTenant(db: RelayQueryable, tenantId: string): Promis
 export async function isTenantPaused(db: RelayQueryable, tenantId: string): Promise<boolean> {
   const id = parseTenantId('tenants.isPaused', tenantId)
   const result = await db.query('SELECT EXISTS (SELECT 1 FROM kyu_paused_tenant WHERE tenant_id = $1) AS paused', [id])
-  return pausedRowSchema.parse(result.rows[0]).paused
+  const parsed = pausedRowSchema.safeParse(result.rows[0])
+  if (!parsed.success)
+    throw new KyuError('tenants.isPaused: malformed row from kyu_paused_tenant', { cause: parsed.error })
+  return parsed.data.paused
 }
