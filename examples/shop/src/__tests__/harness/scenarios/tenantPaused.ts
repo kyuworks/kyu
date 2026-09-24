@@ -166,7 +166,15 @@ export const tenantPaused: Scenario = {
         pausedMs: Date.now() - pausedAt,
       }
     } finally {
-      await ctx.kyu.tenants.resume(ctx.pool, pausedTenant)
+      // A throw here must never replace a ScenarioAssertionError already
+      // propagating out of the try block above: truncateLaneTables clears
+      // kyu_paused_tenant regardless, so a failed resume here still leaves
+      // the lane clean.
+      try {
+        await ctx.kyu.tenants.resume(ctx.pool, pausedTenant)
+      } catch {
+        // best-effort: truncateLaneTables (scenario.ts) clears the row anyway
+      }
     }
   },
 }

@@ -107,6 +107,9 @@ afterAll(async () => {
 })
 
 describe('tenant pause (#181)', () => {
+  // Known and documented, not tested here: a row the relay had already
+  // claimed when the pause committed still ships — the pause only stops the
+  // *next* claim from picking the tenant's rows up.
   it('holds a paused tenant’s new messages in the outbox while other work completes, then delivers them in publish order after resume', async () => {
     await client.query('BEGIN')
     const longEnvelope = await kyu.publish(client, long, { seq: 0 }, { tenantId: PAUSED })
