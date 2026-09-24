@@ -131,10 +131,8 @@ describe('subscribe: rate limits', () => {
   it("rateLimit per tenant: a tenant's third run in a minute waits while another tenant runs at once", async () => {
     const tenantA = randomUUID()
     const tenantB = randomUUID()
-    // The window counts from when the engine first saw the key, about
-    // publish time — not from when A1's handler ran, which trails publish
-    // by its own queue start delay (unrelated to the limit; ~20-39s
-    // observed on the local stack). Time the hold from publish instead.
+    // The window counts from about publish time, not from A1's own start,
+    // which trails publish by an unrelated queue delay.
     const publishedAt = Date.now()
     const firstA = await publishPerTenant(tenantA, 1)
     const secondA = await publishPerTenant(tenantA, 2)
