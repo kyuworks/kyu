@@ -2,7 +2,7 @@ import { envelopeSchema } from '@kyuworks/schemas'
 import { KyuError, V1TaskStatus } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
 import type { Queryable } from '../db/queryable.js'
-import type { NamespaceRunsOptions } from './namespaceRuns.js'
+import type { CancelTenantRunsOptions, NamespaceRunsOptions } from './namespaceRuns.js'
 import type { RunProgress } from './runProgress.js'
 
 // A durable run parked in `sleepFor`/`waitFor` reads as `running`: the
@@ -59,6 +59,10 @@ export interface KyuRuns {
   unsettledInNamespace(options: NamespaceRunsOptions): Promise<readonly RunOutcome[]>
   /** Cancels every run in this client's own namespace that is still queued or running, and returns how many the engine cancelled; sends one cancel — poll `unsettledInNamespace` if you must see the namespace empty. A namespace with no registered workflow cancels nothing. */
   cancelUnsettledInNamespace(options: NamespaceRunsOptions): Promise<number>
+  /** Every run of one business tenant (the envelope's `tenantId`) in this client's own namespace the engine still holds queued or running. Needs a `since`. A tenant id that is not a uuid throws; a message with no tenant is never matched. */
+  unsettledForTenant(tenantId: string, options: NamespaceRunsOptions): Promise<readonly RunOutcome[]>
+  /** Cancels every run of one business tenant in this client's own namespace that is still queued or running, and returns how many the engine cancelled; sends one cancel — poll `unsettledForTenant` if you must see the tenant empty. Never reaches another tenant or namespace. With `outbox`, also cancels that tenant's outbox rows not yet due. */
+  cancelForTenant(tenantId: string, options: CancelTenantRunsOptions): Promise<number>
 }
 
 type EngineRunRow = Awaited<ReturnType<HatchetClient['runs']['list']>>['rows'][number]
@@ -78,7 +82,7 @@ export interface RunsReader {
 }
 
 /** The public method a run-detail failure is reported under. */
-export type RunDetailCaller = RunLookup['caller'] | 'runs.unsettledInNamespace'
+export type RunDetailCaller = RunLookup['caller'] | 'runs.unsettledInNamespace' | 'runs.unsettledForTenant'
 
 const RUN_STATUS = {
   QUEUED: 'queued',

@@ -14,7 +14,7 @@ export interface KyuTenants {
   isPaused(db: RelayQueryable, tenantId: string): Promise<boolean>
 }
 
-function parseTenantId(caller: string, tenantId: string): string {
+export function parseTenantId(caller: string, tenantId: string): string {
   const parsed = tenantIdSchema.safeParse(tenantId)
   if (!parsed.success) throw new KyuError(`${caller}: "${tenantId}" is not a uuid tenant id`)
   return parsed.data

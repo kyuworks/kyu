@@ -370,6 +370,18 @@ describe('cancelScheduledRows (#180)', () => {
     const cancelled = await client.query('SELECT id FROM kyu_outbox WHERE cancelled_at IS NOT NULL')
     expect(idRows.parse(cancelled.rows).map((row) => row.id)).toEqual([caused])
   })
+
+  it('matches the business tenant for a tenant cancel (#182)', async () => {
+    const tenantId = randomUUID()
+    const later = new Date(Date.now() + 3_600_000)
+    const scheduled = (await publisher.publish(client, thingHappened, { n: 1 }, { tenantId, publishAt: later })).id
+    await publisher.publish(client, thingHappened, { n: 1 }, { tenantId, publishAt: new Date() })
+    await publisher.publish(client, thingHappened, { n: 1 }, { tenantId: randomUUID(), publishAt: later })
+
+    expect(await cancelScheduledRows(client, { field: 'tenantId', id: tenantId })).toBe(1)
+    const cancelled = await client.query('SELECT id FROM kyu_outbox WHERE cancelled_at IS NOT NULL')
+    expect(idRows.parse(cancelled.rows).map((row) => row.id)).toEqual([scheduled])
+  })
 })
 
 describe('claimPendingRows with a paused tenant (#181)', () => {

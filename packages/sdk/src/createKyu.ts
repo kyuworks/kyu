@@ -2,7 +2,12 @@ import type { MessageData, MessageDefinition, MessageSchema } from '@kyuworks/sc
 import { cancelRunsFor } from './consume/cancelRuns.js'
 import { durable } from './consume/durable.js'
 import type { DurableOptions } from './consume/durable.js'
-import { cancelUnsettledRunsInNamespace, readUnsettledRunsInNamespace } from './consume/namespaceRuns.js'
+import {
+  cancelUnsettledRunsForTenant,
+  cancelUnsettledRunsInNamespace,
+  readUnsettledRunsForTenant,
+  readUnsettledRunsInNamespace,
+} from './consume/namespaceRuns.js'
 import { readRunOutcomes } from './consume/runOutcomes.js'
 import type { KyuRuns } from './consume/runOutcomes.js'
 import { readRunProgressForCorrelation } from './consume/runProgress.js'
@@ -77,6 +82,8 @@ export function createKyu(options: CreateKyuOptions): Kyu {
         ),
       unsettledInNamespace: (namespaceOptions) => readUnsettledRunsInNamespace(hatchet, namespaceOptions),
       cancelUnsettledInNamespace: (namespaceOptions) => cancelUnsettledRunsInNamespace(hatchet, namespaceOptions),
+      unsettledForTenant: (tenantId, tenantOptions) => readUnsettledRunsForTenant(hatchet, tenantId, tenantOptions),
+      cancelForTenant: (tenantId, tenantOptions) => cancelUnsettledRunsForTenant(hatchet, tenantId, tenantOptions),
     },
     tenants: publisher.tenants,
     worker: (name, workerOptions) => createWorker(hatchet, name, workerOptions),
