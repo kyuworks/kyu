@@ -24,7 +24,7 @@ export interface RunsCanceller extends RunsReader {
  * this twice for the same lookup is safe. Only runs in this client's own
  * namespace are ever sent to the engine's cancel.
  *
- * With options.outbox, outbox rows not yet due for the same id are cancelled
+ * With options.outbox, outbox rows for the same id that the relay has not claimed, due or not, are cancelled
  * in that transaction after the engine cancel.
  */
 export async function cancelRunsFor(

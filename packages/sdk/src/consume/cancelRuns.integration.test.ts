@@ -310,4 +310,63 @@ describe('cancelRunsFor: durable and command runs', () => {
       await db.end()
     }
   }, 90_000)
+
+  it('flow 7: given the outbox, a cancel also retires a continuation already due but not yet claimed, and an uncancelled due row still ships (#185)', async () => {
+    const db = new Client({ connectionString: process.env['KYU_TEST_DATABASE_URL'] })
+    await db.connect()
+    const publisher = createPublisher({ source: 'sdk.test' })
+    const tenantId = randomUUID()
+    const resumedBefore = resumed.length
+    try {
+      const correlationId = uuidv7()
+      // Already due: the hand-off's publish_at has passed and the relay has not ticked since.
+      const aSecondAgo = new Date(Date.now() - 1_000)
+      const continuation = await publisher.publish(
+        db,
+        resumeTrigger,
+        { seq: 8 },
+        { tenantId, correlationId, causationId: uuidv7(), publishAt: aSecondAgo },
+      )
+      const other = await publisher.publish(db, resumeTrigger, { seq: 9 }, { tenantId, publishAt: aSecondAgo })
+      const ids = `{${continuation.id},${other.id}}`
+
+      await db.query('BEGIN')
+      const cancelled = await cancelRunsFor(
+        hatchet,
+        { key: 'correlationId', id: correlationId, caller: 'runs.cancelForCorrelation' },
+        { outbox: db },
+      )
+      await db.query('COMMIT')
+      expect(cancelled).toEqual([])
+
+      const relay = startRelay({ db, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
+      const tick = await relay.tick()
+      await relay.stop()
+      expect(tick.pushed).toBe(1)
+
+      const deadline = Date.now() + 20_000
+      while (!resumed.some((entry) => entry.id === other.id) && Date.now() < deadline) await sleep(200)
+      await sleep(3_000)
+      expect(resumed.slice(resumedBefore)).toEqual([{ id: other.id, tenantId }])
+
+      const rows = z
+        .array(z.object({ id: z.uuid(), published_at: z.date().nullable(), cancelled_at: z.date().nullable() }))
+        .parse(
+          (
+            await db.query(
+              'SELECT id, published_at, cancelled_at FROM kyu_outbox WHERE id = ANY($1::uuid[]) ORDER BY id',
+              [ids],
+            )
+          ).rows,
+        )
+      expect(rows.map((row) => [row.id, row.published_at !== null, row.cancelled_at !== null])).toEqual([
+        [continuation.id, false, true],
+        [other.id, true, false],
+      ])
+
+      await db.query('DELETE FROM kyu_outbox WHERE id = ANY($1::uuid[])', [ids])
+    } finally {
+      await db.end()
+    }
+  }, 90_000)
 })

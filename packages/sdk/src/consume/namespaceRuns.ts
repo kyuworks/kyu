@@ -17,7 +17,7 @@ export interface NamespaceRunsOptions {
   since: Date
 }
 
-/** With `outbox`, that tenant's outbox rows not yet due are cancelled in the caller's transaction after the engine cancel. */
+/** With `outbox`, that tenant's outbox rows the relay has not claimed, held rows included, are cancelled in the caller's transaction after the engine cancel. */
 export type CancelTenantRunsOptions = NamespaceRunsOptions & Pick<CancelRunsOptions, 'outbox'>
 
 const UNSETTLED_STATUSES = [V1TaskStatus.QUEUED, V1TaskStatus.RUNNING]
@@ -149,7 +149,7 @@ export function cancelUnsettledRunsInNamespace(
   return cancelUnsettledRuns(hatchet, options, 'runs.cancelUnsettledInNamespace')
 }
 
-/** Cancels one business tenant's queued or running runs in this namespace and returns how many the engine cancelled; with options.outbox, then that tenant's rows not yet due. */
+/** Cancels one business tenant's queued or running runs in this namespace and returns how many the engine cancelled; with options.outbox, then that tenant's rows the relay has not claimed. */
 export async function cancelUnsettledRunsForTenant(
   hatchet: NamespaceRunsClient,
   tenantId: string,

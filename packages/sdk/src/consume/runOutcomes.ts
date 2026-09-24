@@ -32,7 +32,7 @@ export interface ReadRunOutcomesOptions {
 }
 
 export interface CancelRunsOptions extends ReadRunOutcomesOptions {
-  /** The caller's transaction on its own database. Scheduled outbox rows for the same id are cancelled there too, after the engine cancel succeeds. */
+  /** The caller's transaction on its own database. Outbox rows for the same id that the relay has not claimed are cancelled there too, after the engine cancel succeeds. */
   outbox?: Queryable
 }
 
@@ -51,9 +51,9 @@ export interface KyuRuns {
   forEnvelope(envelopeId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
   /** Every run that shares this correlation id — a durable run and the command runs it published — oldest first, with what a parked run is waiting for. An unknown id returns an empty array. */
   forCorrelation(correlationId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunProgress[]>
-  /** Cancels every run the engine holds for this envelope id and returns them as they read just before the cancel. An unknown id returns an empty array. With `outbox`, also cancels every outbox row not yet due that this envelope caused (its causationId), so the relay never ships it. */
+  /** Cancels every run the engine holds for this envelope id and returns them as they read just before the cancel. An unknown id returns an empty array. With `outbox`, also cancels every outbox row this envelope caused (its causationId) that the relay has not claimed, due or not, so the relay never ships it. */
   cancelForEnvelope(envelopeId: string, options?: CancelRunsOptions): Promise<readonly RunOutcome[]>
-  /** Cancels every run that shares this correlation id — a durable run and the command runs it published — and returns them as they read just before the cancel. An unknown id returns an empty array. With `outbox`, also cancels every outbox row not yet due under this correlation id, so the relay never ships it. */
+  /** Cancels every run that shares this correlation id — a durable run and the command runs it published — and returns them as they read just before the cancel. An unknown id returns an empty array. With `outbox`, also cancels every outbox row under this correlation id that the relay has not claimed, due or not, so the relay never ships it. */
   cancelForCorrelation(correlationId: string, options?: CancelRunsOptions): Promise<readonly RunOutcome[]>
   /** Every run in this client's own namespace the engine still holds queued or running. Needs a `since`: a namespace has no id to date itself from. A run the list has shown unsettled for over a minute is left out when the engine's run detail says it completed or failed. */
   unsettledInNamespace(options: NamespaceRunsOptions): Promise<readonly RunOutcome[]>
@@ -61,7 +61,7 @@ export interface KyuRuns {
   cancelUnsettledInNamespace(options: NamespaceRunsOptions): Promise<number>
   /** Every run of one business tenant (the envelope's `tenantId`) in this client's own namespace the engine still holds queued or running. Needs a `since`. A tenant id that is not a uuid throws; a message with no tenant is never matched. */
   unsettledForTenant(tenantId: string, options: NamespaceRunsOptions): Promise<readonly RunOutcome[]>
-  /** Cancels every run of one business tenant in this client's own namespace that is still queued or running, and returns how many the engine cancelled; sends one cancel — poll `unsettledForTenant` if you must see the tenant empty. Never reaches another tenant or namespace. With `outbox`, also cancels that tenant's outbox rows not yet due. */
+  /** Cancels every run of one business tenant in this client's own namespace that is still queued or running, and returns how many the engine cancelled; sends one cancel — poll `unsettledForTenant` if you must see the tenant empty. Never reaches another tenant or namespace. With `outbox`, also cancels that tenant's outbox rows the relay has not claimed, a paused tenant's held rows included. */
   cancelForTenant(tenantId: string, options: CancelTenantRunsOptions): Promise<number>
 }
 
