@@ -350,7 +350,7 @@ describe('cancelUnsettledRunsForTenant (#182)', () => {
     expect(cancelCalls()).toHaveLength(0)
   })
 
-  it('with the outbox, cancels that tenant’s scheduled rows after the engine cancel', async () => {
+  it('with the outbox, cancels that tenant’s unclaimed rows after the engine cancel', async () => {
     const { client, cancelCalls } = fakeNamespaceRunsClient({ namespace: 'ns_' })
     const { outbox, calls } = recordingOutbox(() => cancelCalls().length)
     await cancelUnsettledRunsForTenant(client, TENANT, { since, outbox })

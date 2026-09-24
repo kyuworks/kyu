@@ -1,6 +1,6 @@
 import { KyuError, V1TaskStatus } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
-import { cancelScheduledRows } from '../outbox/outboxRepository.js'
+import { cancelUnclaimedOutboxRows } from '../outbox/outboxRepository.js'
 import { parseTenantId } from '../outbox/tenantPause.js'
 import { toCheckedRunOutcomes } from './runOutcomes.js'
 import type { CancelRunsOptions, RunDetailReader, RunOutcome } from './runOutcomes.js'
@@ -157,12 +157,12 @@ export async function cancelUnsettledRunsForTenant(
 ): Promise<number> {
   const id = parseTenantId('runs.cancelForTenant', tenantId)
   const cancelled = await cancelUnsettledRuns(hatchet, options, 'runs.cancelForTenant', id)
-  // After the engine cancel, so a failed engine cancel leaves every scheduled row pending.
+  // After the engine cancel, so a failed engine cancel leaves every outbox row pending.
   if (options.outbox !== undefined) {
     try {
-      await cancelScheduledRows(options.outbox, { field: 'tenantId', id })
+      await cancelUnclaimedOutboxRows(options.outbox, { field: 'tenantId', id })
     } catch (cause) {
-      throw new KyuError(`runs.cancelForTenant: could not cancel scheduled outbox rows for tenant ${id}`, {
+      throw new KyuError(`runs.cancelForTenant: could not cancel unclaimed outbox rows for tenant ${id}`, {
         cause: cause instanceof Error ? cause : new Error(String(cause)),
       })
     }
