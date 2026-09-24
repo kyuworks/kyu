@@ -98,3 +98,11 @@ The continuation keeps the trigger's message name, so it queues in the same conc
 A run waiting for its continuation is an outbox row with a future `publish_at`. `runs.forEnvelope` reports the run that handed off as `completed`, and the run's `finished_at` is still empty.
 
 Not solved here: cancelling a run, or disabling a definition, between the two runs. A scheduled outbox row cannot be recalled today. That is [#99](https://github.com/Camba-nz/kyu/issues/99).
+
+---
+
+## Addendum — 24 September 2026: cancelling a hand-off (#180, #185)
+
+The addendum above says a scheduled outbox row could not be recalled. Since [#180](https://github.com/Camba-nz/kyu/issues/180) ([PR #184](https://github.com/Camba-nz/kyu/pull/184)) and [#185](https://github.com/Camba-nz/kyu/issues/185) ([PR #189](https://github.com/Camba-nz/kyu/pull/189)) it can. Given the caller's own transaction, `kyu.runs.cancelForCorrelation(runId, { outbox: tx })` cancels the engine's runs under the run id and then every outbox row under it that the relay has not claimed, whether its `publish_at` is still ahead or has already passed. The hand-off continuation carries the run id as its correlation id, so it gets `cancelled_at` and the relay never ships it. A row the relay has already claimed can still reach the engine; the README's paragraph that begins "Given the caller's own transaction" says when, and that a later cancel for the same id stops the run it starts.
+
+Disabling a definition between the two runs is still not solved.
