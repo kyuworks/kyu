@@ -15,6 +15,8 @@ export interface OutboxCounts {
   retired: number
   /** Rows whose `publish_at` has not arrived yet; waiting on purpose, never late. */
   scheduled: number
+  /** Rows a runs cancel stopped before the relay could ship them (`cancelled_at` set); never shipped. */
+  cancelled: number
 }
 
 export interface DoneOutcomeCount {
@@ -79,6 +81,7 @@ const producerTotalsRowSchema = z.object({
   waiting: z.coerce.number().int(),
   retired: z.coerce.number().int(),
   scheduled: z.coerce.number().int(),
+  cancelled: z.coerce.number().int(),
 })
 const windowRowSchema = z.object({ id: z.string(), name: z.string() })
 const handlerLogRowSchema = z.object({ envelope_id: z.string(), handler: z.string() })
@@ -98,9 +101,10 @@ async function readProducerTotals(db: CountsSource): Promise<ProducerTotalsRow[]
   const result = await db.query(
     `SELECT coalesce(envelope->>'source', '(unknown)') AS source,
             count(*)::int AS published,
-            count(*) FILTER (WHERE published_at IS NULL AND dead_at IS NULL AND publish_at <= now())::int AS waiting,
+            count(*) FILTER (WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND publish_at <= now())::int AS waiting,
             count(*) FILTER (WHERE dead_at IS NOT NULL)::int AS retired,
-            count(*) FILTER (WHERE published_at IS NULL AND dead_at IS NULL AND publish_at > now())::int AS scheduled
+            count(*) FILTER (WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND publish_at > now())::int AS scheduled,
+            count(*) FILTER (WHERE cancelled_at IS NOT NULL)::int AS cancelled
      FROM kyu_outbox
      GROUP BY 1
      ORDER BY 1`,
@@ -217,16 +221,21 @@ function foldBusCounts(
   const producers: ProducerCounts[] = producerRows.map((row) => ({ source: row.source, published: row.published }))
   const published = producerRows.reduce((sum, row) => sum + row.published, 0)
   const waitingForRelay = producerRows.reduce((sum, row) => sum + row.waiting, 0)
-  // Retirement only ever lands on a row the claim selected, which is published_at IS NULL
-  // (packages/sdk outboxRepository.ts), so the four buckets never overlap.
+  // Retirement and cancellation only ever land on a row the claim would
+  // otherwise have selected, which is published_at IS NULL (packages/sdk
+  // outboxRepository.ts), so the five buckets never overlap. `shipped` must
+  // subtract `cancelled` too: a cancelled row is published_at IS NULL, so it
+  // is still inside `published`, but the relay never sent it (#184).
   const retired = producerRows.reduce((sum, row) => sum + row.retired, 0)
   const scheduled = producerRows.reduce((sum, row) => sum + row.scheduled, 0)
+  const cancelled = producerRows.reduce((sum, row) => sum + row.cancelled, 0)
   const outbox: OutboxCounts = {
     published,
     waitingForRelay,
     retired,
     scheduled,
-    shipped: published - waitingForRelay - retired - scheduled,
+    cancelled,
+    shipped: published - waitingForRelay - retired - scheduled - cancelled,
   }
 
   const logByEnvelope = new Map<string, Set<string>>()

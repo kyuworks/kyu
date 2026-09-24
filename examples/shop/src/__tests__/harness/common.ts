@@ -229,6 +229,7 @@ export interface WorkflowContinuationRow {
   id: string
   publishAt: Date
   publishedAt: Date | null
+  cancelledAt: Date | null
   resumeStepId: string | null
 }
 
@@ -236,6 +237,7 @@ const workflowContinuationRowSchema = z.object({
   id: z.uuid(),
   publish_at: z.date(),
   published_at: z.date().nullable(),
+  cancelled_at: z.date().nullable(),
   resume_step_id: z.string().nullable(),
 })
 
@@ -246,7 +248,7 @@ export async function readWorkflowContinuations(
   runId: string,
 ): Promise<readonly WorkflowContinuationRow[]> {
   const result = await pool.query(
-    `SELECT id, publish_at, published_at, envelope->'data'->>'resumeStepId' AS resume_step_id
+    `SELECT id, publish_at, published_at, cancelled_at, envelope->'data'->>'resumeStepId' AS resume_step_id
      FROM kyu_outbox
      WHERE name = 'shop.workflow.triggered' AND id <> $1 AND envelope->>'correlationId' = $2`,
     [triggerEnvelopeId, runId],
@@ -257,6 +259,7 @@ export async function readWorkflowContinuations(
       id: parsed.id,
       publishAt: parsed.publish_at,
       publishedAt: parsed.published_at,
+      cancelledAt: parsed.cancelled_at,
       resumeStepId: parsed.resume_step_id,
     }
   })

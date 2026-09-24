@@ -44,6 +44,25 @@ export async function insertOutboxRow<TData extends MessageDataShape = EnvelopeD
   )
 }
 
+export interface ScheduledRowMatch {
+  /** The envelope field the id is matched on. */
+  field: 'correlationId' | 'causationId'
+  id: string
+}
+
+// Only rows not yet due and not claimed: a due or claimed row belongs to the
+// relay and becomes a run, which the engine cancel covers.
+export async function cancelScheduledRows(db: Queryable, match: ScheduledRowMatch): Promise<number> {
+  const cancelled = await db.query(
+    `UPDATE kyu_outbox SET cancelled_at = now()
+     WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND claimed_at IS NULL
+       AND publish_at > now()
+       AND envelope->>$1 = $2`,
+    [match.field, match.id],
+  )
+  return cancelled.rowCount ?? 0
+}
+
 export interface ClaimPendingRowsOptions {
   limit: number
   workerId: string
@@ -74,6 +93,7 @@ export async function claimPendingRows(db: RelayQueryable, options: ClaimPending
        SELECT id FROM kyu_outbox
        WHERE published_at IS NULL
          AND dead_at IS NULL
+         AND cancelled_at IS NULL
          AND publish_at <= now() -- a future publish_at is not due yet
          AND (claimed_at IS NULL OR claimed_at < now() - ($2::text || ' milliseconds')::interval)
        -- Matches the (publish_at, created_at) index: a due backlog is an index scan, not a seq scan plus sort.

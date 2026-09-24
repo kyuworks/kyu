@@ -108,7 +108,13 @@ export type { FieldMatch } from './consume/waitMatch.js'
 // readRunOutcomes/toRunOutcome are not exported: their RunsReader parameter
 // type is derived from HatchetClient and not exported either, so a consumer
 // could not name it. Reach this through kyu.runs.forEnvelope instead.
-export type { KyuRuns, ReadRunOutcomesOptions, RunOutcome, RunStatus } from './consume/runOutcomes.js'
+export type {
+  CancelRunsOptions,
+  KyuRuns,
+  ReadRunOutcomesOptions,
+  RunOutcome,
+  RunStatus,
+} from './consume/runOutcomes.js'
 
 // readUnsettledRunsInNamespace/cancelUnsettledRunsInNamespace are reached through kyu.runs.unsettledInNamespace/cancelUnsettledInNamespace.
 export type { NamespaceRunsOptions } from './consume/namespaceRuns.js'

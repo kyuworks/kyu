@@ -6,7 +6,7 @@ import type { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { ShopConfig } from '../config.js'
 import { readConfig } from '../config.js'
-import { createPool } from '../db/pool.js'
+import { createPool, withTransaction } from '../db/pool.js'
 import { RUN_WORKFLOW_NAME } from '../handlers/runWorkflow.js'
 import { createShopKyu } from '../kyu.js'
 import { placeOrder } from '../producer/placeOrder.js'
@@ -238,6 +238,74 @@ describe('run-workflow: a delay that outlasts the execution timeout (#113)', () 
       expect(notifyRows).toHaveLength(1)
       expect(notifyRows[0]?.tenant_id).toBe(tenantId)
       expect(notifyRows[0]?.pid).toBe(workerBPid)
+    } finally {
+      await shop.stopAll()
+    }
+  }, 240_000)
+
+  it('a cancel given the outbox cancels the continuation, so the workflow never resumes (#180)', async () => {
+    const LONG_DELAY_SECONDS = 48 * 60 * 60
+    const tenantId = randomUUID()
+    await insertLongDelayDefinition(admin, tenantId, LONG_DELAY_SECONDS)
+    const shop = await startShop()
+    const scopedKyu = createShopKyu({ ...baseConfig, namespace: shop.namespace })
+    try {
+      await shop.spawnWorker()
+
+      const placed = await placeOrder(pool, kyu, { tenantId, customerId: randomUUID() })
+      const triggerEnvelopeId = placed.envelopeIds.workflowTriggered
+      if (triggerEnvelopeId === undefined) throw new Error('placeOrder did not trigger a workflow run')
+
+      const appeared = await waitUntil(() => findRunId(tenantId, placed.orderId).then((id) => id !== null), 60_000)
+      expect(appeared, 'run row never appeared').toBe(true)
+      const runId = await findRunId(tenantId, placed.orderId)
+      if (runId === null) throw new Error('run row disappeared')
+
+      const held = await waitUntil(async () => (await stepLogRows(runId)).some((row) => row.step_id === 'hold'), 60_000)
+      expect(held, 'hold ledger row never appeared').toBe(true)
+      const holdRow = (await stepLogRows(runId)).find((row) => row.step_id === 'hold')
+      expect(holdRow?.exit_step_id).toBe('nudge')
+      expect(holdRow?.tenant_id).toBe(tenantId)
+
+      const continuation = await continuationRows(triggerEnvelopeId, runId)
+      expect(continuation, 'exactly one continuation row').toHaveLength(1)
+      const row = continuation.at(0)
+      if (row === undefined) throw new Error('unreachable')
+      expect(row.published_at).toBeNull()
+      const publishAtMs = row.publish_at.getTime()
+      const nowMs = Date.now()
+      expect(publishAtMs).toBeGreaterThan(nowMs + 47 * 60 * 60 * 1000)
+      expect(publishAtMs).toBeLessThan(nowMs + 49 * 60 * 60 * 1000)
+      expect(row.resume_step_id).toBe('nudge')
+      expect(row.tenant_id).toBe(tenantId)
+
+      const outcomeCompleted = await waitUntil(async () => {
+        const outcomes = await scopedKyu.runs.forEnvelope(triggerEnvelopeId)
+        return outcomes.some((outcome) => outcome.subscription === RUN_WORKFLOW_NAME && outcome.status === 'completed')
+      }, 60_000)
+      expect(outcomeCompleted, 'the first run never read completed').toBe(true)
+      const outcomes = await scopedKyu.runs.forEnvelope(triggerEnvelopeId)
+      const runWorkflowOutcomes = outcomes.filter((outcome) => outcome.subscription === RUN_WORKFLOW_NAME)
+      for (const outcome of runWorkflowOutcomes) {
+        expect(outcome.status, 'the first run must not be cancelled or failed').not.toBe('cancelled')
+        expect(outcome.status).not.toBe('failed')
+      }
+
+      await withTransaction(pool, (tx) => scopedKyu.runs.cancelForCorrelation(runId, { outbox: tx }))
+      await admin.query('UPDATE kyu_outbox SET publish_at = now() WHERE id = $1', [row.id])
+      await sleep(10_000)
+
+      expect((await stepLogRows(runId)).map((stepRow) => stepRow.step_id)).toEqual(['hold'])
+      expect((await runRow(runId))?.finished_at).toBeNull()
+      expect(await notifyLogRows(placed.orderId)).toHaveLength(0)
+      const cancelledRow = await admin.query<{ published_at: Date | null; cancelled_at: Date | null }>(
+        'SELECT published_at, cancelled_at FROM kyu_outbox WHERE id = $1',
+        [row.id],
+      )
+      expect(cancelledRow.rows[0]?.published_at).toBeNull()
+      expect(cancelledRow.rows[0]?.cancelled_at).toBeInstanceOf(Date)
+      const progress = await scopedKyu.runs.forCorrelation(runId)
+      expect(progress.filter((outcome) => outcome.subscription === RUN_WORKFLOW_NAME)).toHaveLength(1)
     } finally {
       await shop.stopAll()
     }

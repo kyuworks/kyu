@@ -23,6 +23,7 @@ const outboxCountsSchema = z.object({
   shipped: z.number(),
   retired: z.number(),
   scheduled: z.number(),
+  cancelled: z.number(),
 })
 const doneOutcomeCountSchema = z.object({ label: z.string(), count: z.number() })
 const subscriptionRunCountsSchema = z.object({

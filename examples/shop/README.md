@@ -341,7 +341,9 @@ Ten scenarios, run with `--scenario <name>` or `--scenario all`:
 - `long-delay-handoff` — a 48-hour workflow delay hands off to a scheduled continuation instead of
   parking; the worker is restarted during that hand-off and the continuation is fast-forwarded.
 - `cancel-parked` — a genuinely parked `watch-shipping` run is cancelled through
-  `kyu.runs.cancelForEnvelope`.
+  `kyu.runs.cancelForEnvelope`, and a 48-hour workflow hand-off is cancelled through
+  `kyu.runs.cancelForCorrelation` with the outbox; the continuation is fast-forwarded and must
+  never run.
 - `cancel-between-steps` — a workflow run is cancelled while genuinely parked between two delay
   steps, before it ever reaches its notify step.
 - `outbox-backlog` — a large backlog (up to 50,000 rows at the report size) is inserted with the

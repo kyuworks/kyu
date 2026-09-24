@@ -1,6 +1,7 @@
 import { envelopeSchema } from '@kyuworks/schemas'
 import { KyuError, V1TaskStatus } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
+import type { Queryable } from '../db/queryable.js'
 import type { NamespaceRunsOptions } from './namespaceRuns.js'
 import type { RunProgress } from './runProgress.js'
 
@@ -30,6 +31,11 @@ export interface ReadRunOutcomesOptions {
   since?: Date
 }
 
+export interface CancelRunsOptions extends ReadRunOutcomesOptions {
+  /** The caller's transaction on its own database. Scheduled outbox rows for the same id are cancelled there too, after the engine cancel succeeds. */
+  outbox?: Queryable
+}
+
 /** The envelope field the engine's run metadata is matched on. */
 export type RunLookupKey = 'envelopeId' | 'correlationId'
 
@@ -45,10 +51,10 @@ export interface KyuRuns {
   forEnvelope(envelopeId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
   /** Every run that shares this correlation id — a durable run and the command runs it published — oldest first, with what a parked run is waiting for. An unknown id returns an empty array. */
   forCorrelation(correlationId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunProgress[]>
-  /** Cancels every run the engine holds for this envelope id and returns them as they read just before the cancel. An unknown id returns an empty array. */
-  cancelForEnvelope(envelopeId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
-  /** Cancels every run that shares this correlation id — a durable run and the command runs it published — and returns them as they read just before the cancel. An unknown id returns an empty array. */
-  cancelForCorrelation(correlationId: string, options?: ReadRunOutcomesOptions): Promise<readonly RunOutcome[]>
+  /** Cancels every run the engine holds for this envelope id and returns them as they read just before the cancel. An unknown id returns an empty array. With `outbox`, also cancels every outbox row not yet due that this envelope caused (its causationId), so the relay never ships it. */
+  cancelForEnvelope(envelopeId: string, options?: CancelRunsOptions): Promise<readonly RunOutcome[]>
+  /** Cancels every run that shares this correlation id — a durable run and the command runs it published — and returns them as they read just before the cancel. An unknown id returns an empty array. With `outbox`, also cancels every outbox row not yet due under this correlation id, so the relay never ships it. */
+  cancelForCorrelation(correlationId: string, options?: CancelRunsOptions): Promise<readonly RunOutcome[]>
   /** Every run in this client's own namespace the engine still holds queued or running. Needs a `since`: a namespace has no id to date itself from. A run the list has shown unsettled for over a minute is left out when the engine's run detail says it completed or failed. */
   unsettledInNamespace(options: NamespaceRunsOptions): Promise<readonly RunOutcome[]>
   /** Cancels every run in this client's own namespace that is still queued or running, and returns how many the engine cancelled; sends one cancel — poll `unsettledInNamespace` if you must see the namespace empty. A namespace with no registered workflow cancels nothing. */
