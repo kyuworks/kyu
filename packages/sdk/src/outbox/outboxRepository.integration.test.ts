@@ -4,7 +4,7 @@ import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import {
-  cancelScheduledRows,
+  cancelUnclaimedOutboxRows,
   claimPendingRows,
   markPublished,
   prunePublished,
@@ -326,7 +326,7 @@ describe('claim semantics', () => {
   })
 })
 
-describe('cancelScheduledRows (#180)', () => {
+describe('cancelUnclaimedOutboxRows (#180)', () => {
   const idRows = z.array(z.object({ id: z.uuid() }))
 
   async function publishAt(
@@ -353,10 +353,10 @@ describe('cancelScheduledRows (#180)', () => {
     const published = await publishAt(later, { correlationId })
     await client.query('UPDATE kyu_outbox SET published_at = now() WHERE id = $1', [published])
 
-    expect(await cancelScheduledRows(client, { field: 'correlationId', id: correlationId })).toBe(2)
+    expect(await cancelUnclaimedOutboxRows(client, { field: 'correlationId', id: correlationId })).toBe(2)
     const cancelled = await client.query('SELECT id FROM kyu_outbox WHERE cancelled_at IS NOT NULL ORDER BY id')
     expect(idRows.parse(cancelled.rows).map((row) => row.id)).toEqual([scheduled, due])
-    expect(await cancelScheduledRows(client, { field: 'correlationId', id: correlationId })).toBe(0)
+    expect(await cancelUnclaimedOutboxRows(client, { field: 'correlationId', id: correlationId })).toBe(0)
 
     await client.query('UPDATE kyu_outbox SET publish_at = now() WHERE id = $1', [scheduled])
     const claim = await claimPendingRows(client, { limit: 10, workerId: 'w2', staleAfterMs: 3_600_000 })
@@ -366,7 +366,7 @@ describe('cancelScheduledRows (#180)', () => {
   it('matches causationId for a cancel by envelope id', async () => {
     const causationId = uuidv7()
     const caused = await publishAt(new Date(Date.now() + 3_600_000), { causationId })
-    expect(await cancelScheduledRows(client, { field: 'causationId', id: causationId })).toBe(1)
+    expect(await cancelUnclaimedOutboxRows(client, { field: 'causationId', id: causationId })).toBe(1)
     const cancelled = await client.query('SELECT id FROM kyu_outbox WHERE cancelled_at IS NOT NULL')
     expect(idRows.parse(cancelled.rows).map((row) => row.id)).toEqual([caused])
   })
@@ -381,7 +381,7 @@ describe('cancelScheduledRows (#180)', () => {
       await publisher.publish(client, thingHappened, { n: 3 }, { tenantId: randomUUID(), publishAt: new Date() })
     ).id
 
-    expect(await cancelScheduledRows(client, { field: 'tenantId', id: tenantId })).toBe(2)
+    expect(await cancelUnclaimedOutboxRows(client, { field: 'tenantId', id: tenantId })).toBe(2)
     const cancelled = await client.query('SELECT id FROM kyu_outbox WHERE cancelled_at IS NOT NULL ORDER BY id')
     expect(idRows.parse(cancelled.rows).map((row) => row.id)).toEqual([scheduled, held])
 

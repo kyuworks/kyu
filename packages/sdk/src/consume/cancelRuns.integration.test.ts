@@ -369,4 +369,40 @@ describe('cancelRunsFor: durable and command runs', () => {
       await db.end()
     }
   }, 90_000)
+
+  it('flow 8: given the outbox, a cancel takes a row published under the same id earlier in its own transaction, and not one published after it (#190)', async () => {
+    const db = new Client({ connectionString: process.env['KYU_TEST_DATABASE_URL'] })
+    await db.connect()
+    const publisher = createPublisher({ source: 'sdk.test' })
+    const tenantId = randomUUID()
+    try {
+      const correlationId = uuidv7()
+      await db.query('BEGIN')
+      const before = await publisher.publish(db, resumeTrigger, { seq: 10 }, { tenantId, correlationId })
+      const cancelled = await cancelRunsFor(
+        hatchet,
+        { key: 'correlationId', id: correlationId, caller: 'runs.cancelForCorrelation' },
+        { outbox: db },
+      )
+      const after = await publisher.publish(db, resumeTrigger, { seq: 11 }, { tenantId, correlationId })
+      await db.query('COMMIT')
+      expect(cancelled).toEqual([])
+
+      const ids = `{${before.id},${after.id}}`
+      const rows = z
+        .array(z.object({ id: z.uuid(), cancelled_at: z.date().nullable() }))
+        .parse(
+          (await db.query('SELECT id, cancelled_at FROM kyu_outbox WHERE id = ANY($1::uuid[]) ORDER BY id', [ids]))
+            .rows,
+        )
+      expect(rows.map((row) => [row.id, row.cancelled_at !== null])).toEqual([
+        [before.id, true],
+        [after.id, false],
+      ])
+
+      await db.query('DELETE FROM kyu_outbox WHERE id = ANY($1::uuid[])', [ids])
+    } finally {
+      await db.end()
+    }
+  }, 30_000)
 })

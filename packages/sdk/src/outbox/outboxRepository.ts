@@ -44,7 +44,7 @@ export async function insertOutboxRow<TData extends MessageDataShape = EnvelopeD
   )
 }
 
-export interface ScheduledRowMatch {
+export interface UnclaimedOutboxRowMatch {
   /** The envelope field the id is matched on; a tenant cancel matches `tenantId`. */
   field: 'correlationId' | 'causationId' | 'tenantId'
   id: string
@@ -52,7 +52,7 @@ export interface ScheduledRowMatch {
 
 // Every row the relay has not claimed, due or not: a claimed row may already
 // be in the engine, where only the engine cancel of its run can reach it.
-export async function cancelScheduledRows(db: Queryable, match: ScheduledRowMatch): Promise<number> {
+export async function cancelUnclaimedOutboxRows(db: Queryable, match: UnclaimedOutboxRowMatch): Promise<number> {
   const cancelled = await db.query(
     `UPDATE kyu_outbox SET cancelled_at = now()
      WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND claimed_at IS NULL

@@ -1,15 +1,15 @@
 import { KyuError } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
-import { cancelScheduledRows } from '../outbox/outboxRepository.js'
-import type { ScheduledRowMatch } from '../outbox/outboxRepository.js'
+import { cancelUnclaimedOutboxRows } from '../outbox/outboxRepository.js'
+import type { UnclaimedOutboxRowMatch } from '../outbox/outboxRepository.js'
 import { readRunOutcomesFor } from './runOutcomes.js'
 import type { CancelRunsOptions, RunLookup, RunLookupKey, RunOutcome, RunsReader } from './runOutcomes.js'
 
 // A cancel by envelope id takes the rows that envelope caused: a hand-off's continuation carries it as causationId.
-const SCHEDULED_ROW_FIELD = {
+const UNCLAIMED_OUTBOX_ROW_FIELD = {
   envelopeId: 'causationId',
   correlationId: 'correlationId',
-} as const satisfies Record<RunLookupKey, ScheduledRowMatch['field']>
+} as const satisfies Record<RunLookupKey, UnclaimedOutboxRowMatch['field']>
 
 // RunsReader plus the engine's cancel, narrowed the same way RunsReader is,
 // so the unit test's fake stays a plain object.
@@ -44,12 +44,12 @@ export async function cancelRunsFor(
     }
   }
 
-  // After the engine cancel, so a failed engine cancel leaves every scheduled row pending.
+  // After the engine cancel, so a failed engine cancel leaves every outbox row pending.
   if (options?.outbox !== undefined) {
     try {
-      await cancelScheduledRows(options.outbox, { field: SCHEDULED_ROW_FIELD[lookup.key], id: lookup.id })
+      await cancelUnclaimedOutboxRows(options.outbox, { field: UNCLAIMED_OUTBOX_ROW_FIELD[lookup.key], id: lookup.id })
     } catch (cause) {
-      throw new KyuError(`${lookup.caller}: could not cancel scheduled outbox rows for ${lookup.key} ${lookup.id}`, {
+      throw new KyuError(`${lookup.caller}: could not cancel unclaimed outbox rows for ${lookup.key} ${lookup.id}`, {
         cause: cause instanceof Error ? cause : new Error(String(cause)),
       })
     }

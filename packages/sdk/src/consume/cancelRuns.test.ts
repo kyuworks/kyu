@@ -282,7 +282,7 @@ function recordingOutbox(engineCancels: () => number, failWith?: Error): Recordi
 }
 
 describe('cancelRunsFor with the caller’s outbox (#180)', () => {
-  it('cancels the scheduled rows under the correlation id, after the engine cancel', async () => {
+  it('cancels the unclaimed rows under the correlation id, after the engine cancel', async () => {
     const correlationId = uuidv7()
     const { canceller, cancelCalls } = fakeRunsCanceller('ns_', [fixtureRow({ workflowName: 'ns_run-workflow' })])
     const { outbox, calls } = recordingOutbox(() => cancelCalls().length)
@@ -326,6 +326,6 @@ describe('cancelRunsFor with the caller’s outbox (#180)', () => {
 
     await expect(
       cancelRunsFor(canceller, { key: 'correlationId', id: uuidv7(), caller: 'runs.cancelForCorrelation' }, { outbox }),
-    ).rejects.toThrow('runs.cancelForCorrelation: could not cancel scheduled outbox rows')
+    ).rejects.toThrow('runs.cancelForCorrelation: could not cancel unclaimed outbox rows')
   })
 })
