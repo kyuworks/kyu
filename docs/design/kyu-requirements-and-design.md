@@ -224,7 +224,7 @@ CREATE TABLE kyu_outbox (
   dead_at       timestamptz,                -- set when the relay gives up on a row whose envelope never parses
   attempts      int NOT NULL DEFAULT 0,
   last_error    text,
-  cancelled_at  timestamptz,                -- set when a runs cancel, given the caller's transaction, cancels a row not yet due
+  cancelled_at  timestamptz,                -- set when a runs cancel, given the caller's transaction, cancels a row the relay has not claimed
   CONSTRAINT kyu_outbox_name_matches_envelope CHECK (name = envelope->>'name')
 );
 CREATE INDEX kyu_outbox_pending_idx ON kyu_outbox (publish_at, created_at) WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL;
@@ -288,7 +288,7 @@ SELECT id, name, attempts, last_error FROM kyu_outbox WHERE published_at IS NULL
 SELECT id, name, publish_at FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND publish_at > now() ORDER BY publish_at;
 ```
 
-**Cancelled rows.** Scheduled rows a cancel stopped; never alerted on:
+**Cancelled rows.** Rows a cancel stopped before the relay claimed them; never alerted on:
 
 ```sql
 SELECT id, name, publish_at, cancelled_at FROM kyu_outbox WHERE cancelled_at IS NOT NULL ORDER BY cancelled_at DESC;
@@ -360,11 +360,11 @@ A durable handler waits on several message names at once with `waitForAny([{ def
 
 ### 9.6 Cancelling a run
 
-A run is cancelled through the SDK, never through the engine client: `kyu.runs.cancelForEnvelope(envelopeId)` for one message, `kyu.runs.cancelForCorrelation(correlationId)` for a whole workflow run — the durable run and the command runs it published. Both look the runs up by the engine's own metadata and cancel them by run id, so they never reach a run in another namespace or under another correlation id. Both return the runs they cancelled, and both are safe to call twice: the engine ignores a cancel for a run that has already finished. Given the caller's transaction as `outbox`, both also cancel outbox rows not yet due for the same id (section 8.5).
+A run is cancelled through the SDK, never through the engine client: `kyu.runs.cancelForEnvelope(envelopeId)` for one message, `kyu.runs.cancelForCorrelation(correlationId)` for a whole workflow run — the durable run and the command runs it published. Both look the runs up by the engine's own metadata and cancel them by run id, so they never reach a run in another namespace or under another correlation id. Both return the runs they cancelled, and both are safe to call twice: the engine ignores a cancel for a run that has already finished. Given the caller's transaction as `outbox`, both also cancel outbox rows for the same id that the relay has not claimed, due or not (section 8.5).
 
 A whole namespace is cancelled with `kyu.runs.cancelUnsettledInNamespace({ since })` — every run it still holds queued or running. This is an operational broom for a namespace nothing will serve again, such as a test lane; it is not part of normal delivery.
 
-One business tenant is cancelled with `kyu.runs.cancelForTenant(tenantId, { since })`: the namespace cancel narrowed by the `tenantId` run metadata the relay sets, so another tenant's runs and another namespace's are never sent to the engine. Given `outbox`, it also cancels that tenant's outbox rows not yet due. It is a request, not a settlement; poll `kyu.runs.unsettledForTenant` to see the tenant empty.
+One business tenant is cancelled with `kyu.runs.cancelForTenant(tenantId, { since })`: the namespace cancel narrowed by the `tenantId` run metadata the relay sets, so another tenant's runs and another namespace's are never sent to the engine. Given `outbox`, it also cancels that tenant's outbox rows the relay has not claimed, a paused tenant's held rows included. It is a request, not a settlement; poll `kyu.runs.unsettledForTenant` to see the tenant empty.
 
 A cancelled run ends as `cancelled`, not `failed`, and is not retried, so it never joins the dead-letter set. A durable run parked in `sleepFor` or `waitFor` has that wait rejected as soon as the cancel reaches its worker; a handler between two steps is not interrupted and finishes the step it is in, which is what keeps a cancel from landing inside an `onceById` transaction. The engine drops that late result.
 

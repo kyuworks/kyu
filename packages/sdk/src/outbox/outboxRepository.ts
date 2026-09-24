@@ -50,13 +50,12 @@ export interface ScheduledRowMatch {
   id: string
 }
 
-// Only rows not yet due and not claimed: a due or claimed row belongs to the
-// relay and becomes a run, which the engine cancel covers.
+// Every row the relay has not claimed, due or not: a claimed row may already
+// be in the engine, where only the engine cancel of its run can reach it.
 export async function cancelScheduledRows(db: Queryable, match: ScheduledRowMatch): Promise<number> {
   const cancelled = await db.query(
     `UPDATE kyu_outbox SET cancelled_at = now()
      WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND claimed_at IS NULL
-       AND publish_at > now()
        AND envelope->>$1 = $2`,
     [match.field, match.id],
   )

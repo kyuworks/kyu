@@ -14,7 +14,7 @@ Naming: `<YYYYMMDDHHMMSS>_<slug>.sql`.
 | `20260916233209_create_outbox.sql` | `kyu_outbox` (the producer-side outbox `publish()` writes to and the relay ships) and `kyu_processed` (the consumer-side processed-id table `onceById()` uses) |
 | `20260920232955_outbox_dead_at.sql` | `kyu_outbox.dead_at`: the relay retires a row whose envelope never parses, so it leaves the pending index and can be inspected and pruned. Recreates `kyu_outbox_pending_idx` with `dead_at IS NULL` in its predicate |
 | `20260922022251_outbox_publish_at.sql` | `kyu_outbox.publish_at`: the earliest time the relay may ship a row, defaulting to `now()`. Recreates `kyu_outbox_pending_idx` leading on `(publish_at, created_at)` so a backlog of future rows is never scanned by the claim |
-| `20260924114140_outbox_cancelled_at.sql` | `kyu_outbox.cancelled_at`: a runs cancel given the caller's transaction marks a row not yet due, so the relay never ships it. Recreates `kyu_outbox_pending_idx` with `cancelled_at IS NULL` in its predicate |
+| `20260924114140_outbox_cancelled_at.sql` | `kyu_outbox.cancelled_at`: a runs cancel given the caller's transaction marks a row the relay has not claimed, so the relay never ships it (until #185 only rows not yet due; the file's own comment still says so). Recreates `kyu_outbox_pending_idx` with `cancelled_at IS NULL` in its predicate |
 | `20260924124242_paused_tenant.sql` | `kyu_paused_tenant`: one row per paused business tenant; the relay's claim skips that tenant's outbox rows |
 
 ## Grants
