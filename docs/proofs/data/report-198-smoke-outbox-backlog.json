@@ -1,0 +1,29 @@
+{
+  "commitSha": "15542eb42d14840690501f5004958e8b498fcd1e",
+  "machine": {
+    "platform": "linux",
+    "arch": "x64",
+    "cpuCount": 2,
+    "totalMemBytes": 4106903552
+  },
+  "engineVersion": "hatchet-lite:v0.107.0",
+  "reportBuiltAt": "2026-09-24T09:52:03.895Z",
+  "scenarios": [
+    {
+      "name": "outbox-backlog",
+      "passed": true,
+      "durationMs": 69469,
+      "observation": {
+        "backlogSize": 5000,
+        "drained": true,
+        "drainMs": 7036,
+        "ratePerSecond": 711,
+        "peakPending": 5000,
+        "peakOldestSeconds": 6.57455,
+        "sampleCount": 8,
+        "lagSeriesJson": "[{\"atMs\":9,\"pending\":5000,\"oldestSeconds\":0.654643},{\"atMs\":1014,\"pending\":3900,\"oldestSeconds\":1.553541},{\"atMs\":2017,\"pending\":2600,\"oldestSeconds\":2.55835},{\"atMs\":3020,\"pending\":1300,\"oldestSeconds\":3.561812},{\"atMs\":4025,\"pending\":800,\"oldestSeconds\":4.565783},{\"atMs\":5029,\"pending\":700,\"oldestSeconds\":5.569981},{\"atMs\":6034,\"pending\":400,\"oldestSeconds\":6.57455},{\"atMs\":7036,\"pending\":0,\"oldestSeconds\":0}]"
+      },
+      "failures": []
+    }
+  ]
+}
