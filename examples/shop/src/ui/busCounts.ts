@@ -81,9 +81,7 @@ const producerTotalsRowSchema = z.object({
   waiting: z.coerce.number().int(),
   retired: z.coerce.number().int(),
   scheduled: z.coerce.number().int(),
-  // Defaulted: a unit test fixture written before #180 has no cancelled
-  // column in its response row. The live query always returns it.
-  cancelled: z.coerce.number().int().default(0),
+  cancelled: z.coerce.number().int(),
 })
 const windowRowSchema = z.object({ id: z.string(), name: z.string() })
 const handlerLogRowSchema = z.object({ envelope_id: z.string(), handler: z.string() })

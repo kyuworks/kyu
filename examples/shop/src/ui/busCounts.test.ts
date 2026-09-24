@@ -70,7 +70,7 @@ const topologyWithDurable: BusTopology = {
 describe('readBusCounts', () => {
   it('assembles producers, outbox and per-subscription counts from the stubbed rows', async () => {
     const { db, queries } = fakeDb([
-      [{ source: 'shop', published: 9, waiting: 2, retired: 0, scheduled: 0 }],
+      [{ source: 'shop', published: 9, waiting: 2, retired: 0, scheduled: 0, cancelled: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [],
     ])
@@ -93,7 +93,7 @@ describe('readBusCounts', () => {
 
   it('counts a failed run as failed for its subscription and never as done', async () => {
     const { db } = fakeDb([
-      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0, cancelled: 0 }],
       [{ id: 'env-1', name: 'shop.invoice.send' }],
       [],
     ])
@@ -108,7 +108,7 @@ describe('readBusCounts', () => {
 
   it('reports a running run as parked only when the log has the waiting handler and no done handler (M5)', async () => {
     const { db } = fakeDb([
-      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0, cancelled: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [{ envelope_id: 'env-1', handler: 'watch-shipping:waiting' }],
     ])
@@ -123,7 +123,7 @@ describe('readBusCounts', () => {
 
   it('never reports a running run parked once a done handler has logged for its envelope', async () => {
     const { db } = fakeDb([
-      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0, cancelled: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [
         { envelope_id: 'env-1', handler: 'watch-shipping:waiting' },
@@ -140,7 +140,7 @@ describe('readBusCounts', () => {
 
   it('a running run with no waiting-handler log row is never parked', async () => {
     const { db } = fakeDb([
-      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0, cancelled: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [],
     ])
@@ -158,7 +158,7 @@ describe('readBusCounts', () => {
   // counts distinct envelopes per label.
   it('splits done by distinct window envelopes per label', async () => {
     const { db } = fakeDb([
-      [{ source: 'shop', published: 2, waiting: 0, retired: 0, scheduled: 0 }],
+      [{ source: 'shop', published: 2, waiting: 0, retired: 0, scheduled: 0, cancelled: 0 }],
       [
         { id: 'env-1', name: 'shop.order.placed' },
         { id: 'env-2', name: 'shop.order.placed' },
@@ -185,7 +185,7 @@ describe('readBusCounts', () => {
 
   it('never lets a redelivered envelope inflate the done split past distinct envelopes', async () => {
     const { db } = fakeDb([
-      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0, cancelled: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [{ envelope_id: 'env-1', handler: 'watch-shipping:completed' }],
     ])
@@ -206,7 +206,7 @@ describe('readBusCounts', () => {
 
   it('gives a plain subscription no parked key and no doneOutcomes key', async () => {
     const { db } = fakeDb([
-      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0, cancelled: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [],
     ])
@@ -222,7 +222,7 @@ describe('readBusCounts', () => {
 
   it('ignores an outcome naming a subscription the topology does not have', async () => {
     const { db } = fakeDb([
-      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0, cancelled: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [],
     ])
@@ -245,7 +245,7 @@ describe('readBusCounts', () => {
 
   it('sets window.engineCalls to the number of window rows and never asks the engine about a row outside it', async () => {
     const { db, queries } = fakeDb([
-      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0, cancelled: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
       [],
     ])
@@ -274,7 +274,7 @@ describe('readBusCounts', () => {
       subscriptions: [{ name: 'record-order', messageName: 'shop.order.placed', kind: 'event' }],
     }
     const { db, queries } = fakeDb([
-      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0 }],
+      [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0, cancelled: 0 }],
       [{ id: 'env-1', name: 'shop.order.placed' }],
     ])
     const runs = fakeRuns({ 'env-1': [outcome('record-order', 'completed')] })
@@ -285,7 +285,10 @@ describe('readBusCounts', () => {
   })
 
   it('skips the handler-log round trip when the window is empty, even with a waiting handler declared', async () => {
-    const { db, queries } = fakeDb([[{ source: 'shop', published: 0, waiting: 0, retired: 0, scheduled: 0 }], []])
+    const { db, queries } = fakeDb([
+      [{ source: 'shop', published: 0, waiting: 0, retired: 0, scheduled: 0, cancelled: 0 }],
+      [],
+    ])
 
     await readBusCounts(db, fakeRuns({}), topologyWithDurable)
 
@@ -293,7 +296,11 @@ describe('readBusCounts', () => {
   })
 
   it('defaults a subscription with no matching outcome to zero', async () => {
-    const { db } = fakeDb([[{ source: 'shop', published: 0, waiting: 0, retired: 0, scheduled: 0 }], [], []])
+    const { db } = fakeDb([
+      [{ source: 'shop', published: 0, waiting: 0, retired: 0, scheduled: 0, cancelled: 0 }],
+      [],
+      [],
+    ])
 
     const counts = await readBusCounts(db, fakeRuns({}), topologyWithDurable)
 
@@ -319,8 +326,8 @@ describe('readBusCounts', () => {
   it('sums published and waiting across more than one producer source', async () => {
     const { db } = fakeDb([
       [
-        { source: 'other', published: 1, waiting: 1, retired: 0, scheduled: 0 },
-        { source: 'shop', published: 3, waiting: 1, retired: 0, scheduled: 0 },
+        { source: 'other', published: 1, waiting: 1, retired: 0, scheduled: 0, cancelled: 0 },
+        { source: 'shop', published: 3, waiting: 1, retired: 0, scheduled: 0, cancelled: 0 },
       ],
       [],
       [],
@@ -343,7 +350,11 @@ describe('readBusCounts', () => {
   })
 
   it('never counts a retired row as waiting, and counts it under retired', async () => {
-    const { db, queries } = fakeDb([[{ source: 'shop', published: 5, waiting: 3, retired: 1, scheduled: 0 }], [], []])
+    const { db, queries } = fakeDb([
+      [{ source: 'shop', published: 5, waiting: 3, retired: 1, scheduled: 0, cancelled: 0 }],
+      [],
+      [],
+    ])
 
     const counts = await readBusCounts(db, fakeRuns({}), topologyWithDurable)
 
@@ -363,7 +374,11 @@ describe('readBusCounts', () => {
   })
 
   it('a row with publish_at in the future counts as scheduled, not waiting for relay', async () => {
-    const { db } = fakeDb([[{ source: 'shop', published: 5, waiting: 2, retired: 0, scheduled: 3 }], [], []])
+    const { db } = fakeDb([
+      [{ source: 'shop', published: 5, waiting: 2, retired: 0, scheduled: 3, cancelled: 0 }],
+      [],
+      [],
+    ])
 
     const counts = await readBusCounts(db, fakeRuns({}), topologyWithDurable)
 
@@ -377,9 +392,7 @@ describe('readBusCounts', () => {
     })
   })
 
-  // #184 review: shipped was published − waiting − retired − scheduled, so a
-  // cancelled row (removed from waiting/scheduled but still in published)
-  // read as shipped even though the relay never sent it.
+  // A cancelled row stays inside `published`, so `shipped` must subtract it too.
   it('never counts a cancelled row as shipped, waiting or scheduled', async () => {
     const { db } = fakeDb([
       [{ source: 'shop', published: 1, waiting: 0, retired: 0, scheduled: 0, cancelled: 1 }],
@@ -404,7 +417,7 @@ describe('readBusCounts', () => {
   // The group key is folded in SQL, so producerTotalsRowSchema never sees null.
   it('groups an outbox row with no envelope source under the (unknown) producer', async () => {
     const { db, queries } = fakeDb([
-      [{ source: '(unknown)', published: 1, waiting: 0, retired: 1, scheduled: 0 }],
+      [{ source: '(unknown)', published: 1, waiting: 0, retired: 1, scheduled: 0, cancelled: 0 }],
       [],
       [],
     ])
