@@ -96,6 +96,7 @@ export async function claimPendingRows(db: RelayQueryable, options: ClaimPending
          AND cancelled_at IS NULL
          AND publish_at <= now() -- a future publish_at is not due yet
          AND (claimed_at IS NULL OR claimed_at < now() - ($2::text || ' milliseconds')::interval)
+         AND NOT EXISTS (SELECT 1 FROM kyu_paused_tenant p WHERE p.tenant_id = kyu_outbox.tenant_id) -- a paused tenant's rows wait (#181)
        -- Matches the (publish_at, created_at) index: a due backlog is an index scan, not a seq scan plus sort.
        ORDER BY publish_at, created_at, id
        LIMIT $3

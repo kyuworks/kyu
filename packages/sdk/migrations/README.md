@@ -15,6 +15,7 @@ Naming: `<YYYYMMDDHHMMSS>_<slug>.sql`.
 | `20260920232955_outbox_dead_at.sql` | `kyu_outbox.dead_at`: the relay retires a row whose envelope never parses, so it leaves the pending index and can be inspected and pruned. Recreates `kyu_outbox_pending_idx` with `dead_at IS NULL` in its predicate |
 | `20260922022251_outbox_publish_at.sql` | `kyu_outbox.publish_at`: the earliest time the relay may ship a row, defaulting to `now()`. Recreates `kyu_outbox_pending_idx` leading on `(publish_at, created_at)` so a backlog of future rows is never scanned by the claim |
 | `20260924114140_outbox_cancelled_at.sql` | `kyu_outbox.cancelled_at`: a runs cancel given the caller's transaction marks a row not yet due, so the relay never ships it. Recreates `kyu_outbox_pending_idx` with `cancelled_at IS NULL` in its predicate |
+| `20260924124242_paused_tenant.sql` | `kyu_paused_tenant`: one row per paused business tenant; the relay's claim skips that tenant's outbox rows |
 
 ## Grants
 
@@ -26,6 +27,8 @@ Naming: `<YYYYMMDDHHMMSS>_<slug>.sql`.
 | `pruneRetired` | `kyu_outbox` | DELETE, SELECT |
 | `runs.cancelFor*` with `outbox` | `kyu_outbox` | SELECT, UPDATE |
 | `onceById` | `kyu_processed` | INSERT, SELECT |
+| `tenants.pause` / `tenants.resume` | `kyu_paused_tenant` | INSERT / DELETE |
+| `tenants.isPaused`, relay | `kyu_paused_tenant` | SELECT |
 
 `kyu_outbox.tenant_id` is `uuid`: business tenant ids must be UUIDs,
 matching the envelope schema.
@@ -45,3 +48,4 @@ name.
 - Apply `20260924114140_outbox_cancelled_at.sql` before deploying the SDK version that ships it: the claim references `cancelled_at` and errors with `column "cancelled_at" does not exist` until it exists. The index rebuild takes the same ACCESS EXCLUSIVE lock as the earlier two.
 - Rolling back the SDK version that ships `20260924114140_outbox_cancelled_at.sql` (or running it beside an older SDK version during a mixed rolling deploy) does not stop a cancelled row from shipping: an old relay's claim query does not know about `cancelled_at` and ships the row once it falls due, resuming a workflow a cancel had already stopped. Before rolling back, either set `dead_at` on the cancelled rows (`UPDATE kyu_outbox SET dead_at = now() WHERE cancelled_at IS NOT NULL AND published_at IS NULL`, which also removes them from the pending index) or delete them.
 - `20260920232955_outbox_dead_at.sql` drops and recreates `kyu_outbox_pending_idx`, which holds an ACCESS EXCLUSIVE lock on `kyu_outbox` for the rebuild; on a pruned table that is milliseconds. `20260924114140_outbox_cancelled_at.sql` does the same: an old SDK's claim no longer matches the narrower predicate and falls back to a table scan until a later migration restores an index its `WHERE` implies.
+- Apply `20260924124242_paused_tenant.sql` before deploying the SDK version that ships it: the claim references `kyu_paused_tenant` and errors with `relation "kyu_paused_tenant" does not exist` until it exists. Rolling back to an older SDK, or running one beside it, ships a paused tenant's rows: the old claim does not read the table.

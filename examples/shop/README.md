@@ -320,7 +320,7 @@ scenario, can never be picked up by a later worker. After every scenario the har
 any run the engine still holds queued or running in that scenario's namespace, and fails the
 scenario if any remain.
 
-Ten scenarios, run with `--scenario <name>` or `--scenario all`:
+Eleven scenarios, run with `--scenario <name>` or `--scenario all`:
 
 - `relay-killed-before-mark` — a relay is SIGKILLed between pushing a batch and marking it
   published; a second relay reclaims the row once its claim goes stale.
@@ -348,6 +348,9 @@ Ten scenarios, run with `--scenario <name>` or `--scenario all`:
   steps, before it ever reaches its notify step.
 - `outbox-backlog` — a large backlog (up to 50,000 rows at the report size) is inserted with the
   relay stopped, then drained alone and sampled once a second.
+- `tenant-paused` — a tenant is paused while its `watch-shipping` run is in flight; its new orders
+  wait in the outbox with no run while another tenant's complete and the in-flight run finishes,
+  then complete in order after `kyu.tenants.resume`.
 
 ### Against the deployed dev engine
 

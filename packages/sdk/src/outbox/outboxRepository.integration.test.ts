@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { createEnvelope, defineEvent, uuidv7 } from '@kyuworks/schemas'
 import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -12,6 +13,7 @@ import {
   releaseClaims,
 } from './outboxRepository.js'
 import { createPublisher } from './publish.js'
+import { pauseTenant, resumeTenant } from './tenantPause.js'
 
 const thingHappened = defineEvent({
   name: 'kyu.repo_test.happened',
@@ -32,7 +34,7 @@ afterAll(async () => {
 })
 
 afterEach(async () => {
-  await client.query('TRUNCATE kyu_outbox')
+  await client.query('TRUNCATE kyu_outbox, kyu_paused_tenant')
 })
 
 async function insertGoodRow(n: number): Promise<string> {
@@ -367,5 +369,26 @@ describe('cancelScheduledRows (#180)', () => {
     expect(await cancelScheduledRows(client, { field: 'causationId', id: causationId })).toBe(1)
     const cancelled = await client.query('SELECT id FROM kyu_outbox WHERE cancelled_at IS NOT NULL')
     expect(idRows.parse(cancelled.rows).map((row) => row.id)).toEqual([caused])
+  })
+})
+
+describe('claimPendingRows with a paused tenant (#181)', () => {
+  it('skips a paused tenant’s rows, fills the batch from other rows, and releases them in publish order on resume', async () => {
+    const paused = randomUUID()
+    const held: string[] = []
+    for (const n of [1, 2, 3])
+      held.push((await publisher.publish(client, thingHappened, { n }, { tenantId: paused })).id)
+    const other = (await publisher.publish(client, thingHappened, { n: 4 }, { tenantId: randomUUID() })).id
+    const global = await insertGoodRow(5)
+    await pauseTenant(client, paused)
+    await pauseTenant(client, paused)
+
+    const whilePaused = await claimPendingRows(client, { limit: 2, workerId: 'w1', staleAfterMs: 3_600_000 })
+    expect(whilePaused.rows.map((row) => row.id)).toEqual([other, global])
+
+    await resumeTenant(client, paused)
+    await resumeTenant(client, paused)
+    const afterResume = await claimPendingRows(client, { limit: 10, workerId: 'w2', staleAfterMs: 3_600_000 })
+    expect(afterResume.rows.map((row) => row.id)).toEqual(held)
   })
 })

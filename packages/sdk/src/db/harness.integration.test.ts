@@ -36,6 +36,6 @@ describe('integration test harness', () => {
       "SELECT tablename FROM pg_tables WHERE schemaname = 'public'",
     )
     const tableNames = result.rows.map((row) => row.tablename).sort()
-    expect(tableNames).toEqual(['kyu_outbox', 'kyu_processed'])
+    expect(tableNames).toEqual(['kyu_outbox', 'kyu_paused_tenant', 'kyu_processed'])
   })
 })

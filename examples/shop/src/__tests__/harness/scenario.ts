@@ -94,6 +94,7 @@ const LANE_TABLES = [
   'shop_workflow_run',
   'kyu_outbox',
   'kyu_processed',
+  'kyu_paused_tenant',
 ]
 
 async function truncateLaneTables(pool: Pool): Promise<readonly AssertionFailure[]> {

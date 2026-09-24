@@ -19,7 +19,7 @@ beforeAll(async () => {
   const client = new Client({ connectionString })
   await client.connect()
   try {
-    await client.query('TRUNCATE kyu_outbox, kyu_processed')
+    await client.query('TRUNCATE kyu_outbox, kyu_processed, kyu_paused_tenant')
   } finally {
     await client.end()
   }

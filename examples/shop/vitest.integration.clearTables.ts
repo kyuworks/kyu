@@ -19,6 +19,7 @@ const CLEAN_TABLES = [
   'shop_workflow_run',
   'kyu_outbox',
   'kyu_processed',
+  'kyu_paused_tenant',
 ]
 
 // Runs once per integration file, before the file's own hooks. Vitest orders

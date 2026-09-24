@@ -19,11 +19,12 @@ import { outboxBacklog } from './scenarios/outboxBacklog.js'
 import { relayDbConnectionDropped } from './scenarios/relayDbConnectionDropped.js'
 import { relayKilledBeforeMark } from './scenarios/relayKilledBeforeMark.js'
 import { tenantLoad } from './scenarios/tenantLoad.js'
+import { tenantPaused } from './scenarios/tenantPaused.js'
 import { workerKilledMidStep } from './scenarios/workerKilledMidStep.js'
 import { workerKilledWhileParked } from './scenarios/workerKilledWhileParked.js'
 
 // PR A's four crash scenarios, plus PR B's engine outage, load, long-delay
-// handoff, the two cancels and the backlog drain.
+// handoff, the two cancels, the backlog drain, and the tenant pause.
 const SCENARIOS: readonly Scenario[] = [
   relayKilledBeforeMark,
   workerKilledMidStep,
@@ -35,6 +36,7 @@ const SCENARIOS: readonly Scenario[] = [
   cancelParked,
   cancelBetweenSteps,
   outboxBacklog,
+  tenantPaused,
 ]
 
 export interface HarnessOptions {
