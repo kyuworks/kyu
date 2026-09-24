@@ -33,16 +33,17 @@ run records, concurrency, run history. On 2026-09-24 (issue #198), with only the
 moved from Launch to Basic, a smoke-size run passed both scenarios, but at report size
 `tenant-load` failed after about 36 minutes and `outbox-backlog` drained about 44 rows a second,
 against about 976 on Launch. From about two minutes into `tenant-load` the engine lost its
-connections to the cluster (55,172 failed connections, almost all `unexpected EOF`, no
-connection-slot error), and the CTO saw the cluster's CPU throttled in the Fly dashboard. So on
-RabbitMQ the limit moved from the queue tables to the engine's own state writes, and Basic does
-not carry this load.
+connections to the cluster (55,172 `failed to connect` error lines, almost all `unexpected EOF`,
+no connection-slot error), and the CTO saw the cluster's CPU throttled in the Fly dashboard. This
+fits the limit moving from the queue tables to the engine's own state writes; one run, and the log
+also shows lines saying the database was in recovery, in a read-only transaction and terminating a
+connection on an administrator command (09:57Z–10:21Z), which was not checked.
 
 **Before a report-size harness run, move both clusters up.** Both managed clusters are on Basic
-since 2026-09-24 (after issue #198). A report-size run needs the engine's cluster on Launch
-(measured, issue #198), and it has only ever passed with the shop's cluster on Launch too (issues
-#175 and #176), so move both to Launch first. A smoke-size run passes on Basic (issue #198). The
-shop's cluster on Basic with the queue on RabbitMQ has not been measured at report size.
+since 2026-09-24 (after issue #198). Basic failed at report size (issue #198) and Starter has not
+been tried with the queue on RabbitMQ; the only report-size run that passed had both clusters on
+Launch (issue #176), so move both to Launch first. A smoke-size run passes on Basic (issue #198).
+The shop's cluster on Basic with the queue on RabbitMQ has not been measured at report size.
 
 ## Who does what
 

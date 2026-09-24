@@ -364,8 +364,11 @@ silently:**
 | Commit | — | `caa4dc1...-dirty` | `9c9ae54` | `15542eb` | `15542eb` (same image as #173) | `15542eb` (same image as #173) | `15542eb` (same image as #173) |
 | JSON file | `docs/proofs/data/report-155-*.json` | `docs/proofs/data/report-162b-*.json` | `docs/proofs/data/report-166-*.json` | `docs/proofs/data/report-173-*.json` | `docs/proofs/data/report-175-*.json` | `docs/proofs/data/report-176-*.json` | `docs/proofs/data/report-198-*.json` |
 
-The last four columns' durations include the 60-second teardown quiet period added by #169; the
-#173 tenant-load miss is far larger than that.
+The last four columns' durations include the 60-second teardown quiet period added by #169,
+except #198's `tenant-load`, whose teardown cancel failed before the quiet period
+(`examples/shop/src/__tests__/harness/scenario.ts:204–230`: the cancel threw a 500 on its first
+call, so the wait loop never reached the 60-second quiet check); the #173 tenant-load miss is far
+larger than that.
 
 **Every duration in the first three columns predates the 60-second quiet period #169 added to
 `cancelLeftoverRuns`.** After this change, teardown's cancel loop
@@ -750,12 +753,13 @@ What this is: the #176 runs again, same engine machine `<engine-machine-id>` (`p
 - **No database metrics were read.** The only CPU evidence is the CTO's view of the Fly dashboard: the cluster's CPU was throttled during the run, and around 10:44Z it showed the cluster as unhealthy. No figures were recorded.
 - **Whether the cluster restarted or failed over was not checked.** The engine log has lines that say the database was `cannot execute … during recovery`, `in a read-only transaction`, and `terminating connection due to administrator command` (counts under Engine log below); nobody confirmed a restart or failover happened.
 - **The plan's CPU kind is Fly's description, not measured.** "Basic" and "throttled" are Fly's and the CTO's words; no CPU percentage was read.
+- **Load and the plan change were not separated.** The cluster had just been reconfigured, which took a long time, and the idle engine already logged slow transactions before the smoke run.
 - **The logs are saved tails, and RabbitMQ's tail has no line from 2026-09-24.**
 - **`engine-outage` and the other seven scenarios were not re-run.**
 - **The rolled-back-transaction must-hold row is not exercised**, as in every in-region run.
 
 ### What was done
-The CTO reconfigured the cluster before the run (took a long time, CTO's words). The idle engine already logged 26 `long transaction start` warnings of 105–1,020ms in the tail's first two minutes (09:46:57Z–09:48:47Z), no `ERR`. Smoke: machine start 09:48:49Z, namespace `inregion198s_`, both scenarios, `KYU_HARNESS_HOLD_SECONDS` 300. Report run: machine start 09:55:26Z, namespace `inregion198_`, hold 1500, `tenant-load` 09:55:27Z–10:31:55Z (report written 10:38:05Z, after teardown), `outbox-backlog` 10:38:05Z–10:44:14Z. Both reports were collected before the machine stopped; the backlog report (5,264,068 bytes) in 6 parts. After both reports were collected, at about 10:55Z, the CTO moved the shop's cluster to Basic too; that did not touch this run.
+The CTO reconfigured the cluster before the run (took a long time, CTO's words). The idle engine already logged 26 `long transaction start` warnings of 105–1,020ms in the tail's first two minutes (09:46:57Z–09:48:47Z), no `ERR`. Smoke: machine start 09:48:49Z, namespace `inregion198s_`, both scenarios, `KYU_HARNESS_HOLD_SECONDS` 300. Report run: machine start 09:55:26Z, namespace `inregion198_`, hold 1500, `tenant-load` 09:55:27Z–10:31:55Z (report file written 10:38:05Z, about six minutes after `scenario-done`, when the harness process exited), `outbox-backlog` 10:38:05Z–10:44:14Z. Both reports were collected before the machine stopped; the backlog report (5,264,068 bytes) in 6 parts. After both reports were collected, at about 10:55Z, the CTO moved the shop's cluster to Basic too; that did not touch this run.
 
 ### Smoke
 Both PASS. `tenant-load`: 121,488ms (plain 54,964ms, durable 54,969ms), 200 orders, 1,000 handler rows; #176's Launch smoke: 83,109ms (plain 18,776ms, durable 18,781ms). Report sha256 `d41af05a76d19f1ea6abe69b5ab593820fa7cb1c9ecef731f7c8592c9d130479` (as collected, 980 bytes). `outbox-backlog`: 69,469ms, 5,000 rows drained in 7,036ms, 711 rows/sec by the harness timer, 8 samples, oldest row peaked at 6.57 seconds; no Launch smoke of this scenario is on this page. Report sha256 `2e49f5fa7055896f62b59fa1a1305c966c9929467ef15af4d4a05623f24ca5a0` (as collected, 1,128 bytes). Both stored whole, trailing newline added.
@@ -764,10 +768,10 @@ Both PASS. `tenant-load`: 121,488ms (plain 54,964ms, durable 54,969ms), 200 orde
 FAIL, 2,187,669ms. Error: `runs.forEnvelope for 01a0d2d7-7320-7000-9915-bf845c53c001 failed after 3 attempts: … Request failed with status code 500`. One failure: `harness-leaves-nothing: cancelling leftover engine runs failed: Request failed with status code 500`. `observation` is empty (`{}`): a failed scenario throws before returning its observation (`examples/shop/src/__tests__/harness/scenarios/outboxBacklog.ts:137`, `examples/shop/src/__tests__/harness/scenario.ts:281–293`), the same as every failed run on this page. Timing argument: `runs.forEnvelope` is only called after both effect waits return (`scenarios/tenantLoad.ts:116–144`); the waits are 20 and 15 minutes at report size (`tenantLoad.ts:30,34`). Scenario start 09:55:27.778Z, done 10:31:55.470Z (about 36.5 minutes) — both waits most likely ran to their timeouts, not proven (no observation). Teardown's own cancel of leftover runs also got a 500; the engine still logged queue work for `inregion198_tenant_load_7d76f5_watch-shipping` at 10:46:29Z, the end of the tail. Leftover cancel afterwards, using the runbook's cancel CLI: `inregion198s_tenant_load_b0944c_` (the smoke's namespace) found 0, left 0. `inregion198_tenant_load_7d76f5_` first pass found 1,555 runs, the engine accepted 28,349 cancels, 315 left, exit 1; second pass found 315, the engine accepted 27,090 cancels, 315 left, exit 1 — the count did not move between passes, so these 315 may be the engine's stale run-list rows (issue #170, `docs/proofs/2026-09-23-engine-run-list-stale-rows.md`); this was not checked. Report sha256 `249470144d431e69b1d8a3b95a97081427d22a32bdddec7f978445ac369fe5de` (as collected, 954 bytes), stored whole, trailing newline added.
 
 ### `outbox-backlog`
-FAIL, 368,827ms; 36,300 of 50,000 rows (72.6%) pending at the 300,000ms window; drained 13,700. This page's method (rows drained over duration minus the 60-second teardown quiet period): 13,700 / 308.827s ≈ **44 rows/sec**; compare ~976 (#176, Launch + RabbitMQ), ~56 (#173, Starter + Postgres queue), ~162 (#175, Launch + Postgres queue). The engine's error rate during the drain was low (150 lines over 6 minutes) yet the drain stayed slow: once throttled, the cluster stayed slow for the rest of the run. No row lost or doubled: every undrained row is still pending in the outbox. Full report 5,264,068 bytes, sha256 `ee3e72ddda479a96b236e4245ebb3c7346e764d4b3f7c230a346f63d9dacc938` (as collected); the stored copy is capped to the first 20 pending-row failures plus the aggregate line (`failuresCappedForReview: { shown: 21, total: 36301 }`, the #173 pattern), so its own sha256 differs.
+FAIL, 368,827ms; 36,300 of 50,000 rows (72.6%) pending at the 300,000ms window; drained 13,700. This page's method (rows drained over duration minus the 60-second teardown quiet period): 13,700 / 308.827s ≈ **44 rows/sec**; compare ~976 (#176, Launch + RabbitMQ), ~56 (#173, Starter + Postgres queue), ~162 (#175, Launch + Postgres queue). The engine's error rate during the drain was low (150 lines over 6 minutes) yet the drain stayed slow; the likely reason is the cluster itself (the CTO saw its CPU throttled, and Fly showed it unhealthy around 10:44Z), not proven. No row lost or doubled: every undrained row is still pending in the outbox. Full report 5,264,068 bytes, sha256 `ee3e72ddda479a96b236e4245ebb3c7346e764d4b3f7c230a346f63d9dacc938` (as collected); the stored copy is capped to the first 20 pending-row failures plus the aggregate line (`failuresCappedForReview: { shown: 21, total: 36301 }`, the #173 pattern), so its own sha256 differs.
 
 ### Engine log
-Method: ANSI colour codes stripped; a "kind" is the log message up to its first `: `, with numbers, UUIDs and `inregion198*_…` queue names replaced by placeholders. Tail: 170,258 lines, 09:46:57Z–10:46:29Z, machine `<engine-machine-id>`.
+Method: ANSI colour codes stripped; a "kind" is the log message up to its first `: `, with numbers, UUIDs, durations and caller prefixes normalised, and `inregion198*_…` queue names replaced by placeholders. Tail: 170,258 lines, 09:46:57Z–10:46:29Z, machine `<engine-machine-id>`.
 
 | Window | ERR lines / kinds | WRN lines / kinds |
 |---|---|---|
@@ -778,7 +782,7 @@ Method: ANSI colour codes stripped; a "kind" is the log message up to its first 
 | `tenant-load` incl. teardown 09:55:26Z–10:38:04Z | 67,560 / 83 | 54,567 / 25 |
 | `outbox-backlog` 10:38:05Z–10:44:14Z | 150 / 39 | 6,465 / 14 |
 
-The first `failed to connect` to the engine cluster was at 09:57:17Z, about two minutes after `tenant-load` started; 55,172 ERR lines in the report run said `failed to connect` (55,074 in `tenant-load`'s time, 98 in `outbox-backlog`'s), first 09:57:17Z, last 10:45:36Z. Reason text anywhere in the log: 107,741 `failed to receive message: unexpected EOF`, 460 `connection reset by peer` (each failed connect lists every attempt); no connection-slot error (`remaining connection slots` / `too many clients`: 0 — #173 had them). ERR per minute: more than 500 in 36 of the 39 minutes 09:57Z–10:35Z, peak 4,426 at 10:01Z (exceptions 10:02Z: 2, 10:03Z: 10, 10:16Z: 121), then 58 (10:36Z), 0 (10:37Z), 7, 8, 8, 3, 84, 29, 17 (10:38Z–10:44Z).
+The first `failed to connect` to the engine cluster was at 09:57:17Z, about two minutes after `tenant-load` started; 55,172 ERR lines in the report run said `failed to connect` (55,074 in `tenant-load`'s time, 98 in `outbox-backlog`'s), first 09:57:17Z, last in the window 10:43:11Z (4 more after it, last 10:45:36Z). Reason text anywhere in the log: 107,741 `failed to receive message: unexpected EOF`, 460 `connection reset by peer` (each failed connect lists every attempt); no connection-slot error (`remaining connection slots` / `too many clients`: 0 — #173 had them). ERR per minute: more than 500 in 36 of the 39 minutes 09:57Z–10:35Z, peak 4,426 at 10:01Z (exceptions 10:02Z: 2, 10:03Z: 10, 10:16Z: 121), then 58 (10:36Z), 0 (10:37Z), 7, 8, 8, 3, 84, 29, 17 (10:38Z–10:44Z).
 
 Top ERR kinds in the report run: 10,323 `error running concurrency strategy`; 8,315 `error in pre-ack on msg create-monitoring-event`; 7,423 `message has been retried for N times` (`service=rabbitmq` — the engine redelivering messages whose database write failed, up to 45 retries); 4,148 `could not list tenants`; 3,903 `error refilling queue`; 3,708 pre-ack `internal-event`; 3,199 pre-ack `task-cancelled`; 3,140 `error calling interval gauge`; 2,046 pre-ack `user-event`; 1,940 `error handling durable task request`.
 
@@ -786,7 +790,7 @@ Top WRN kinds in the report run: 17,098 `long transaction start` (6,149 of them 
 
 368 lines say the database `cannot execute … during recovery` (09:57Z: 18; 10:20Z: 256; 10:21Z: 94); 792 say `… in a read-only transaction` (09:57Z, 10:20Z–10:21Z); 64 say `terminating connection due to administrator command` (09:58:37Z–39Z); 809 say `canceling statement due to statement timeout`.
 
-Fly's own health check on port 8888 failed 11 times between 09:58:49Z and 10:39:09Z (last failure 10:39:09Z, passing again 10:39:24Z); the engine logged 45 `API` ERR lines for `GET /api/ready` status 500 from `Consul Health Check`, latency about 5 seconds. The lead's own probes got 200 (0.2–0.35 seconds) throughout.
+Fly's own health check on port 8888 failed 11 times between 09:58:49Z and 10:39:09Z (last failure 10:39:09Z, passing again 10:39:24Z); the engine logged 45 `API` ERR lines for `GET /api/ready` status 500 from `Consul Health Check`, latency mostly about 5 seconds (one 24ms). Manual probes of `/api/ready` during the run got 200 (0.2–0.35 seconds).
 
 ### RabbitMQ log
 The saved 100-line tail runs 2026-09-23 12:09:31Z–12:14:45Z, the same lines as #176's; 0 error, 0 alarm lines. RabbitMQ logged nothing on 2026-09-24. The engine's 7,423 `message has been retried` lines are the engine redelivering messages it could not write to its own database, not a RabbitMQ fault.
@@ -797,9 +801,9 @@ The saved 100-line tail runs 2026-09-23 12:09:31Z–12:14:45Z, the same lines as
 ### What this supports
 - Basic with RabbitMQ passes smoke size, but slower than Launch (121 seconds against 83).
 - At report size it fails both scenarios.
-- The ceiling moved: on the Postgres-backed queue it was the queue tables (#173); on RabbitMQ it is the engine's own state and history writes (top kinds: concurrency strategy, task and monitoring events, tenants; `olap.go` leads the long transactions).
+- This fits the limit moving from the queue tables (#173) to the engine's own state and history writes (top kinds: concurrency strategy, task and monitoring events, tenants; `olap.go` leads the long transactions); one run, and the log also shows the database in recovery and read-only at 09:57Z and 10:20Z–10:21Z, which was not checked.
 - Not the connection cap: 0 connection-slot errors, and failures begin with a full pool, after the smoke passed.
 
 **Issue #162, criterion 3** (the three load scenarios pass at report size on the deployed engine): unchanged, still met on Launch + RabbitMQ (issue #176). This run shows Basic is not enough for this load.
 
-**For the Camba decision**: the engine's cluster needs Launch or larger at this load, even with the queue on RabbitMQ. Which plan dev stays on is the CTO's decision.
+**For the Camba decision**: on this evidence keep the engine's cluster on Launch or larger for this load: Basic failed (one run) and Launch passed (issue #176); Starter is untried with RabbitMQ. Which plan dev stays on is the CTO's decision.
