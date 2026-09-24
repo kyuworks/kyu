@@ -161,6 +161,7 @@ describe('createKyu', () => {
         'schedules',
         'startRelay',
         'subscribe',
+        'tenants',
         'worker',
       ].sort(),
     )

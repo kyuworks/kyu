@@ -23,6 +23,7 @@ const TABLES = [
   'shop_workflow_definition',
   'kyu_outbox',
   'kyu_processed',
+  'kyu_paused_tenant',
 ]
 
 describe('applyPending', () => {
@@ -50,6 +51,7 @@ describe('applyPending', () => {
       '20260920232955_outbox_dead_at.sql',
       '20260922022251_outbox_publish_at.sql',
       '20260924114140_outbox_cancelled_at.sql',
+      '20260924124242_paused_tenant.sql',
       '0001_shop.sql',
       '0002_shop.sql',
       '0003_shop.sql',
@@ -63,7 +65,7 @@ describe('applyPending', () => {
     expect(second).toEqual([])
 
     const ledger = await client.query('SELECT name FROM shop_migrations')
-    expect(ledger.rows).toHaveLength(11)
+    expect(ledger.rows).toHaveLength(12)
 
     for (const table of TABLES) {
       const exists = await client.query('SELECT 1 FROM information_schema.tables WHERE table_name = $1', [table])

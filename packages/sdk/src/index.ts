@@ -119,6 +119,9 @@ export type {
 // readUnsettledRunsInNamespace/cancelUnsettledRunsInNamespace are reached through kyu.runs.unsettledInNamespace/cancelUnsettledInNamespace.
 export type { NamespaceRunsOptions } from './consume/namespaceRuns.js'
 
+// pauseTenant/resumeTenant/isTenantPaused are reached through kyu.tenants.
+export type { KyuTenants } from './outbox/tenantPause.js'
+
 // readRunProgressForCorrelation/readRunWait are not exported for the same
 // reason: reach this through kyu.runs.forCorrelation instead.
 export type { RunProgress } from './consume/runProgress.js'

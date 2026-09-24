@@ -147,6 +147,20 @@ describe('claimPendingRows claim query', () => {
     await claimPendingRows(db, { limit: 10, workerId: 'worker-1', staleAfterMs: 1000 })
     expect(texts[0]).toContain('AND cancelled_at IS NULL')
   })
+
+  it('claimPendingRows never claims a paused tenant’s row (#181)', async () => {
+    const texts: string[] = []
+    const db: Queryable = {
+      query(text: string, _params: readonly QueryParam[]): Promise<QueryRows> {
+        texts.push(text)
+        return Promise.resolve({ rows: [], rowCount: 0 })
+      },
+    }
+    await claimPendingRows(db, { limit: 10, workerId: 'worker-1', staleAfterMs: 1000 })
+    expect(texts[0]).toContain(
+      'NOT EXISTS (SELECT 1 FROM kyu_paused_tenant p WHERE p.tenant_id = kyu_outbox.tenant_id)',
+    )
+  })
 })
 
 describe('ownership functions reject an empty workerId before querying', () => {

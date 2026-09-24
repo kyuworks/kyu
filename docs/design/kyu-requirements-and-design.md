@@ -266,14 +266,14 @@ Because a claim is held by that stamp and not by the connection, the relay's own
 
 ### 8.4 Ordering
 
-The relay preserves insertion order within one relay instance. Cross-instance order is not guaranteed and is not needed: per-key ordering is enforced on the consumer side by Hatchet concurrency keys, and handlers check staleness where it matters. A scheduled row is delivered at its own time, not in publish order: it carries no ordering guarantee against messages published after it.
+The relay preserves insertion order within one relay instance. Cross-instance order is not guaranteed and is not needed: per-key ordering is enforced on the consumer side by Hatchet concurrency keys, and handlers check staleness where it matters. A scheduled row is delivered at its own time, not in publish order: it carries no ordering guarantee against messages published after it. A paused tenant's rows keep their order and ship in it once resumed.
 
 ### 8.5 Operations
 
 **Oldest pending row.** Alert when older than 60 seconds; retired rows excluded:
 
 ```sql
-SELECT min(created_at) AS oldest_pending FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND publish_at <= now();
+SELECT min(created_at) AS oldest_pending FROM kyu_outbox WHERE published_at IS NULL AND dead_at IS NULL AND cancelled_at IS NULL AND publish_at <= now() AND NOT EXISTS (SELECT 1 FROM kyu_paused_tenant p WHERE p.tenant_id = kyu_outbox.tenant_id);
 ```
 
 **Rows retrying too long.** Alert when any row is past 10 attempts (push failures retry for ever by design):
@@ -292,6 +292,12 @@ SELECT id, name, publish_at FROM kyu_outbox WHERE published_at IS NULL AND dead_
 
 ```sql
 SELECT id, name, publish_at, cancelled_at FROM kyu_outbox WHERE cancelled_at IS NOT NULL ORDER BY cancelled_at DESC;
+```
+
+**Paused tenants.** Held on purpose; never alerted on:
+
+```sql
+SELECT p.tenant_id, p.paused_at, count(o.id) AS held FROM kyu_paused_tenant p LEFT JOIN kyu_outbox o ON o.tenant_id = p.tenant_id AND o.published_at IS NULL AND o.dead_at IS NULL AND o.cancelled_at IS NULL GROUP BY p.tenant_id, p.paused_at;
 ```
 
 **Retired rows.** The relay's own dead letter; alert on any row. A retired row is a message that will never be delivered, and a permanent gap in its key's order:

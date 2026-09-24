@@ -11,6 +11,8 @@ import type {
 import { createEnvelope } from '@kyuworks/schemas'
 import type { Queryable } from '../db/queryable.js'
 import { insertOutboxRow } from './outboxRepository.js'
+import { isTenantPaused, pauseTenant, resumeTenant } from './tenantPause.js'
+import type { KyuTenants } from './tenantPause.js'
 
 // Interior: takes the already-validated envelope. No ON CONFLICT: publishing
 // the same envelope id twice raises the primary-key violation, on purpose.
@@ -37,6 +39,8 @@ export interface Publisher {
     data: MessageInput<MessageDefinition<S>>,
     options: PublisherOptions,
   ): Promise<Envelope<MessageData<MessageDefinition<S>>>>
+  /** Same as `createKyu(...).tenants`: pause/resume make no engine call, so a database-only process (no engine token) can reach them here. See README "Tenant pause". */
+  tenants: KyuTenants
 }
 
 export interface CreatePublisherOptions {
@@ -68,5 +72,6 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
       await publishEnvelope(tx, envelope, publishOptions.publishAt)
       return envelope
     },
+    tenants: { pause: pauseTenant, resume: resumeTenant, isPaused: isTenantPaused },
   }
 }
