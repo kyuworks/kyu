@@ -26,14 +26,14 @@
     "lint": "NODE_OPTIONS='--import tsx' oxlint"
   },
   "dependencies": {
-    "@hatchet-dev/typescript-sdk": "^1.32.0",
+    "@hatchet-dev/typescript-sdk": "^1.33.1",
     "@kyuworks/schemas": "workspace:*",
-    "zod": "^4.0.0"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.13.5",
     "@types/pg": "^8.23.1",
-    "oxlint": "^1.82.0",
+    "oxlint": "^1.83.0",
     "oxlint-tsgolint": "7.0.2001",
     "pg": "^8.23.0",
     "typescript": "^6.0.0",
