@@ -17,6 +17,12 @@ The shop harness app `<shop-harness-app>` and its cluster `<shop-harness-db>`
 (`<shop-cluster-id>`) were destroyed on 2026-09-25; "Running the shop harness in-region" below says
 how to recreate them.
 
+Commands on this page write the engine's cluster id as `<engine-cluster-id>` and the shop harness
+cluster's id as `<shop-cluster-id>`, because a recreated cluster gets a new id. Read the current id
+with names only: `fly mpg list -o <fly-org>`, the row named `<engine-db>` or
+`<shop-harness-db>`. The ids in the list above are a dated record; when a cluster is
+recreated, update that list with the new id and the date.
+
 The engine has run on machine `<engine-machine-id>` since 2026-09-23 (issue #173). The `performance-1x`
 rollback machine `<old-engine-machine-id>` and its volume `<old-engine-volume-id>` were destroyed on
 2026-09-23 before the queue switch (issue #176), so the rollback path in "Resizing the engine
@@ -73,8 +79,10 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
 3. Create the managed Postgres cluster: `fly mpg create -o <fly-org> -n <engine-db> -r syd --plan Basic --pg-major-version 17 --volume-size 10`
 4. Create the config volume, **before** the secrets step and before the first deploy —
    `fly deploy` does not create the volume `fly.toml` mounts, so it must exist first:
-   `fly volumes create kyu_hatchet_config -r syd -a <engine-app>` (size per the plan, or 1 GB
-   if none is set). It must be created in `syd`; a volume in another region cannot attach to a
+   `fly volumes create kyu_hatchet_config_2x -r syd -a <engine-app>` (size per the plan, or 1 GB
+   if none is set). The name must equal the `source` under `[[mounts]]` in
+   `infra/hatchet/fly/fly.toml`; `infra/hatchet/fly/config.test.sh` fails if they differ. It must
+   be created in `syd`; a volume in another region cannot attach to a
    machine in `syd`. This has to come before the engine ever starts: the engine generates its own
    encryption keysets and cookie secrets into `/config` on first boot, so with no volume attached
    those keys land on the machine's ephemeral disk and every worker token minted against them
@@ -209,7 +217,7 @@ engine's run detail for such runs (README). Evidence, queries and what to raise 
 
 1. List available backups: `fly mpg backup list <engine-cluster-id>`
 2. Restore into a **new** cluster — never onto the live one:
-   `fly mpg restore <engine-cluster-id> --backup-id <id> -n <destination-name>`, choosing a
+   `fly mpg restore <engine-cluster-id> --backup-id <backup-id> -n <destination-name>`, choosing a
    destination cluster name that does not exist yet.
 3. Point a scratch app's `DATABASE_URL` at the restored cluster and confirm the engine starts
    and the dashboard shows the expected run history.
@@ -236,7 +244,7 @@ Work through these in order:
 
 1. `fly status -a <engine-app>` — is a machine running at all, and how long has it been up?
    The engine generates its encryption keysets and cookie secrets into `/config/server.yaml` on
-   first boot and reuses them from there while the `kyu_hatchet_config` volume stays attached, so
+   first boot and reuses them from there while the `kyu_hatchet_config_2x` volume stays attached, so
    a restart of the same machine keeps previously minted worker tokens working. A machine
    replacement with that volume attached keeps working the same way; a machine replacement with
    the volume missing or in the wrong region does not, because the engine generates a fresh set
@@ -377,7 +385,7 @@ second, separate app — `<shop-harness-app>` — plus its own database cluster
 **Destroyed on 2026-09-25.** The app and its cluster (cluster id `<shop-cluster-id>`; Basic from
 2026-09-24 after issue #198, before that Basic, then Starter, then Launch on 2026-09-23) were
 destroyed on the CTO's instruction; see "Destroying the cluster" below. Neither exists now. Machine
-ids and the cluster id below are from before that date. To run the harness again, recreate both
+ids below are from before that date. To run the harness again, recreate both
 with the steps that follow, in order: "One-time setup" (the app, a new cluster and its
 `kyu_shop_inregion` database), then "The CTO's steps, in order" (the two secrets through
 `infra/shop-harness/fly/secrets.sh`, from the new cluster's direct connection string and a newly
@@ -394,7 +402,7 @@ Fly connection string or a token back once set — the checks below use names-on
 
 1. Create the app: `fly apps create <shop-harness-app> -o <fly-org>`
 2. Create a second Basic managed Postgres cluster — **never** the engine's own cluster
-   (`<engine-db>`, `<engine-cluster-id>`) and never `<engine-db>-restoretest`
+   (`<engine-db>`) and never `<engine-db>-restoretest`
    (destroyed 2026-09-23). Redirect stdout to `/dev/null`; it carries one-time
    credentials:
    `fly mpg create -o <fly-org> -n <shop-harness-db> -r syd --plan Basic --pg-major-version 17 --volume-size 10 >/dev/null`
@@ -478,10 +486,10 @@ cluster above exist.
 grant.** `migrate`'s `start`/`failed` log lines print the database name only
 (`{"process":"migrate","event":"start","database":"<name>"}`), never the connection string. If
 that name is right but migrate still fails with `permission denied to create database`, the
-database name is not the problem — check that the string's **host** is the shop cluster's
-(`<shop-harness-db>`, id `<shop-cluster-id>`), not the engine's (`<engine-db>`, id
-`<engine-cluster-id>`), which has no `kyu_shop_inregion` database at all. An unchanged secret digest
-in `fly secrets list` after a re-stage means the value was not actually changed.
+database name is not the problem — check that the string's **host** belongs to the shop cluster
+(`<shop-harness-db>`), not the engine's (`<engine-db>`), which has no
+`kyu_shop_inregion` database at all; `fly mpg list -o <fly-org>` gives both ids. An unchanged
+secret digest in `fly secrets list` after a re-stage means the value was not actually changed.
 
 If nobody collects in time, the machine exits on its own after `KYU_HARNESS_HOLD_SECONDS` and
 reads `stopped` — nothing is left running either way.
@@ -583,12 +591,12 @@ engine stopped tracking — see Known engine defects.
 ### Destroying the cluster
 
 Done on 2026-09-25, on the CTO's instruction: `fly apps destroy <shop-harness-app>` removed the
-app and its machine, and `fly mpg destroy <shop-cluster-id>` destroyed `<shop-harness-db>`.
+app and its machine, and `fly mpg destroy` destroyed `<shop-harness-db>` (`<shop-cluster-id>`).
 Confirmed: `fly apps list -o <fly-org>` no longer lists `<shop-harness-app>`, and
 `fly mpg list -o <fly-org>` no longer lists `<shop-harness-db>`; both still list the engine
 app, `<rabbitmq-app>` and `<engine-db>` respectively.
 
 After a future run, the lane that recreated the cluster may destroy it once the CTO accepts that
-run's proof, with no CTO step: `fly mpg destroy <cluster-id>`, then the same `fly mpg list` check.
+run's proof, with no CTO step: `fly mpg destroy <shop-cluster-id>`, then the same `fly mpg list` check.
 The app can be destroyed the same way with `fly apps destroy <shop-harness-app>`, or left in
 place (its machine stays `stopped` at no cost).
