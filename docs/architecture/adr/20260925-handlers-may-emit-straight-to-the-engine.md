@@ -25,6 +25,18 @@ Envelope ids are clock uuid v7 (`packages/schemas/src/uuidv7.ts:27-37`). `afterM
 
 ---
 
+## Options considered
+
+**A. Keep outbox-only, with every pool on a full connection.** Every third-party machine can write every CRM table and draws on the pooler budget. It does not close the dead-worker hole in decision 4 either.
+
+**B. One writer pool, and integration pools on an outbox-only connection.** It keeps one publish path, so pause, cancel, `publishAt` and the § 8.5 queries cover every message, and `kyu_processed` drops redelivered inputs with no engine feature. It still puts a database credential and pooler connections on every third-party machine. No test has proven that `publish()` and `onceById()` work through a transaction-mode pooler. It closes the dead-worker hole no better than C, and under 3(b) it would still stop a redelivered command that arrives after the first run committed, where C does not. The CTO accepts that cost to keep database credentials off third-party machines, and rejects B, including as a fallback.
+
+**C. Handler emit (chosen).** No database credential reaches a third-party machine. Among worker pools, only the writer pool and the flows pool keep database connections. `publish()` stays the one path from request-time code, and `ctx.emit()` is a second, narrower path reachable only from inside a `subscribe()` handler.
+
+**Derived ids.** A retried `emit` would reuse its id, so the writer pool's key would drop the duplicate. Rejected: the envelope id must be uuid v7 (`packages/schemas/src/envelope.ts:19`), and its embedded time orders `afterMessage` (`waitMatch.ts:63`) and bounds run lookups (`runOutcomes.ts:233`). A derived id carries neither.
+
+---
+
 ## Decision
 
 1. **A second, sanctioned publish path.** `ctx.emit(definition, data)` exists only on a `subscribe()` handler's context. It does not exist on `createKyu`, `createPublisher`, an API request, or a durable handler (whose body re-runs on replay; the flows pool uses `publish()`). It pushes through the worker's own client (`ctx.v1`) with the payload, metadata and scope the relay sends. The emitted envelope keeps the input's `tenantId` and `correlationId`, and its `causationId` is the input's id.
@@ -72,18 +84,6 @@ Envelope ids are clock uuid v7 (`packages/schemas/src/uuidv7.ts:27-37`). `afterM
 
 ---
 
-## Options considered
-
-**A. Keep outbox-only, with every pool on a full connection.** Every third-party machine can write every CRM table and draws on the pooler budget. It does not close the dead-worker hole in decision 4 either.
-
-**B. One writer pool, and integration pools on an outbox-only connection.** It keeps one publish path, so pause, cancel, `publishAt` and the § 8.5 queries cover every message, and `kyu_processed` drops redelivered inputs with no engine feature. It still puts a database credential and pooler connections on every third-party machine. No test has proven that `publish()` and `onceById()` work through a transaction-mode pooler. It closes the dead-worker hole no better than C, and under 3(b) it would still stop a redelivered command that arrives after the first run committed, where C does not. The CTO accepts that cost to keep database credentials off third-party machines, and rejects B, including as a fallback.
-
-**C. Handler emit (chosen).** No database credential reaches a third-party machine; only the writer pool and the flows pool keep connections. `publish()` stays the one path from request-time code, and `ctx.emit()` is a second, narrower path reachable only from inside a `subscribe()` handler.
-
-**Derived ids.** A retried `emit` would reuse its id, so the writer pool's key would drop the duplicate. Rejected: the envelope id must be uuid v7 (`packages/schemas/src/envelope.ts:19`), and its embedded time orders `afterMessage` (`waitMatch.ts:63`) and bounds run lookups (`runOutcomes.ts:233`). A derived id carries neither.
-
----
-
 ## Do not
 
 - Emit from an API request, `createKyu`, `createPublisher` or a durable handler, or push from handler code other than through `ctx.emit`.
@@ -92,7 +92,7 @@ Envelope ids are clock uuid v7 (`packages/schemas/src/uuidv7.ts:27-37`). `afterM
 - Write a writer-pool effect that is not idempotent on content (an increment, or an append with no key).
 - Match a wait for an outcome on the entity id alone.
 - Put a provider's response body on the bus.
-- Carry personal data in a command, or return it from `call`, emit it or log it. Read it from the CRM API at send time.
+- Carry personal data in a command, or return it from `call`, emit it, log it or put it in a thrown error's message. Read it from the CRM API at send time.
 
 ---
 

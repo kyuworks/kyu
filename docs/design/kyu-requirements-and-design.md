@@ -125,7 +125,7 @@ Known gaps, and how they are covered:
 | Gap | Cover |
 |---|---|
 | No transactional outbox | Built in the SDK (section 8) |
-| No producer-side idempotency key on event push (confirmed absent in engine SDK v1.33.1, [ADR](../architecture/adr/20260925-handlers-may-emit-straight-to-the-engine.md)) | (proposed) Envelope id plus consumer-side dedup; for runs, the engine's per-workflow idempotency key on the envelope id, pending a probe; content-hash staleness checks in handlers where a consumer already has them |
+| No producer-side idempotency key on event push (confirmed absent in engine SDK v1.33.1, [ADR](../architecture/adr/20260925-handlers-may-emit-straight-to-the-engine.md)) | Envelope id plus consumer-side dedup; for runs, the engine's per-workflow idempotency key on the envelope id (proposed, pending a probe); content-hash staleness checks in handlers where a consumer already has them |
 | No separate dead-letter queue | Failed runs are the dead letter; alert on them and replay from the UI |
 | Priority is only within one workflow | Acceptable; use separate workflows for lanes that must not compete |
 | Hatchet Lite is documented for development and low volume | Adequate for release one; the Compose or Helm topology is the upgrade path with no code change |
