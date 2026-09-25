@@ -94,8 +94,8 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
    every boot. The seed creates that user only when no user has the email yet, and never changes
    an existing user's password. The password must be 8 to 64 characters with an upper-case
    letter, a lower-case letter and a number, or the seed refuses it and logs an error. Use a
-   lower-case `<company-domain>` address: at the rebuild in step 11, `fly.toml` restricts signup and
-   login to that domain, and the match is exact.
+   lower-case `<company-domain>` address: from the rebuild in step 11 on, `fly.toml` will restrict signup
+   and login to that domain, and the match is exact.
 6. Deploy: `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`
 7. Check health: `curl -s https://<engine-app>.fly.dev/api/ready` should return 200. Confirmed
    through the edge on first deploy. If the gRPC port on 7077 fails with a TLS handshake error
@@ -135,12 +135,13 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
     So `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS` is not in `fly.toml` on `main` (issue #210). The
     engine checks it at login as well as signup; deployed now, it would refuse the default
     account and no one could reach the tenant or invite a new Owner. A deploy from `main`,
-    including an upgrade, does not change who can sign in. `infra/hatchet/fly/config.test.sh`
-    fails while the setting is in `fly.toml`, so it cannot come back by accident. If it ever goes
-    live on the old database, the CTO removes the line from `fly.toml` and deploys again.
+    including an upgrade, does not change who can reach the tenant.
+    `infra/hatchet/fly/config.test.sh` fails while the setting is in `fly.toml`, so it cannot come
+    back by accident. If it ever goes live on the old database, the CTO removes the setting (from
+    `fly.toml`, or from the app's secrets if it was set there) and deploys again.
 
     At the rebuild, the CTO does these steps, in this order, as part of *First deploy* against a
-    new, empty database. Agents never deploy the engine or set secrets.
+    new, empty database. Agents do none of these steps.
 
     1. In *First deploy* step 5, stage a lower-case `<company-domain>` address as `ADMIN_EMAIL` and a
        password that meets the seed's rule as `ADMIN_PASSWORD` (run `secrets.sh` for the
@@ -154,8 +155,8 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
     3. Deploy (*First deploy* step 6) with the setting in place. On an empty database the seed
        creates the tenant and the `ADMIN_EMAIL` user in the same boot and makes that user the
        tenant's Owner; with `ADMIN_EMAIL` set it never creates the image's default account
-       (`cmd/hatchet-admin/cli/seed/seed.go` at v0.107.0). No invite is needed and there is no
-       default account to remove.
+       (`cmd/hatchet-admin/cli/seed/seed.go` and `pkg/config/database/config.go` at v0.107.0). No
+       invite is needed and there is no default account to remove.
     4. Confirm: a signup with a non-company address is refused, and the `<company-domain>` admin signs in
        and sees the tenant. The CTO reports only "it worked" or "it did not". That closes this
        step.
