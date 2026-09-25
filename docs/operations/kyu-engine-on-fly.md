@@ -60,6 +60,7 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
   reads a secret back or signs in to Fly.
 - An engineer (or an agent, for the parts that do not touch a secret) creates Fly resources,
   writes config, deploys, and checks the result.
+- Until runbook step 11 is closed, only the CTO deploys the engine.
 
 ## First deploy
 
@@ -83,12 +84,17 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
    `infra/hatchet/fly/secrets.sh` to see every command, fills in each placeholder — including
    `DATABASE_URL` with that string — from 1Password, and runs the `fly secrets set --stage ...`
    commands it prints. There is no `fly mpg attach` step here. Four secrets are required
-   (`DATABASE_URL`, `SERVER_AUTH_ADMIN_EMAIL`, `SERVER_AUTH_ADMIN_PASSWORD`, and
+   (`DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and
    `SERVER_MSGQUEUE_RABBITMQ_URL` while the queue is RabbitMQ — see *Queue on RabbitMQ*); the
    script's `Optional overrides` block covers the four keyset and cookie secrets, which the engine
    otherwise generates itself into the volume created in step 4. Confirmed on first deploy: the
    direct connection string needed no `sslmode` parameter — the schema migration ran clean with no
-   SSL error in the logs.
+   SSL error in the logs. `ADMIN_EMAIL` and `ADMIN_PASSWORD` are read by the engine's seed at
+   every boot. The seed creates that user only when no user has the email yet, and never changes
+   an existing user's password. The password must be 8 to 64 characters with an upper-case
+   letter, a lower-case letter and a number, or the seed refuses it and logs an error. Use a
+   lower-case `<company-domain>` address: `fly.toml` restricts signup and login to that domain, and the
+   match is exact.
 6. Deploy: `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`
 7. Check health: `curl -s https://<engine-app>.fly.dev/api/ready` should return 200. Confirmed
    through the edge on first deploy. If the gRPC port on 7077 fails with a TLS handshake error
@@ -109,15 +115,40 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
    dashboard's tenant settings and pass it with `--tenant-id`.
 10. Register one worker against it (see `examples/shop/README.md`, "Against the deployed dev
     engine") and confirm it shows up in the dashboard.
-11. **Before leaving the dashboard reachable at `https://<engine-app>.fly.dev`, confirm the
-    admin login actually uses the credentials the CTO set, not `hatchet-lite`'s own default.** The
-    CTO signs in with the `SERVER_AUTH_ADMIN_EMAIL` / `SERVER_AUTH_ADMIN_PASSWORD` values from step
-    5 and reports only "it worked" or "it did not"; if it did not, they try the documented
-    `hatchet-lite` default (`admin@example.com`) — if that signs in instead, the account must be
-    changed through the dashboard immediately and this page updated with what was found. **This
-    step was not performed in the issue #162 PR B session** (it needs an interactive CTO login) and
-    is the one open item from that deploy: until it is done, treat the dashboard as carrying an
-    unconfirmed admin account.
+11. **Before leaving the dashboard reachable, confirm the admin login uses an account the CTO
+    controls, not `hatchet-lite`'s own default.** Found on 2026-09-25: the CTO could not sign in
+    with the values they had set. The engine's source at v0.107.0 explains why: its seed reads
+    `ADMIN_EMAIL` and `ADMIN_PASSWORD`, and `secrets.sh` had staged the admin under two other
+    names, which the engine ignores. With neither set, the seed creates the image's documented
+    default account (the comment at the top of `infra/hatchet/compose.yaml`). The live database
+    was not inspected. Two more engine facts shape the fix: the seed never changes an existing
+    user, and v0.107.0 has no way to change a user's email, only the password. Signup was open
+    (`/api/v1/meta` reported `allowSignup: true`).
+
+    The CTO does these steps, in this order, including the deploy in step 4. Agents never deploy
+    the engine or set secrets.
+
+    1. Sign in with the documented default account and change its password in the dashboard.
+    2. Register a new account with a `<company-domain>` address. From the default account, invite that
+       address to the tenant with the Owner role; sign in as the new account and accept the
+       invite. Confirm the new account sees the tenant.
+    3. Stage that address and its password as `ADMIN_EMAIL` and `ADMIN_PASSWORD` (run
+       `secrets.sh` for the commands), and unset any admin secret the script no longer prints
+       with `fly secrets unset --stage -a <engine-app> <NAME> ...` (`fly secrets list -a
+       <engine-app>` shows names only). This only matters for a fresh database: on the live
+       one the seed finds the user and changes nothing.
+    4. Only after step 2, deploy the `fly.toml` change that sets
+       `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS`: `fly deploy -c infra/hatchet/fly/fly.toml -a
+       <engine-app>`. The engine checks the domain at login as well as signup, so from then on
+       the default account cannot sign in. Until the CTO has finished steps 1 and 2, no one
+       deploys the engine from `main`, for any reason, including an upgrade: every deploy from
+       `main` now carries this setting. If it goes live early, the default account is refused at
+       login and no one can invite a new Owner, so no one can reach the tenant. To recover, the
+       CTO removes the line from `fly.toml` and deploys again.
+    5. Confirm: a signup with a non-company address is refused, the `<company-domain>` admin signs in,
+       and the default account does not. The CTO reports only "it worked" or "it did not". Then,
+       signed in as the company-domain Owner, remove the default account from the tenant's
+       members.
 
 ## Upgrade
 

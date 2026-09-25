@@ -15,8 +15,15 @@ assert_exit "prints without calling fly" 0 env "PATH=${TMP}/bin:${PATH}" bash "$
 gate_test_record "never invoked fly" "$([ -e "${TMP}/fly-was-called" ] && echo 1 || echo 0)"
 for name in DATABASE_URL SERVER_AUTH_COOKIE_SECRETS SERVER_ENCRYPTION_MASTER_KEYSET \
             SERVER_ENCRYPTION_JWT_PRIVATE_KEYSET SERVER_ENCRYPTION_JWT_PUBLIC_KEYSET \
-            SERVER_AUTH_ADMIN_EMAIL SERVER_AUTH_ADMIN_PASSWORD SERVER_MSGQUEUE_RABBITMQ_URL; do
+            ADMIN_EMAIL ADMIN_PASSWORD SERVER_MSGQUEUE_RABBITMQ_URL; do
   assert_output_contains "names ${name}" "${name}" bash "${SECRETS}"
+done
+# A leading space: ADMIN_EMAIL=' alone is a substring of the old prefixed name.
+for name in ADMIN_EMAIL ADMIN_PASSWORD; do
+  assert_output_contains "stages ${name}" " ${name}='" bash "${SECRETS}"
+done
+for old in SERVER_AUTH_ADMIN_EMAIL SERVER_AUTH_ADMIN_PASSWORD; do
+  assert_output_lacks "does not name ${old}" "${old}" cat "${SECRETS}"
 done
 assert_output_contains "names the app" "<engine-app>" bash "${SECRETS}"
 assert_output_contains "stages the secrets" "--stage" bash "${SECRETS}"
