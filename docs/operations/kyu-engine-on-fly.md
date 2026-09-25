@@ -20,8 +20,8 @@ how to recreate them.
 Commands on this page write the engine's cluster id as `<engine-cluster-id>` and the shop harness
 cluster's id as `<shop-cluster-id>`, because a recreated cluster gets a new id. Read the current id
 with names only: `fly mpg list -o <fly-org>`, the row named `<engine-db>` or
-`<shop-harness-db>`. The ids in the list above are a dated record; when a cluster is
-recreated, update that list with the new id and the date.
+`<shop-harness-db>`. The ids above are a dated record; when a cluster is recreated, update
+them with the new id and the date.
 
 The engine has run on machine `<engine-machine-id>` since 2026-09-23 (issue #173). The `performance-1x`
 rollback machine `<old-engine-machine-id>` and its volume `<old-engine-volume-id>` were destroyed on
@@ -81,9 +81,9 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
    `fly deploy` does not create the volume `fly.toml` mounts, so it must exist first:
    `fly volumes create kyu_hatchet_config_2x -r syd -a <engine-app>` (size per the plan, or 1 GB
    if none is set). The name must equal the `source` under `[[mounts]]` in
-   `infra/hatchet/fly/fly.toml`; `infra/hatchet/fly/config.test.sh` fails if they differ. It must
-   be created in `syd`; a volume in another region cannot attach to a
-   machine in `syd`. This has to come before the engine ever starts: the engine generates its own
+   `infra/hatchet/fly/fly.toml`; `infra/hatchet/fly/config.test.sh` fails if they differ.
+   It must be created in `syd`; a volume in another region cannot attach to a machine in `syd`.
+   This has to come before the engine ever starts: the engine generates its own
    encryption keysets and cookie secrets into `/config` on first boot, so with no volume attached
    those keys land on the machine's ephemeral disk and every worker token minted against them
    dies with that machine.
@@ -488,8 +488,9 @@ grant.** `migrate`'s `start`/`failed` log lines print the database name only
 that name is right but migrate still fails with `permission denied to create database`, the
 database name is not the problem — check that the string's **host** belongs to the shop cluster
 (`<shop-harness-db>`), not the engine's (`<engine-db>`), which has no
-`kyu_shop_inregion` database at all; `fly mpg list -o <fly-org>` gives both ids. An unchanged
-secret digest in `fly secrets list` after a re-stage means the value was not actually changed.
+`kyu_shop_inregion` database at all. Compare the host with the two cluster ids that
+`fly mpg list -o <fly-org>` prints. An unchanged secret digest in `fly secrets list` after a
+re-stage means the value was not actually changed.
 
 If nobody collects in time, the machine exits on its own after `KYU_HARNESS_HOLD_SECONDS` and
 reads `stopped` — nothing is left running either way.

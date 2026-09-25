@@ -13,11 +13,11 @@ assert_exit "fly.toml exists" 0 test -f "${FLY_TOML}"
 assert_output_contains "queue kind is rabbitmq" "SERVER_MSGQUEUE_KIND = 'rabbitmq'" cat "${FLY_TOML}"
 assert_output_contains "config mount stays kyu_hatchet_config_2x" "source = 'kyu_hatchet_config_2x'" cat "${FLY_TOML}"
 
-# First deploy step 4 creates the volume fly.toml mounts; keep that command on one line.
+# First deploy step 4 creates the volume fly.toml mounts; keep that command on one line, with `-a <engine-app>` last.
 MOUNT_SOURCE="$(sed -nE "s#^  source = '([^']+)'\$#\1#p" "${FLY_TOML}")"
 RUNBOOK_VOLUME="$(sed -nE 's#.*`fly volumes create ([a-z0-9_]+) .*-a <engine-app>`.*#\1#p' "${RUNBOOK}")"
 assert_eq "the runbook creates the volume fly.toml mounts" "${MOUNT_SOURCE}" "${RUNBOOK_VOLUME}"
-OTHER_VOLUMES="$(grep -noE '`kyu_hatchet_config[a-z0-9_]*`' "${RUNBOOK}" | grep -vF "\`${MOUNT_SOURCE}\`")"
+OTHER_VOLUMES="$(grep -noE 'kyu_hatchet_config[a-z0-9_]*' "${RUNBOOK}" | grep -vE ":${MOUNT_SOURCE}\$")"
 assert_eq "the runbook names no other engine config volume" "" "${OTHER_VOLUMES}"
 
 assert_output_lacks "no amqp URL" "amqp://" cat "${FLY_TOML}"
