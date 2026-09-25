@@ -340,8 +340,7 @@ with the steps that follow, in order: "One-time setup" (the app, a new cluster a
 `kyu_shop_inregion` database), then "The CTO's steps, in order" (the two secrets through
 `infra/shop-harness/fly/secrets.sh`, from the new cluster's direct connection string and a newly
 minted engine token), then "Running it". A new cluster gets a new cluster id: use it wherever this
-section or the text `infra/shop-harness/fly/secrets.sh` prints says `<shop-cluster-id>`. Before a
-report-size run, move the new cluster to Launch (see
+section says `<shop-cluster-id>`. Before a report-size run, move the new cluster to Launch (see
 **Before a report-size harness run** at the top of this page).
 
 **Who does what:** an engineer (or an agent, for the parts that touch no secret) creates the app,

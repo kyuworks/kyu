@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit tests for secrets.sh (#166). Run: bash infra/shop-harness/fly/secrets.test.sh
+# Unit tests for secrets.sh (#166, #204). Run: bash infra/shop-harness/fly/secrets.test.sh
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../../scripts/lib/gate-test-lib.sh"
@@ -33,5 +33,14 @@ gate_test_record "token line reads token.sh -a <engine-app>" "$([[ "${TOKEN_LINE
 STAGE_COMMAND_LINES="$(printf '%s\n' "${OUT}" | grep -E '^fly secrets set|\| fly secrets import')"
 NO_STAGE_LINES="$(printf '%s\n' "${STAGE_COMMAND_LINES}" | grep -v -- '--stage' || true)"
 assert_eq "--stage is on every fly secrets command" "" "${NO_STAGE_LINES}"
+
+# A Fly cluster id is 16 lowercase letters and digits. The shop cluster is
+# recreated per run, so the only id the text may carry is the engine's.
+CLUSTER_IDS="$(printf '%s\n' "${OUT}" | grep -oE '(^|[^A-Za-z0-9_-])[a-z0-9]{16}([^A-Za-z0-9_-]|$)' | grep -oE '[a-z0-9]{16}' | grep -vx '<engine-cluster-id>' || true)"
+assert_eq "prints no cluster id but the engine's" "" "${CLUSTER_IDS}"
+gate_test_record "says where to read the new shop cluster id" "$([[ "${OUT}" == *'fly mpg list -o <fly-org>'* ]] && echo 0 || echo 1)"
+gate_test_record "still warns off the engine's cluster" "$([[ "${OUT}" == *'<engine-db> (<engine-cluster-id>)'* ]] && echo 0 || echo 1)"
+assert_output_lacks "never echoes a value from its environment" "sentinel-204" \
+  env KYU_SHOP_DATABASE_URL=postgresql://u:sentinel-204@h/db HATCHET_CLIENT_TOKEN=sentinel-204 bash "${SECRETS}"
 
 gate_test_finish
