@@ -24,9 +24,9 @@ Secrets this app needs, and where each value comes from:
     LISTEN/NOTIFY, prepared statements and advisory locks; a transaction
     pooler breaks all three). Assumption to verify on first deploy: whether
     this string needs an sslmode parameter added.
-  SERVER_AUTH_ADMIN_EMAIL
+  ADMIN_EMAIL
     Chosen by the CTO for the dashboard admin account.
-  SERVER_AUTH_ADMIN_PASSWORD
+  ADMIN_PASSWORD
     Chosen by the CTO for the dashboard admin account.
   SERVER_MSGQUEUE_RABBITMQ_URL
     Needed while fly.toml sets SERVER_MSGQUEUE_KIND = 'rabbitmq'. Built from
@@ -40,8 +40,8 @@ Secrets this app needs, and where each value comes from:
 Commands to run:
 
 fly secrets set --stage -a ${APP} DATABASE_URL='<REPLACE_ME>'
-fly secrets set --stage -a ${APP} SERVER_AUTH_ADMIN_EMAIL='<REPLACE_ME>'
-fly secrets set --stage -a ${APP} SERVER_AUTH_ADMIN_PASSWORD='<REPLACE_ME>'
+fly secrets set --stage -a ${APP} ADMIN_EMAIL='<REPLACE_ME>'
+fly secrets set --stage -a ${APP} ADMIN_PASSWORD='<REPLACE_ME>'
 fly secrets set --stage -a ${APP} SERVER_MSGQUEUE_RABBITMQ_URL='<REPLACE_ME>'
 
 Optional overrides (not needed for a normal deploy):
