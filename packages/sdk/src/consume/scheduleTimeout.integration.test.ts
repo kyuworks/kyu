@@ -16,9 +16,8 @@ const namespace = `lane149st${suffix}_`
 const hatchet: HatchetClient = createHatchetClient({ namespace })
 const TENANT = '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f30'
 
-// One slot per worker, held by the first message until the test releases it,
-// so the second message's run is the only one queued and waits as long as the
-// test chooses. No handler duration or dispatch order decides which run fails.
+// One slot per worker, held until the test releases it: the second message's run is the
+// only one queued, so no handler duration or dispatch order decides which run fails.
 const STRICT_TIMEOUT_MS = 15_000
 const STRICT_TIMEOUT = `${STRICT_TIMEOUT_MS / 1000}s` as const
 const STRICT = 'slot-strict'
@@ -108,7 +107,10 @@ describe('subscribe: scheduleTimeout', () => {
     const first = await publish(1)
     // Both slots are held before the second message exists, so its run is the
     // only one queued on each subscription.
-    expect(await handlerStartedAt(STRICT, 1, 30_000)).toBeDefined()
+    expect(
+      await handlerStartedAt(STRICT, 1, 30_000),
+      'first strict run never started within STRICT_TIMEOUT',
+    ).toBeDefined()
     expect(await handlerStartedAt(PATIENT, 1, 30_000)).toBeDefined()
 
     const secondPublishedAt = Date.now()
