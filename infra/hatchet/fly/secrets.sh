@@ -46,7 +46,7 @@ fly secrets set --stage -a ${APP} SERVER_MSGQUEUE_RABBITMQ_URL='<REPLACE_ME>'
 
 Optional overrides (not needed for a normal deploy):
   The engine generates these into /config on first boot and the
-  kyu_hatchet_config volume keeps them; set them only to hold the keys
+  config volume that fly.toml mounts keeps them; set them only to hold the keys
   outside the volume, and note that once set, the environment value wins
   over whatever /config holds.
 
