@@ -15,8 +15,6 @@ primary_region = 'syd'
   SERVER_AUTH_COOKIE_DOMAIN = '<engine-app>.fly.dev'
   SERVER_AUTH_COOKIE_INSECURE = 'f'
   SERVER_AUTH_SET_EMAIL_VERIFIED = 't'
-  # Checked at login too: deploy only once the admin account is on this domain (runbook step 11).
-  SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS = '<company-domain>'
   SERVER_GRPC_BIND_ADDRESS = '0.0.0.0'
   SERVER_GRPC_PORT = '7077'
   # Fly's edge terminates TLS and forwards plaintext to the container, so
