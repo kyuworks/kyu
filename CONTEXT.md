@@ -32,6 +32,11 @@
 | coalescing | `CANCEL_IN_PROGRESS` (only the newest run matters) or `CANCEL_NEWEST` (drop if one is already running). |
 | rate limit | A cap on how many runs of one subscription start per window. `rateLimit: { per, limit, window }` counts per business tenant, per correlation or per payload field; `rateLimits` takes any CEL key. A run over the cap is queued, not failed, until its `scheduleTimeout`. |
 | failed run | The dead letter. Alerted on, replayable from the dashboard, never silently dropped. |
+| emit | `ctx.emit()` in a `subscribe()` handler: a follow-on message pushed straight to the engine, with no outbox row. |
+| worker pool | One worker process serving a named subset of a project's subscriptions (serves). |
+| writer pool | The one pool per project that applies integration outcomes to its tables, by upsert, ordered per entity. |
+| integration pool | A worker pool that calls one third party. Holds the engine token, its provider credentials and a CRM API token that can only read; no database connection. |
+| flows pool | The worker pool that runs durable workflow handlers. |
 
 ## Tenancy
 
