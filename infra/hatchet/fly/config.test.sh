@@ -13,7 +13,8 @@ assert_output_contains "queue kind is rabbitmq" "SERVER_MSGQUEUE_KIND = 'rabbitm
 assert_output_contains "config mount stays kyu_hatchet_config_2x" "source = 'kyu_hatchet_config_2x'" cat "${FLY_TOML}"
 assert_output_lacks "no amqp URL" "amqp://" cat "${FLY_TOML}"
 assert_output_lacks "no RabbitMQ URL value" "SERVER_MSGQUEUE_RABBITMQ_URL =" cat "${FLY_TOML}"
-assert_output_contains "signup restricted to the company domain" "SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS = '<company-domain>'" cat "${FLY_TOML}"
+# Checked at login too, so it waits for the dev engine rebuild (runbook step 11).
+assert_output_lacks "no signup domain restriction before the dev engine rebuild" "SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS" cat "${FLY_TOML}"
 
 FLY_TAG="$(sed -nE "s#^  image = 'ghcr.io/hatchet-dev/hatchet/hatchet-lite:(v[0-9.]+)'\$#\1#p" "${FLY_TOML}")"
 COMPOSE_TAG="$(sed -nE 's#.*hatchet-lite:\$\{KYU_HATCHET_IMAGE_TAG:-(v[0-9.]+)\}.*#\1#p' "${COMPOSE}")"

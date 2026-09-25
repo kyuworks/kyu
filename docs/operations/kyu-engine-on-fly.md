@@ -60,7 +60,8 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
   reads a secret back or signs in to Fly.
 - An engineer (or an agent, for the parts that do not touch a secret) creates Fly resources,
   writes config, deploys, and checks the result.
-- Until runbook step 11 is closed, only the CTO deploys the engine.
+- The CTO does the rebuild in step 11, including the first deploy with the signup restriction in
+  place.
 
 ## First deploy
 
@@ -93,8 +94,8 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
    every boot. The seed creates that user only when no user has the email yet, and never changes
    an existing user's password. The password must be 8 to 64 characters with an upper-case
    letter, a lower-case letter and a number, or the seed refuses it and logs an error. Use a
-   lower-case `<company-domain>` address: `fly.toml` restricts signup and login to that domain, and the
-   match is exact.
+   lower-case `<company-domain>` address: from the rebuild in step 11 on, `fly.toml` will restrict signup
+   and login to that domain, and the match is exact.
 6. Deploy: `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`
 7. Check health: `curl -s https://<engine-app>.fly.dev/api/ready` should return 200. Confirmed
    through the edge on first deploy. If the gRPC port on 7077 fails with a TLS handshake error
@@ -125,30 +126,40 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
     user, and v0.107.0 has no way to change a user's email, only the password. Signup was open
     (`/api/v1/meta` reported `allowSignup: true`).
 
-    The CTO does these steps, in this order, including the deploy in step 4. Agents never deploy
-    the engine or set secrets.
+    Done and decided on 2026-09-25 (issue #208): the CTO signed in with the documented default
+    account and changed its password in the dashboard, so the image's default password no longer
+    opens the dashboard. The CTO decided to do the rest of this step when the dev engine is torn
+    down and recreated, not on the live database. Until then the default account, with its new
+    password, is the tenant's only Owner, and signup stays open.
 
-    1. Sign in with the documented default account and change its password in the dashboard.
-    2. Register a new account with a `<company-domain>` address. From the default account, invite that
-       address to the tenant with the Owner role; sign in as the new account and accept the
-       invite. Confirm the new account sees the tenant.
-    3. Stage that address and its password as `ADMIN_EMAIL` and `ADMIN_PASSWORD` (run
-       `secrets.sh` for the commands), and unset any admin secret the script no longer prints
-       with `fly secrets unset --stage -a <engine-app> <NAME> ...` (`fly secrets list -a
-       <engine-app>` shows names only). This only matters for a fresh database: on the live
-       one the seed finds the user and changes nothing.
-    4. Only after step 2, deploy the `fly.toml` change that sets
-       `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS`: `fly deploy -c infra/hatchet/fly/fly.toml -a
-       <engine-app>`. The engine checks the domain at login as well as signup, so from then on
-       the default account cannot sign in. Until the CTO has finished steps 1 and 2, no one
-       deploys the engine from `main`, for any reason, including an upgrade: every deploy from
-       `main` now carries this setting. If it goes live early, the default account is refused at
-       login and no one can invite a new Owner, so no one can reach the tenant. To recover, the
-       CTO removes the line from `fly.toml` and deploys again.
-    5. Confirm: a signup with a non-company address is refused, the `<company-domain>` admin signs in,
-       and the default account does not. The CTO reports only "it worked" or "it did not". Then,
-       signed in as the company-domain Owner, remove the default account from the tenant's
-       members.
+    So `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS` is not in `fly.toml` on `main` (issue #210). The
+    engine checks it at login as well as signup; deployed now, it would refuse the default
+    account and no one could reach the tenant or invite a new Owner. A deploy from `main`,
+    including an upgrade, does not change who can reach the tenant.
+    `infra/hatchet/fly/config.test.sh` fails while the setting is in `fly.toml`, so it cannot come
+    back by accident. If it ever goes live on the old database, the CTO removes the setting (from
+    `fly.toml`, or from the app's secrets if it was set there) and deploys again.
+
+    At the rebuild, the CTO does these steps, in this order, as part of *First deploy* against a
+    new, empty database. Agents do none of these steps.
+
+    1. In *First deploy* step 5, stage a lower-case `<company-domain>` address as `ADMIN_EMAIL` and a
+       password that meets the seed's rule as `ADMIN_PASSWORD` (run `secrets.sh` for the
+       commands). Unset any admin secret the script no longer prints with `fly secrets unset
+       --stage -a <engine-app> <NAME> ...` (`fly secrets list -a <engine-app>` shows names
+       only).
+    2. Only once the old database is gone, put the `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS` line
+       back in `[env]` in `fly.toml`, set to the company domain, with a one-line comment that it
+       is checked at login too. In the same change, turn the `config.test.sh` row that fails on it
+       into one that requires it. From then on every deploy from `main` carries the setting.
+    3. Deploy (*First deploy* step 6) with the setting in place. On an empty database the seed
+       creates the tenant and the `ADMIN_EMAIL` user in the same boot and makes that user the
+       tenant's Owner; with `ADMIN_EMAIL` set it never creates the image's default account
+       (`cmd/hatchet-admin/cli/seed/seed.go` and `pkg/config/database/config.go` at v0.107.0). No
+       invite is needed and there is no default account to remove.
+    4. Confirm: a signup with a non-company address is refused, and the `<company-domain>` admin signs in
+       and sees the tenant. The CTO reports only "it worked" or "it did not". That closes this
+       step.
 
 ## Upgrade
 
