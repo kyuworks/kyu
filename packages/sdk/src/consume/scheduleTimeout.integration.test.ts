@@ -16,14 +16,11 @@ const namespace = `lane149st${suffix}_`
 const hatchet: HatchetClient = createHatchetClient({ namespace })
 const TENANT = '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f30'
 
-// One slot per worker and a handler that holds it this long: the third event's
-// run waits about 2 x HANDLER_MS for a slot — over the strict subscription's
-// schedule timeout, well under the patient one's.
-const HANDLER_MS = 8000
-// Halfway between the second run's ~1 x HANDLER_MS wait and the third's ~2 x:
-// keeps roughly a 4s margin on each side so a slow CI runner does not flip
-// which run fails.
-const STRICT_TIMEOUT = `${(HANDLER_MS * 1.5) / 1000}s` as const
+// One slot per worker, held by the first message until the test releases it,
+// so the second message's run is the only one queued and waits as long as the
+// test chooses. No handler duration or dispatch order decides which run fails.
+const STRICT_TIMEOUT_MS = 15_000
+const STRICT_TIMEOUT = `${STRICT_TIMEOUT_MS / 1000}s` as const
 const STRICT = 'slot-strict'
 const PATIENT = 'slot-patient'
 
@@ -34,17 +31,40 @@ const definition = defineEvent({
 })
 
 const workers: KyuWorker[] = []
+const started: Array<{ subscription: string; seq: number; atMs: number }> = []
+let releaseSlots: () => void = () => undefined
+const slotsReleased = new Promise<void>((resolve) => {
+  releaseSlots = resolve
+})
 
 function sleep(ms: number): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
 async function startWorkerFor(name: string, scheduleTimeout: Extract<Duration, string>): Promise<void> {
-  const subscription = subscribe(hatchet, definition, { name, scheduleTimeout, handler: () => sleep(HANDLER_MS) })
+  const subscription = subscribe(hatchet, definition, {
+    name,
+    scheduleTimeout,
+    // The engine's 60s default would end a held slot on a slow runner.
+    executionTimeout: '2m',
+    handler: async (ctx) => {
+      started.push({ subscription: name, seq: ctx.envelope.data.seq, atMs: Date.now() })
+      await slotsReleased
+    },
+  })
   const worker = await createWorker(hatchet, `lane149-${name}-${suffix}`, { subscriptions: [subscription], slots: 1 })
   workers.push(worker)
   void worker.start()
   await worker.waitUntilReady()
+}
+
+async function handlerStartedAt(subscription: string, seq: number, timeoutMs: number): Promise<number | undefined> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const entry = started.find((candidate) => candidate.subscription === subscription && candidate.seq === seq)
+    if (entry !== undefined || Date.now() >= deadline) return entry?.atMs
+    await sleep(100)
+  }
 }
 
 async function settledOutcome(
@@ -68,6 +88,7 @@ beforeAll(async () => {
 }, 60_000)
 
 afterAll(async () => {
+  releaseSlots()
   for (const worker of workers) {
     await worker.stop()
   }
@@ -85,22 +106,27 @@ describe('subscribe: scheduleTimeout', () => {
     }
 
     const first = await publish(1)
+    // Both slots are held before the second message exists, so its run is the
+    // only one queued on each subscription.
+    expect(await handlerStartedAt(STRICT, 1, 30_000)).toBeDefined()
+    expect(await handlerStartedAt(PATIENT, 1, 30_000)).toBeDefined()
+
+    const secondPublishedAt = Date.now()
     const second = await publish(2)
-    const third = await publish(3)
 
-    // The interesting state was reached: the first two ran, so the third's
-    // failure is the queue wait and not a broken handler.
-    expect((await settledOutcome(first, STRICT, 60_000))?.status).toBe('completed')
-    expect((await settledOutcome(second, STRICT, 60_000))?.status).toBe('completed')
+    const strictSecond = await settledOutcome(second, STRICT, STRICT_TIMEOUT_MS + 30_000)
+    expect(strictSecond?.status).toBe('failed')
+    expect(strictSecond?.startedAt).toBeUndefined()
+    expect(strictSecond?.error).toBeUndefined()
+    expect(strictSecond?.attempts).toBe(1)
 
-    const strictThird = await settledOutcome(third, STRICT, 60_000)
-    expect(strictThird?.status).toBe('failed')
-    expect(strictThird?.startedAt).toBeUndefined()
-    expect(strictThird?.error).toBeUndefined()
-    expect(strictThird?.attempts).toBe(1)
+    // The interesting state was reached: the held run completes, so the
+    // second run's failure is the queue wait and not a broken handler.
+    releaseSlots()
+    expect((await settledOutcome(first, STRICT, 30_000))?.status).toBe('completed')
 
-    const patientThird = await settledOutcome(third, PATIENT, 120_000)
-    expect(patientThird?.status).toBe('completed')
-    expect(patientThird?.startedAt).toBeDefined()
+    const patientSecond = await settledOutcome(second, PATIENT, 30_000)
+    expect(patientSecond?.status).toBe('completed')
+    expect(await handlerStartedAt(PATIENT, 2, 0)).toBeGreaterThanOrEqual(secondPublishedAt + STRICT_TIMEOUT_MS)
   }, 240_000)
 })
