@@ -23,7 +23,7 @@ for name in ADMIN_EMAIL ADMIN_PASSWORD; do
   assert_output_contains "stages ${name}" " ${name}='" bash "${SECRETS}"
 done
 for old in SERVER_AUTH_ADMIN_EMAIL SERVER_AUTH_ADMIN_PASSWORD; do
-  assert_output_lacks "does not stage ${old}" "${old}" cat "${SECRETS}"
+  assert_output_lacks "does not name ${old}" "${old}" cat "${SECRETS}"
 done
 assert_output_contains "names the app" "<engine-app>" bash "${SECRETS}"
 assert_output_contains "stages the secrets" "--stage" bash "${SECRETS}"

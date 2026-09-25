@@ -60,6 +60,7 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
   reads a secret back or signs in to Fly.
 - An engineer (or an agent, for the parts that do not touch a secret) creates Fly resources,
   writes config, deploys, and checks the result.
+- Until runbook step 11 is closed, only the CTO deploys the engine.
 
 ## First deploy
 
@@ -124,7 +125,8 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
     user, and v0.107.0 has no way to change a user's email, only the password. Signup was open
     (`/api/v1/meta` reported `allowSignup: true`).
 
-    The CTO does these steps, in this order. Agents never deploy the engine or set secrets.
+    The CTO does these steps, in this order, including the deploy in step 4. Agents never deploy
+    the engine or set secrets.
 
     1. Sign in with the documented default account and change its password in the dashboard.
     2. Register a new account with a `<company-domain>` address. From the default account, invite that
@@ -132,14 +134,21 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
        invite. Confirm the new account sees the tenant.
     3. Stage that address and its password as `ADMIN_EMAIL` and `ADMIN_PASSWORD` (run
        `secrets.sh` for the commands), and unset any admin secret the script no longer prints
-       (`fly secrets list -a <engine-app>` shows names only). This only matters for a fresh
-       database: on the live one the seed finds the user and changes nothing.
+       with `fly secrets unset --stage -a <engine-app> <NAME> ...` (`fly secrets list -a
+       <engine-app>` shows names only). This only matters for a fresh database: on the live
+       one the seed finds the user and changes nothing.
     4. Only after step 2, deploy the `fly.toml` change that sets
        `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS`: `fly deploy -c infra/hatchet/fly/fly.toml -a
        <engine-app>`. The engine checks the domain at login as well as signup, so from then on
-       the default account cannot sign in.
+       the default account cannot sign in. Until the CTO has finished steps 1 and 2, no one
+       deploys the engine from `main`, for any reason, including an upgrade: every deploy from
+       `main` now carries this setting. If it goes live early, the default account is refused at
+       login and no one can invite a new Owner, so no one can reach the tenant. To recover, the
+       CTO removes the line from `fly.toml` and deploys again.
     5. Confirm: a signup with a non-company address is refused, the `<company-domain>` admin signs in,
-       and the default account does not. The CTO reports only "it worked" or "it did not".
+       and the default account does not. The CTO reports only "it worked" or "it did not". Then,
+       signed in as the company-domain Owner, remove the default account from the tenant's
+       members.
 
 ## Upgrade
 
