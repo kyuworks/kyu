@@ -125,7 +125,7 @@ Known gaps, and how they are covered:
 | Gap | Cover |
 |---|---|
 | No transactional outbox | Built in the SDK (section 8) |
-| No producer-side idempotency key on event push found in the docs | Envelope id plus consumer-side dedup; content-hash staleness checks in handlers where a consumer already has them |
+| No producer-side idempotency key on event push (confirmed absent in engine SDK v1.33.1, [ADR](../architecture/adr/20260925-handlers-may-emit-straight-to-the-engine.md)) | Envelope id plus consumer-side dedup; for runs, the engine's per-workflow idempotency key on the envelope id (proposed, pending a probe); content-hash staleness checks in handlers where a consumer already has them |
 | No separate dead-letter queue | Failed runs are the dead letter; alert on them and replay from the UI |
 | Priority is only within one workflow | Acceptable; use separate workflows for lanes that must not compete |
 | Hatchet Lite is documented for development and low volume | Adequate for release one; the Compose or Helm topology is the upgrade path with no code change |
@@ -317,6 +317,10 @@ UPDATE kyu_outbox SET dead_at = NULL, attempts = 0, last_error = NULL WHERE id =
 
 Rows published more than 7 days ago are pruned by a scheduled bus task (`prunePublished`); retired rows are pruned by the same task with `pruneRetired` once an operator has seen them.
 
+### 8.6 Handler emit (proposed)
+
+A second publish path, pending the probe in the [ADR](../architecture/adr/20260925-handlers-may-emit-straight-to-the-engine.md). Inside a `subscribe()` handler only, `ctx.emit()` pushes a follow-on message straight to the engine through the worker's own client. It is never used from an API request or a durable handler. It writes no outbox row, so durability comes from the run: a failed emit fails the task, which retries under its `retries` setting. A tenant pause does not hold an emitted message. It cannot be scheduled with `publishAt` or cancelled before it ships, and the § 8.5 queries do not see it. Its record is the engine's event and run history. Integration pools use it and hold no database connection.
+
 ## 9. Delivery semantics
 
 ### 9.1 Idempotency
@@ -455,7 +459,9 @@ Commands use the same `publish` and `subscribe` calls with `kind: 'command'`; th
 
 Harness numbers against this deployment: `docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`
 
-**Worker pools.** One bus tenant per project per environment, and separate worker pools by subscription name inside it. A consumer builds its whole subscription list once and starts one process per pool, each with `kyu.worker(name, { subscriptions, serves: [...] })` naming the subscriptions that pool serves. A pool whose subscriptions call a slow third party runs on its own machine with its own rate limit, so it cannot hold up the pool that runs durable workflow handlers. A subscription no running worker serves gets no run at all: the engine does not back-fill when a worker starts later and picks it up, so every subscription must be served by some pool that is actually running. How the pools are laid out for a real integration is a second ADR, deferred until a marketplace integration is scheduled.
+**Worker pools.** One bus tenant per project per environment, and separate worker pools by subscription name inside it. A consumer builds its whole subscription list once and starts one process per pool, each with `kyu.worker(name, { subscriptions, serves: [...] })` naming the subscriptions that pool serves. A pool whose subscriptions call a slow third party runs on its own machine with its own rate limit, so it cannot hold up the pool that runs durable workflow handlers. A subscription no running worker serves gets no run at all: the engine does not back-fill when a worker starts later and picks it up, so every subscription must be served by some pool that is actually running.
+
+**Pool layout** ([ADR](../architecture/adr/20260925-handlers-may-emit-straight-to-the-engine.md), proposed). The API, the relay, the writer pool and the flows pool (durable workflow handlers) hold database connections. The writer pool is one per project. It applies integration outcomes with a concurrency key on the entity id and upserts, so a duplicate outcome changes nothing. Integration pools (marketplace, SMS, email) hold only the engine worker token, their provider credentials and a CRM API token that can only read, with no database connection. A handler that needs personal data (a phone number, an email address or body) reads it at send time from the CRM's own API with that short-lived token, keyed by the ids in the envelope, so the command never carries it. Integration pools announce outcomes with `ctx.emit()` (§ 8.6).
 
 ## 13. Adoption plan
 
@@ -506,7 +512,7 @@ Synchronous third-party lookups get a shared HTTP client with timeouts, retries 
 3. **Outbox retention and the audit question.** Is the outbox also the producer's durable event log, or is Hatchet's history enough?
 4. **Non-TypeScript projects.** Which languages will the other company projects use, and does the outbox SDK need a second implementation soon?
 5. **Hatchet retention and metrics.** Confirm the retention settings and whether the engine exposes Prometheus metrics in the pinned version.
-6. **Idempotency key on push.** Confirm whether the pinned Hatchet version offers a producer-side dedupe key; if so, use the envelope id and drop `kyu_processed` for most consumers.
+6. **Idempotency key on push — answered 2026-09-25.** Engine SDK v1.33.1 has no producer-side dedupe key on push. The proposed mechanism for duplicate runs is the engine's per-workflow idempotency key checked at run creation, keyed on the envelope id, pending a probe against the pinned engine ([ADR](../architecture/adr/20260925-handlers-may-emit-straight-to-the-engine.md)). `kyu_processed` stays for pools with a database.
 7. **Worker split for the first consumer.** Keep the worker in the API process for release one, or split to a separate worker entrypoint immediately to isolate handler load?
 
 ## Appendix A: legacy patterns and their bus equivalents
