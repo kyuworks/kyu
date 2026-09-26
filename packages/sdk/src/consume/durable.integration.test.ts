@@ -149,6 +149,80 @@ describe('durable: now()', () => {
   }, 90_000)
 })
 
+describe('durable: now() after an eviction', () => {
+  // Its own event: the now() worker above is registered for its trigger for the whole describe.
+  const trigger = defineEvent({
+    name: 'kyu.durable.now_evict_trigger',
+    version: 1,
+    data: z.object({ marker: z.string() }),
+  })
+
+  const readings = new Map<string, { worker: 'a' | 'b'; first: string; retryCount: number }[]>()
+  const finished = new Set<string>()
+  let workerA: KyuWorker | undefined
+  let workerB: KyuWorker | undefined
+
+  function makeSubscription(worker: 'a' | 'b') {
+    return durable(hatchet, trigger, {
+      name: 'now-replays-after-eviction',
+      handler: async (ctx: DurableHandlerContext<{ marker: string }>) => {
+        const first = await ctx.now()
+        const attempts = readings.get(ctx.envelope.id) ?? []
+        attempts.push({ worker, first: first.toISOString(), retryCount: ctx.retryCount })
+        readings.set(ctx.envelope.id, attempts)
+        // Parked here when worker A stops: the engine evicts the run and worker B replays it.
+        await ctx.sleepFor('10s')
+        finished.add(ctx.envelope.id)
+      },
+    })
+  }
+
+  afterAll(async () => {
+    // workerA is nulled out below once the happy path has already stopped it,
+    // so this is a no-op there and a safety net if an earlier assertion threw.
+    await workerA?.stop()
+    await workerB?.stop()
+  })
+
+  it('returns the first reading on the worker that takes over an evicted run', async () => {
+    workerA = await createWorker(hatchet, 'kyu-durable-now-evict-a', {
+      subscriptions: [makeSubscription('a')],
+      durableSlots: 5,
+    })
+    void workerA.start()
+    await workerA.waitUntilReady()
+
+    const envelope = await createEnvelope(trigger, { marker: 'go' }, { tenantId: null, source: 'sdk.test' })
+    await hatchet.events.push(trigger.name, envelope, {
+      additionalMetadata: toEnvelopeMetadata(envelope),
+      scope: eventScope(envelope),
+    })
+
+    expect(await waitUntil(() => (readings.get(envelope.id)?.length ?? 0) >= 1, 60_000)).toBe(true)
+    // Give the body time to register the sleep, so the run is parked when the worker stops.
+    await sleep(3_000)
+    await workerA.stop()
+    workerA = undefined
+
+    workerB = await createWorker(hatchet, 'kyu-durable-now-evict-b', {
+      subscriptions: [makeSubscription('b')],
+      durableSlots: 5,
+    })
+    void workerB.start()
+    await workerB.waitUntilReady()
+
+    expect(await waitUntil(() => finished.has(envelope.id), 150_000)).toBe(true)
+    const attempts = readings.get(envelope.id) ?? []
+    expect(attempts.map((attempt) => attempt.worker)).toEqual(['a', 'b'])
+    // 0 on both: an eviction, not the retry the case above covers.
+    expect(attempts.map((attempt) => attempt.retryCount)).toEqual([0, 0])
+    const onA = attempts.at(0)
+    const onB = attempts.at(1)
+    if (onA === undefined || onB === undefined) throw new Error('expected two attempts recorded')
+    expect(onB.first).toBe(onA.first)
+  }, 240_000)
+})
+
 describe('durable: correlated waitFor', () => {
   const trigger = defineEvent({
     name: 'kyu.durable.wait_trigger',

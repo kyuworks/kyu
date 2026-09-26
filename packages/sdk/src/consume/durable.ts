@@ -63,7 +63,7 @@ export interface DurableHandlerContext<TData extends MessageDataShape> extends H
   ): Promise<readonly ChildOutcome<S>[]>
   /** Parks on several message names at once and returns the first one that matches; at most `MAX_WAIT_FOR_ANY_MESSAGES` waits. */
   waitForAny(waits: readonly MessageWait[], options: WaitForAnyOptions): Promise<WaitForAnyResult>
-  /** The engine's clock, recorded in the durable log per call: a retry or replay returns what the first attempt read. Use it, never `Date.now()`, in a durable body. */
+  /** The worker's clock reading, recorded in the durable log per call and replayed from there: a retry or replay returns what the first attempt read on an engine with durable eviction (v0.80.0 on; the pinned one has it). Use it, never `Date.now()`, in a durable body. */
   now(): Promise<Date>
 }
 
