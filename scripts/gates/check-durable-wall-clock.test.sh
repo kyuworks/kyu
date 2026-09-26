@@ -65,4 +65,12 @@ mkdir -p "${WORK}/trailing/examples/shop/src/handlers"
 printf 'export const s = kyu.durable(d, {\n  handler: async (ctx) => ctx.now(), // not Date.now()\n})\n' > "${WORK}/trailing/examples/shop/src/handlers/run.ts"
 assert_exit "a trailing // Date.now() comment after code passes" 0 env ROOT_DIR="${WORK}/trailing" bash "${CHECK}"
 
+mkdir -p "${WORK}/string-slashes/examples/shop/src/handlers"
+printf "export const s = kyu.durable(d, {\n  handler: () => ({\n    x: 'a //b' + Date.now(),\n  }),\n})\n" > "${WORK}/string-slashes/examples/shop/src/handlers/run.ts"
+assert_exit "a wall-clock read after // inside a single-quoted string fails" 1 env ROOT_DIR="${WORK}/string-slashes" bash "${CHECK}"
+
+mkdir -p "${WORK}/template-slashes/examples/shop/src/handlers"
+printf 'export const s = kyu.durable(d, {\n  handler: () => ({\n    x: `see //${Date.now()}`,\n  }),\n})\n' > "${WORK}/template-slashes/examples/shop/src/handlers/run.ts"
+assert_exit "a wall-clock read after // inside a template string fails" 1 env ROOT_DIR="${WORK}/template-slashes" bash "${CHECK}"
+
 gate_test_finish

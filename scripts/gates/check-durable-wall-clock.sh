@@ -25,7 +25,10 @@ FNR == 1 { open = 0 }
 {
   line = $0
   sub(/^[ \t]*\/\/.*$/, "", line)
-  sub(/[ \t]\/\/.*$/, "", line)
+  if (match(line, /[ \t]\/\//)) {
+    prefix = substr(line, 1, RSTART - 1)
+    if (prefix !~ /['\''"`]/) line = prefix
+  }
   if (line ~ /^[ \t]*(\*|\/\*)/) line = ""
   if (line ~ /^[ \t]*$/) next
   if (open && line ~ /^[ \t]*\)/) print FILENAME ":" open ":" held

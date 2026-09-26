@@ -159,6 +159,7 @@ describe('durable: now() after an eviction', () => {
 
   const readings = new Map<string, { worker: 'a' | 'b'; first: string; retryCount: number }[]>()
   const finished = new Set<string>()
+  let workerA: KyuWorker | undefined
   let workerB: KyuWorker | undefined
 
   function makeSubscription(worker: 'a' | 'b') {
@@ -177,11 +178,14 @@ describe('durable: now() after an eviction', () => {
   }
 
   afterAll(async () => {
+    // workerA is nulled out below once the happy path has already stopped it,
+    // so this is a no-op there and a safety net if an earlier assertion threw.
+    await workerA?.stop()
     await workerB?.stop()
   })
 
   it('returns the first reading on the worker that takes over an evicted run', async () => {
-    const workerA = await createWorker(hatchet, 'kyu-durable-now-evict-a', {
+    workerA = await createWorker(hatchet, 'kyu-durable-now-evict-a', {
       subscriptions: [makeSubscription('a')],
       durableSlots: 5,
     })
@@ -198,6 +202,7 @@ describe('durable: now() after an eviction', () => {
     // Give the body time to register the sleep, so the run is parked when the worker stops.
     await sleep(3_000)
     await workerA.stop()
+    workerA = undefined
 
     workerB = await createWorker(hatchet, 'kyu-durable-now-evict-b', {
       subscriptions: [makeSubscription('b')],
