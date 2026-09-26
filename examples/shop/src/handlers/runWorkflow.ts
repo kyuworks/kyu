@@ -40,7 +40,7 @@ interface RunState {
 }
 
 // The body re-runs from the top on every reassignment and on every retry
-// (durable.ts): only sleepFor and ctx.now() replay. So every step effect goes through
+// (durable.ts): only sleepFor, waitFor and ctx.now() replay. So every step effect goes through
 // onceById keyed on the run id and the step id, and a branch reads its
 // recorded exit back from the ledger instead of evaluating the world twice.
 async function runWorkflow(pool: Pool, kyu: Kyu, ctx: TriggerContext): Promise<void> {

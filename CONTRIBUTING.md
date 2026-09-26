@@ -61,7 +61,7 @@ A gate is a script under `scripts/gates/` that fails the commit or the PR. Each 
 | `check-pr-size.sh` | more than 400 net production lines added (label `oversized-justified` plus a reason line is a human's hatch) |
 | `check-migration-immutability.sh` | a file under `packages/sdk/migrations/` already on `main` is edited, renamed or deleted |
 | `check-no-escape-hatches.sh` | `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error` or a disable comment in production source |
-| `check-durable-wall-clock.sh` | `Date.now()` or an argument-less `new Date()` in a production file that holds a durable handler |
+| `check-durable-wall-clock.sh` | `Date.now` (called or passed) or an argument-less `new Date()`, even with its `)` on the next line, in a production file that holds a durable handler; a grep error also fails it |
 | `check-package-boundaries.sh` | a package imports another by relative path or deep `src`/`dist` path |
 | `check-required-ci-jobs.sh` | `required-checks.txt` names a job that is not in `ci.yml` |
 | `check-agent-ship-loop.sh` | an agent PR body has an incomplete ship-loop section (CI only) |
