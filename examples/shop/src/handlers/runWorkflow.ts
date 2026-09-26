@@ -40,7 +40,7 @@ interface RunState {
 }
 
 // The body re-runs from the top on every reassignment and on every retry
-// (durable.ts): only sleepFor replays. So every step effect goes through
+// (durable.ts): only sleepFor and ctx.now() replay. So every step effect goes through
 // onceById keyed on the run id and the step id, and a branch reads its
 // recorded exit back from the ledger instead of evaluating the world twice.
 async function runWorkflow(pool: Pool, kyu: Kyu, ctx: TriggerContext): Promise<void> {
@@ -109,7 +109,9 @@ async function walkStep(
       if (step.input.seconds >= DELAY_HANDOFF_SECONDS) {
         // The ledger row, the continuation and the onceById marker commit
         // together: a replay publishes no second continuation and records no
-        // step without one. The wake time is computed once, inside that guard.
+        // step without one. The wake time comes from ctx.now(), so a replay
+        // computes the same one.
+        const now = await ctx.now()
         await withTransaction(pool, (tx) =>
           kyu.onceById(tx, run.runId, stepKey(step.id), async () => {
             await kyu.publish(
@@ -126,7 +128,7 @@ async function walkStep(
                 tenantId: run.tenantId,
                 correlationId: run.runId,
                 causationId: ctx.envelope.id,
-                publishAt: new Date(Date.now() + step.input.seconds * 1000),
+                publishAt: new Date(now.getTime() + step.input.seconds * 1000),
               },
             )
             await recordStep(tx, {
@@ -302,6 +304,7 @@ async function walkFlowNode(
         const exitNodeId = requireFlowExitTarget(node, 'done')
         const durationSeconds = node.input.minutes * 60
 
+        const now = await ctx.now()
         await withTransaction(pool, (tx) =>
           kyu.onceById(tx, run.runId, stepKey(node.id), async () => {
             await kyu.publish(
@@ -318,7 +321,7 @@ async function walkFlowNode(
                 tenantId: run.tenantId,
                 correlationId: run.runId,
                 causationId: ctx.envelope.id,
-                publishAt: new Date(Date.now() + durationSeconds * 1000),
+                publishAt: new Date(now.getTime() + durationSeconds * 1000),
               },
             )
             await recordStep(tx, {
@@ -347,6 +350,7 @@ async function walkFlowNode(
         // trigger that reaches this node must publish the continuation at
         // most once (onceById) and then end the run the same way, never read
         // its own recorded exit back as "keep walking" (#157 review).
+        const now = await ctx.now()
         await withTransaction(pool, (tx) =>
           kyu.onceById(tx, run.runId, stepKey(node.id), async () => {
             await kyu.publish(
@@ -363,7 +367,7 @@ async function walkFlowNode(
                 tenantId: run.tenantId,
                 correlationId: run.runId,
                 causationId: ctx.envelope.id,
-                publishAt: new Date(Date.now() + timeoutSeconds * 1000),
+                publishAt: new Date(now.getTime() + timeoutSeconds * 1000),
               },
             )
             await recordStep(tx, {

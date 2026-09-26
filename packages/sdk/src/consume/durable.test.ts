@@ -519,9 +519,12 @@ function asIncoming<T extends object>(value: T): JsonObject {
   return JSON.parse(JSON.stringify(value)) as JsonObject
 }
 
+const ENGINE_NOW = new Date('2026-01-01T00:00:00.000Z')
+
 interface FakeDurableHatchetContext {
   context: DurableContext<JsonObject>
   sleepForCalls: () => number
+  nowCalls: () => number
 }
 
 // DurableContext carries private fields, so a Pick of just these members needs
@@ -532,11 +535,11 @@ interface FakeDurableHatchetContext {
 // handler through to completion (not just the additionalMetadata trust edge)
 // needs those stubbed too.
 function fakeDurableHatchetContext(additionalMetadata: Record<string, string>): FakeDurableHatchetContext {
-  const calls = { sleepFor: 0 }
+  const calls = { sleepFor: 0, now: 0 }
   const noopLog = (): Promise<void> => Promise.resolve()
   const stub: Pick<
     DurableContext<JsonObject>,
-    'additionalMetadata' | 'sleepFor' | 'retryCount' | 'workflowRunId' | 'abortController' | 'logger'
+    'additionalMetadata' | 'sleepFor' | 'retryCount' | 'workflowRunId' | 'abortController' | 'logger' | 'now'
   > = {
     additionalMetadata: () => additionalMetadata,
     sleepFor: () => {
@@ -547,8 +550,16 @@ function fakeDurableHatchetContext(additionalMetadata: Record<string, string>): 
     workflowRunId: () => 'fake-run-id',
     abortController: new AbortController(),
     logger: { info: noopLog, debug: noopLog, warn: noopLog, error: noopLog, util: noopLog },
+    now: () => {
+      calls.now += 1
+      return Promise.resolve(ENGINE_NOW)
+    },
   }
-  return { context: stub as DurableContext<JsonObject>, sleepForCalls: () => calls.sleepFor }
+  return {
+    context: stub as DurableContext<JsonObject>,
+    sleepForCalls: () => calls.sleepFor,
+    nowCalls: () => calls.now,
+  }
 }
 
 // Drives the captured workflow `fn` the way the engine would, mirroring
@@ -649,5 +660,46 @@ describe('durable: durable handler context', () => {
     const error: unknown = await Promise.resolve(fn(asIncoming(envelope), context)).catch((cause: unknown) => cause)
 
     expect(error).toBeInstanceOf(WorkerStoppingError)
+  })
+
+  it('exposes now() and returns the reading the engine recorded', async () => {
+    const { client, capturedOptions } = fakeHatchetClient()
+    const readings: Date[] = []
+    durable(client, orderPlaced, {
+      name: 'follow-up',
+      handler: async (ctx) => {
+        readings.push(await ctx.now())
+      },
+    })
+    const fn = capturedOptions()?.fn
+    if (fn === undefined) throw new Error('durable did not capture a task fn')
+    const envelope = await createEnvelope(orderPlaced, { orderId: 'order-1' }, { tenantId: null, source: 'sdk.test' })
+    const { context, nowCalls } = fakeDurableHatchetContext(toEnvelopeMetadata(envelope))
+
+    await Promise.resolve(fn(asIncoming(envelope), context))
+
+    expect(readings).toEqual([ENGINE_NOW])
+    expect(nowCalls()).toBe(1)
+  })
+
+  it('refuses now() once the worker is stopping, before the engine is asked', async () => {
+    const { client, capturedOptions } = fakeHatchetClient()
+    const subscription = durable(client, orderPlaced, {
+      name: 'follow-up',
+      handler: async (ctx) => {
+        // Flag flips from inside the body, same as the waitForChildren case above.
+        subscription.stopDurableWaits?.()
+        await ctx.now()
+      },
+    })
+    const fn = capturedOptions()?.fn
+    if (fn === undefined) throw new Error('durable did not capture a task fn')
+    const envelope = await createEnvelope(orderPlaced, { orderId: 'order-1' }, { tenantId: null, source: 'sdk.test' })
+    const { context, nowCalls } = fakeDurableHatchetContext(toEnvelopeMetadata(envelope))
+
+    const error: unknown = await Promise.resolve(fn(asIncoming(envelope), context)).catch((cause: unknown) => cause)
+
+    expect(error).toBeInstanceOf(WorkerStoppingError)
+    expect(nowCalls()).toBe(0)
   })
 })

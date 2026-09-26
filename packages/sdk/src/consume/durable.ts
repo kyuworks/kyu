@@ -63,6 +63,8 @@ export interface DurableHandlerContext<TData extends MessageDataShape> extends H
   ): Promise<readonly ChildOutcome<S>[]>
   /** Parks on several message names at once and returns the first one that matches; at most `MAX_WAIT_FOR_ANY_MESSAGES` waits. */
   waitForAny(waits: readonly MessageWait[], options: WaitForAnyOptions): Promise<WaitForAnyResult>
+  /** The engine's clock, recorded in the durable log per call: a retry or replay returns what the first attempt read. Use it, never `Date.now()`, in a durable body. */
+  now(): Promise<Date>
 }
 
 export interface DurableOptions<TData extends MessageDataShape> extends SharedTaskOptions {
@@ -169,6 +171,10 @@ function buildDurableHandlerContext<TData extends MessageDataShape>(
       assertWorkerNotStopping(isStopping)
       return waitForAnyMessage(hatchetContext, envelope, waits, options)
     },
+    now: async () => {
+      assertWorkerNotStopping(isStopping)
+      return hatchetContext.now()
+    },
   }
 }
 
@@ -187,7 +193,7 @@ async function runDurableHandler<S extends MessageSchema>(
 
 /**
  * The handler body re-runs from the top on engine reassignment or replay; only
- * `sleepFor`, `waitFor` and the engine's `now()` replay from the durable log.
+ * `sleepFor`, `waitFor` and `now()` replay from the durable log.
  * Side effects before a wait must be idempotent — that is what `onceById()` is for.
  *
  * A run cannot outlast `executionTimeout`, which defaults to 24 hours here:

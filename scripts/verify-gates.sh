@@ -21,6 +21,9 @@ bash scripts/gates/check-required-ci-jobs.sh
 echo "[verify:gates] check-no-escape-hatches"
 bash scripts/gates/check-no-escape-hatches.sh
 
+echo "[verify:gates] check-durable-wall-clock"
+bash scripts/gates/check-durable-wall-clock.sh
+
 echo "[verify:gates] check-package-boundaries"
 bash scripts/gates/check-package-boundaries.sh
 
