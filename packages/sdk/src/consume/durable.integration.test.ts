@@ -99,6 +99,56 @@ describe('durable: sleepFor', () => {
   }, 90_000)
 })
 
+describe('durable: now()', () => {
+  const trigger = defineEvent({
+    name: 'kyu.durable.now_trigger',
+    version: 1,
+    data: z.object({ marker: z.string() }),
+  })
+
+  const readings = new Map<string, { first: string; afterSleep: string }[]>()
+  let worker: KyuWorker | undefined
+
+  beforeAll(async () => {
+    const subscription = durable(hatchet, trigger, {
+      name: 'now-replays',
+      handler: async (ctx: DurableHandlerContext<{ marker: string }>) => {
+        const first = await ctx.now()
+        await ctx.sleepFor('1s')
+        const afterSleep = await ctx.now()
+        const attempts = readings.get(ctx.envelope.id) ?? []
+        attempts.push({ first: first.toISOString(), afterSleep: afterSleep.toISOString() })
+        readings.set(ctx.envelope.id, attempts)
+        // Fails once after both reads, so the retry replays the durable log.
+        if (ctx.retryCount === 0) throw new Error('first attempt fails on purpose')
+      },
+    })
+    worker = await createWorker(hatchet, 'kyu-durable-now', { subscriptions: [subscription], durableSlots: 5 })
+    void worker.start()
+    await worker.waitUntilReady()
+  }, 90_000)
+
+  afterAll(async () => {
+    await worker?.stop()
+  })
+
+  it('returns the first attempt’s readings on a retry, and a later reading after a sleep', async () => {
+    const envelope = await createEnvelope(trigger, { marker: 'go' }, { tenantId: null, source: 'sdk.test' })
+    await hatchet.events.push(trigger.name, envelope, {
+      additionalMetadata: toEnvelopeMetadata(envelope),
+      scope: eventScope(envelope),
+    })
+
+    await waitUntil(() => (readings.get(envelope.id)?.length ?? 0) >= 2, 30_000)
+    const attempts = readings.get(envelope.id) ?? []
+    expect(attempts).toHaveLength(2)
+    expect(attempts[1]).toEqual(attempts[0])
+    const firstAttempt = attempts.at(0)
+    if (firstAttempt === undefined) throw new Error('no first attempt recorded')
+    expect(Date.parse(firstAttempt.afterSleep) - Date.parse(firstAttempt.first)).toBeGreaterThanOrEqual(1_000)
+  }, 90_000)
+})
+
 describe('durable: correlated waitFor', () => {
   const trigger = defineEvent({
     name: 'kyu.durable.wait_trigger',
