@@ -5,7 +5,7 @@ This page covers the deployed Hatchet engine for the Kyu message bus: `infra/hat
 `infra/hatchet/token.sh` for that.
 
 Today there is one environment: dev, org `<fly-org>`, region `syd`. What exists on Fly for it
-as of 2026-09-25:
+as of 2026-09-27:
 
 - the engine app `<engine-app>`, machine `<engine-machine-id>` (`performance-2x`, 4 GB), config
   volume `kyu_hatchet_config_2x` (`<engine-config-volume-id>`), queue on RabbitMQ;
@@ -66,8 +66,8 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
   reads a secret back or signs in to Fly.
 - An engineer (or an agent, for the parts that do not touch a secret) creates Fly resources,
   writes config, deploys, and checks the result.
-- The CTO does the rebuild in step 11, including the first deploy with the signup restriction in
-  place.
+- The CTO does the rebuild in step 11. The deploy that turns the signup restriction on is still
+  pending — see the dated paragraph at the end of step 11.
 
 ## First deploy
 
@@ -102,8 +102,8 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
    every boot. The seed creates that user only when no user has the email yet, and never changes
    an existing user's password. The password must be 8 to 64 characters with an upper-case
    letter, a lower-case letter and a number, or the seed refuses it and logs an error. Use a
-   lower-case `<company-domain>` address: from the rebuild in step 11 on, `fly.toml` will restrict signup
-   and login to that domain, and the match is exact.
+   lower-case `<company-domain>` address: `fly.toml` restricts signup and login to that domain, and the
+   match is exact.
 6. Deploy: `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`
 7. Check health: `curl -s https://<engine-app>.fly.dev/api/ready` should return 200. Confirmed
    through the edge on first deploy. If the gRPC port on 7077 fails with a TLS handshake error
@@ -136,17 +136,19 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
 
     Done and decided on 2026-09-25 (issue #208): the CTO signed in with the documented default
     account and changed its password in the dashboard, so the image's default password no longer
-    opens the dashboard. The CTO decided to do the rest of this step when the dev engine is torn
+    opened the dashboard. The CTO decided to do the rest of this step when the dev engine was torn
     down and recreated, not on the live database. Until then the default account, with its new
-    password, is the tenant's only Owner, and signup stays open.
+    password, was the tenant's only Owner, and signup stayed open. Superseded on 2026-09-27 — see
+    below.
 
-    So `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS` is not in `fly.toml` on `main` (issue #210). The
-    engine checks it at login as well as signup; deployed now, it would refuse the default
-    account and no one could reach the tenant or invite a new Owner. A deploy from `main`,
-    including an upgrade, does not change who can reach the tenant.
-    `infra/hatchet/fly/config.test.sh` fails while the setting is in `fly.toml`, so it cannot come
-    back by accident. If it ever goes live on the old database, the CTO removes the setting (from
-    `fly.toml`, or from the app's secrets if it was set there) and deploys again.
+    So `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS` was not in `fly.toml` on `main` (issue #210), until
+    the rebuild below put it back. The engine checks it at login as well as signup; deployed on
+    the old database, it would have refused the default account and no one could reach the tenant
+    or invite a new Owner. A deploy from `main`, including an upgrade, does not change who can
+    reach the tenant. `infra/hatchet/fly/config.test.sh` failed while the setting was in
+    `fly.toml`, so it could not come back by accident before the database was replaced. If it had
+    ever gone live on the old database, the CTO would have removed the setting (from `fly.toml`,
+    or from the app's secrets if it was set there) and deployed again.
 
     At the rebuild, the CTO does these steps, in this order, as part of *First deploy* against a
     new, empty database. Agents do none of these steps.
@@ -168,6 +170,15 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
     4. Confirm: a signup with a non-company address is refused, and the `<company-domain>` admin signs in
        and sees the tenant. The CTO reports only "it worked" or "it did not". That closes this
        step.
+
+    Rebuilt on 2026-09-27: the CTO destroyed the old cluster, created a new empty one, staged the
+    company-domain admin secrets and unset the two wrong admin names (sub-step 1), then deployed
+    from `main` **without** the restriction. On the empty database the seed created the tenant
+    (same id as before) and the company-domain admin as its Owner; no default account exists.
+    This change is sub-step 2. Sub-step 3 — a deploy with the setting in place — is still to
+    come: the restriction goes live at the next deploy from `main`, so merging this change alone
+    does not change anything on the live engine. Sub-step 4's refused-signup check is still owed
+    after that deploy.
 
 ## Upgrade
 
