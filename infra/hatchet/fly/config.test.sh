@@ -31,7 +31,7 @@ assert_exit "signup and login are restricted to the company domain" 0 \
 assert_exit "dev retention is seven days" 0 \
   grep -qE "^[[:space:]]*SERVER_LIMITS_DEFAULT_TENANT_RETENTION_PERIOD = '168h'\$" "${FLY_TOML}"
 COMPOSE_RETENTION="$(sed -nE "s#^[[:space:]]*SERVER_LIMITS_DEFAULT_TENANT_RETENTION_PERIOD: '([0-9a-z]+)'\$#\1#p" "${COMPOSE}")"
-assert_eq "compose.yaml keeps the same retention as fly.toml" "168h" "${COMPOSE_RETENTION}"
+assert_eq "compose.yaml sets the same 168h retention as dev" "168h" "${COMPOSE_RETENTION}"
 
 # Refuses every signup (form and OAuth starts) before the domain check even runs.
 assert_exit "signup is off on dev" 0 \

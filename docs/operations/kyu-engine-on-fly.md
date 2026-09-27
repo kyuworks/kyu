@@ -200,13 +200,18 @@ logs and payloads, and applies to every tenant on the engine (hatchet v0.107.0).
 in `fly.toml`, not a dashboard or API setting. The per-tenant "data retention period" the engine
 stores is used only for old-worker cleanup, which is off. The value is a Go duration.
 
-- dev: `168h` (7 days), set in `fly.toml`, live from the deploy after 2026-09-27 (issue #224). The
-  first day is dropped on or after 2026-10-04, when `fly logs -a <engine-app>` shows `removing
-  partitions before … using retention period of 168h0m0s`.
+- dev: `168h` (7 days), set in `fly.toml`, live from the deploy after 2026-09-27 (issue #224). A
+  partition is dropped only once the whole UTC day it holds is older than the period (strict
+  `<`), so with the first partition dated 2026-09-27 UTC the first drop, and its log line, comes
+  on 2026-10-05 UTC, when `fly logs -a <engine-app>` shows `removing partitions before …
+  using retention period of 168h0m0s`.
 - production: `720h` (30 days). This is also the engine's default, but set it explicitly in that
   environment's `fly.toml`.
 - The engine refuses to boot on a value it cannot parse, so a healthy `/api/ready` after the
   deploy means the value was accepted.
+- `SERVER_LIMITS_CORE_PARTITION_RETENTION` and `SERVER_LIMITS_OLAP_PARTITION_RETENTION` override
+  this value for the core and OLAP tables separately when set; both must stay unset so one value
+  governs everything.
 
 Failure alerts: the engine has its own Slack alerting for failed runs, worked out from the source
 (issue #224), but turning it on needs a company Slack app and two CTO secrets. That decision and
