@@ -23,7 +23,9 @@ assert_eq "the runbook names no other engine config volume" "" "${OTHER_VOLUMES}
 assert_output_lacks "no amqp URL" "amqp://" cat "${FLY_TOML}"
 assert_output_lacks "no RabbitMQ URL value" "SERVER_MSGQUEUE_RABBITMQ_URL =" cat "${FLY_TOML}"
 # Checked at login too; the dev engine rebuild (runbook step 11) put the admin account on this domain.
-assert_output_contains "signup and login are restricted to the company domain" "SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS = '<company-domain>'" cat "${FLY_TOML}"
+# Anchored (not assert_output_contains) so a commented-out line cannot pass.
+assert_exit "signup and login are restricted to the company domain" 0 \
+  grep -qE "^[[:space:]]*SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS = '<company-domain>'\$" "${FLY_TOML}"
 
 FLY_TAG="$(sed -nE "s#^  image = 'ghcr.io/hatchet-dev/hatchet/hatchet-lite:(v[0-9.]+)'\$#\1#p" "${FLY_TOML}")"
 COMPOSE_TAG="$(sed -nE 's#.*hatchet-lite:\$\{KYU_HATCHET_IMAGE_TAG:-(v[0-9.]+)\}.*#\1#p' "${COMPOSE}")"
