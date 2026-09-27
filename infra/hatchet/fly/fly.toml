@@ -29,6 +29,11 @@ primary_region = 'syd'
   SERVER_MSGQUEUE_KIND = 'rabbitmq'
   # The engine checks this at login as well as signup, so the admin account must be on this domain.
   SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS = '<company-domain>'
+  # Engine-wide: whole daily partitions (runs, events, logs, payloads) older than this are dropped.
+  SERVER_LIMITS_DEFAULT_TENANT_RETENTION_PERIOD = '168h'
+  # Refuses every signup (local form and OAuth starts) before the domain check runs. To admit a
+  # new user: set 't', deploy, they sign up with a company address, set back to 'f', deploy.
+  SERVER_ALLOW_SIGNUP = 'f'
 
 [[mounts]]
   # Renamed with the #173 resize; see "Resizing the engine machine" in the runbook.

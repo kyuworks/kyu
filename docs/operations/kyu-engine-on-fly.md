@@ -66,8 +66,9 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
   reads a secret back or signs in to Fly.
 - An engineer (or an agent, for the parts that do not touch a secret) creates Fly resources,
   writes config, deploys, and checks the result.
-- The CTO does the rebuild in step 11. The deploy that turns the signup restriction on is still
-  pending — see the dated paragraph at the end of step 11.
+- The CTO does the rebuild in step 11. The signup restriction went live with the sub-step 3 deploy
+  on 2026-09-27 — see the dated paragraph at the end of step 11. Signup itself is now off
+  (`SERVER_ALLOW_SIGNUP = 'f'`); admitting a new user is a CTO step, below.
 
 ## First deploy
 
@@ -144,11 +145,12 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
     So `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS` was not in `fly.toml` on `main` (issue #210), until
     the rebuild below put it back. The engine checks it at login as well as signup; deployed on
     the old database, it would have refused the default account and no one could reach the tenant
-    or invite a new Owner. A deploy from `main`, including an upgrade, does not change who can
-    reach the tenant. `infra/hatchet/fly/config.test.sh` failed while the setting was in
-    `fly.toml`, so it could not come back by accident before the database was replaced. If it had
-    ever gone live on the old database, the CTO would have removed the setting (from `fly.toml`,
-    or from the app's secrets if it was set there) and deployed again.
+    or invite a new Owner. Until the rebuild's sub-step 3 below, no deploy from `main` had carried
+    the setting, so merely being on `main` had not yet changed who could reach the tenant — that
+    changed only once a deploy shipped it. `infra/hatchet/fly/config.test.sh` failed while the
+    setting was in `fly.toml`, so it could not come back by accident before the database was
+    replaced. If it had ever gone live on the old database, the CTO would have removed the setting
+    (from `fly.toml`, or from the app's secrets if it was set there) and deployed again.
 
     At the rebuild, the CTO does these steps, in this order, as part of *First deploy* against a
     new, empty database. Agents do none of these steps.
@@ -175,10 +177,45 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
     company-domain admin secrets and unset the two wrong admin names (sub-step 1), then deployed
     from `main` **without** the restriction. On the empty database the seed created the tenant
     (same id as before) and the company-domain admin as its Owner; no default account exists.
-    This change is sub-step 2. Sub-step 3 — a deploy with the setting in place — is still to
-    come: the restriction goes live at the next deploy from `main`, so merging this change alone
-    does not change anything on the live engine. Sub-step 4's refused-signup check is still owed
-    after that deploy.
+    That deploy was sub-step 2. One non-company address was created as a user during the check
+    before the restriction deploy; it holds no tenant role and cannot sign in now that the
+    restriction is live. Sub-step 3 — release v9, a deploy from `main` with the restriction in
+    place — went out the same day. Sub-step 4 is confirmed: a signup with a non-company address
+    is refused (the dashboard shows a generic internal-error toast, not a named reason), and the
+    `<company-domain>` admin signs in and sees the tenant.
+
+    Signup off (issue #224): from the next deploy, `SERVER_ALLOW_SIGNUP = 'f'` in `fly.toml`
+    refuses every signup — the local form and both OAuth starts — before the domain check even
+    runs. `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS` stays in place as the second layer and still
+    applies at login. To admit a new user: set `SERVER_ALLOW_SIGNUP` to `'t'`, deploy, have them
+    sign up with a company address, then set it back to `'f'` and deploy again. Limits: tenant
+    limits, including the worker limit, are off (`SERVER_ENFORCE_LIMITS` is unset — the engine
+    default). Retention: `168h` on dev — see *Retention* below.
+
+## Retention
+
+The engine keeps run and event history in daily partitions and drops a whole day once it is
+older than `SERVER_LIMITS_DEFAULT_TENANT_RETENTION_PERIOD`. That covers runs, task events, events,
+logs and payloads, and applies to every tenant on the engine (hatchet v0.107.0). It is an env var
+in `fly.toml`, not a dashboard or API setting. The per-tenant "data retention period" the engine
+stores is used only for old-worker cleanup, which is off. The value is a Go duration.
+
+- dev: `168h` (7 days), set in `fly.toml`, live from the deploy after 2026-09-27 (issue #224). A
+  partition is dropped only once the whole UTC day it holds is older than the period (strict
+  `<`), so with the first partition dated 2026-09-27 UTC the first drop, and its log line, comes
+  on 2026-10-05 UTC, when `fly logs -a <engine-app>` shows `removing partitions before …
+  using retention period of 168h0m0s`.
+- production: `720h` (30 days). This is also the engine's default, but set it explicitly in that
+  environment's `fly.toml`.
+- The engine refuses to boot on a value it cannot parse, so a healthy `/api/ready` after the
+  deploy means the value was accepted.
+- `SERVER_LIMITS_CORE_PARTITION_RETENTION` and `SERVER_LIMITS_OLAP_PARTITION_RETENTION` override
+  this value for the core and OLAP tables separately when set; both must stay unset so one value
+  governs everything.
+
+Failure alerts: the engine has its own Slack alerting for failed runs, worked out from the source
+(issue #224), but turning it on needs a company Slack app and two CTO secrets. That decision and
+the setup steps are deferred to a later PR.
 
 ## Upgrade
 
