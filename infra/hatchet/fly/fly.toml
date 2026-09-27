@@ -27,6 +27,8 @@ primary_region = 'syd'
   # secret; hatchet-lite falls back to postgres only when none of the four
   # queue variables is set. Switch back: 'postgres' (runbook, "Queue on RabbitMQ").
   SERVER_MSGQUEUE_KIND = 'rabbitmq'
+  # The engine checks this at login as well as signup, so the admin account must be on this domain.
+  SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS = '<company-domain>'
 
 [[mounts]]
   # Renamed with the #173 resize; see "Resizing the engine machine" in the runbook.

@@ -102,8 +102,8 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
    every boot. The seed creates that user only when no user has the email yet, and never changes
    an existing user's password. The password must be 8 to 64 characters with an upper-case
    letter, a lower-case letter and a number, or the seed refuses it and logs an error. Use a
-   lower-case `<company-domain>` address: from the rebuild in step 11 on, `fly.toml` will restrict signup
-   and login to that domain, and the match is exact.
+   lower-case `<company-domain>` address: `fly.toml` restricts signup and login to that domain, and the
+   match is exact.
 6. Deploy: `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`
 7. Check health: `curl -s https://<engine-app>.fly.dev/api/ready` should return 200. Confirmed
    through the edge on first deploy. If the gRPC port on 7077 fails with a TLS handshake error
@@ -168,6 +168,10 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
     4. Confirm: a signup with a non-company address is refused, and the `<company-domain>` admin signs in
        and sees the tenant. The CTO reports only "it worked" or "it did not". That closes this
        step.
+
+    Rebuilt on 2026-09-27: the CTO did sub-steps 1, 3 and 4 above against a new, empty database.
+    This change is sub-step 2. The default account no longer exists. Signup and login are
+    restricted to the company domain from this change on.
 
 ## Upgrade
 
