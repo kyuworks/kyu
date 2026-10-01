@@ -16,15 +16,13 @@ as of 2026-09-27:
   `<rabbitmq-volume-id>`, no public IP address;
 - the engine's database cluster `<engine-db>` (cluster id `<engine-cluster-id>`), on Basic.
 
-The shop harness app `<shop-harness-app>` and its cluster `<shop-harness-db>`
-(`<shop-cluster-id>`) were destroyed on 2026-09-25; the shop example's `docs/harness-on-fly.md`
-(`kyuworks/shop-example`) says how to recreate them.
+The shop harness app and its cluster were destroyed on 2026-09-25; the shop example's
+`docs/harness-on-fly.md` (`kyuworks/shop-example`) says how to recreate them.
 
-Commands on this page write the engine's cluster id as `<engine-cluster-id>` and the shop harness
-cluster's id as `<shop-cluster-id>`, because a recreated cluster gets a new id. Read the current id
-with names only: `fly mpg list -o <fly-org>`, the row named `<engine-db>` or
-`<shop-harness-db>`. The ids above are a dated record; when a cluster is recreated, update
-them with the new id and the date.
+Commands on this page write the engine's cluster id as `<engine-cluster-id>`, because a recreated
+cluster gets a new id. Read the current id with names only: `fly mpg list -o <fly-org>`, the row
+named `<engine-db>`. The id above is a dated record; when the cluster is recreated, update it with
+the new id and the date.
 
 The engine has run on machine `<engine-machine-id>` since 2026-09-23 (issue #173). The `performance-1x`
 rollback machine `<old-engine-machine-id>` and its volume `<old-engine-volume-id>` were destroyed on
@@ -209,9 +207,8 @@ holds them:
 4. Deploy (*First deploy* step 6).
 
 Staging first is safe on a live engine: Fly gives a secret priority over an `[env]` value of the
-same name. The shop harness app likewise takes `HATCHET_CLIENT_HOST_PORT` and
-`HATCHET_CLIENT_API_URL` as secrets; stage them before the next harness run. Every `fly` command
-passes `-a`, because `fly.toml` no longer names the app.
+same name. The shop harness app's secrets are in the shop example's `docs/harness-on-fly.md`.
+Every `fly` command passes `-a`, because `fly.toml` no longer names the app.
 
 ## Retention
 

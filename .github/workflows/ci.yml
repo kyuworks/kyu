@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      # Build first: type-aware oxlint needs @kyuworks/sdk's dist so packages/sdk resolves @kyuworks/schemas types, not `any`.
+      # Build first: type-aware oxlint needs @kyuworks/schemas's dist so packages/sdk resolves real types, not `any`.
       - uses: ./.github/actions/setup
         with:
           build: 'true'
