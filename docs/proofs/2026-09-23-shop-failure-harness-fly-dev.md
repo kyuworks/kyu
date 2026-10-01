@@ -53,6 +53,9 @@ pnpm --filter @kyuworks/shop harness --scenario outbox-backlog --size report --o
 pnpm --filter @kyuworks/shop harness --scenario tenant-load    --size report --out docs/proofs/data/report-162b-tenant-load.json
 ```
 
+The committed `report-162b-engine-outage.json` has its `proxyTargetHost` replaced with a placeholder
+(2026-10-01), so a sha256 taken of the file before that change no longer matches.
+
 - Commit: each run JSON's own `commitSha` reads `caa4dc155b382e08ba44062effdbeb7bc0ccb620-dirty` — the
   working tree at run time, one commit past this branch's first (`caa4dc1`), dirty with the
   `fly.toml` gRPC-port fix (found on first deploy, below) and the `LANE_TABLES` fix (also below),

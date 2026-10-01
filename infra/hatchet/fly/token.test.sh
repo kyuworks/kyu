@@ -24,8 +24,8 @@ assert_output_contains "rejection prints usage" "usage:" env "PATH=${TMP}/bin:${
 assert_exit "unknown flag is rejected" 2 env "PATH=${TMP}/bin:${PATH}" bash "${TOKEN}" --wat
 assert_exit "-a with no value is rejected" 2 env "PATH=${TMP}/bin:${PATH}" bash "${TOKEN}" -a
 gate_test_record "validation never invoked fly" "$([ -e "${TMP}/fly-was-called" ] && echo 1 || echo 0)"
-OUT="$(PATH="${TMP}/ok:${PATH}" bash "${TOKEN}" -a <engine-app>)"
+OUT="$(PATH="${TMP}/ok:${PATH}" bash "${TOKEN}" -a test-engine-app)"
 gate_test_record "stdout is exactly the token" "$([ "${OUT}" = "fake.worker.token" ] && echo 0 || echo 1)"
-BANNER_OUT="$(PATH="${TMP}/banner:${PATH}" bash "${TOKEN}" -a <engine-app>)"
+BANNER_OUT="$(PATH="${TMP}/banner:${PATH}" bash "${TOKEN}" -a test-engine-app)"
 gate_test_record "a banner line before the token is dropped" "$([ "${BANNER_OUT}" = "fake.worker.token" ] && echo 0 || echo 1)"
 gate_test_finish

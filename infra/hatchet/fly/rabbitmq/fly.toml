@@ -3,7 +3,6 @@
 # AMQP at <rabbitmq-app>.internal:5672. Credentials are secrets the CTO
 # sets: bash infra/hatchet/fly/rabbitmq/secrets.sh. Runbook:
 # docs/operations/kyu-engine-on-fly.md, "Queue on RabbitMQ".
-app = '<rabbitmq-app>'
 primary_region = 'syd'
 
 [build]

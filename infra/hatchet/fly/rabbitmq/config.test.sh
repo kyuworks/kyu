@@ -8,7 +8,7 @@ FLY_TOML="${SCRIPT_DIR}/fly.toml"
 echo "=== rabbitmq fly.toml self-tests ==="
 assert_exit "fly.toml exists" 0 test -f "${FLY_TOML}"
 
-assert_output_contains "app is <rabbitmq-app>" "app = '<rabbitmq-app>'" cat "${FLY_TOML}"
+assert_exit "fly.toml names no app" 1 grep -qE "^app[[:space:]]*=" "${FLY_TOML}"
 assert_output_contains "primary region is syd" "primary_region = 'syd'" cat "${FLY_TOML}"
 assert_output_contains "mount destination is the rabbitmq data dir" "destination = '/var/lib/rabbitmq'" cat "${FLY_TOML}"
 assert_output_contains "mount source is kyu_rabbitmq_data" "source = 'kyu_rabbitmq_data'" cat "${FLY_TOML}"

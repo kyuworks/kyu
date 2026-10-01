@@ -19,10 +19,9 @@ assert_output_lacks "no [http_service] block" "[http_service]" cat "${FLY_TOML}"
 assert_output_contains "restart policy is never" "policy = 'never'" cat "${FLY_TOML}"
 assert_output_contains "primary region is syd" "primary_region = 'syd'" cat "${FLY_TOML}"
 assert_output_contains "vm size is performance-2x" "size = 'performance-2x'" cat "${FLY_TOML}"
-assert_output_contains "HATCHET_CLIENT_HOST_PORT is the engine's internal address" \
-  "<engine-app>.internal:7077" bash -c "grep HATCHET_CLIENT_HOST_PORT '${FLY_TOML}'"
-assert_output_contains "HATCHET_CLIENT_API_URL is the engine's internal address" \
-  "http://<engine-app>.internal:8888" bash -c "grep HATCHET_CLIENT_API_URL '${FLY_TOML}'"
+assert_exit "fly.toml names no app" 1 grep -qE "^app[[:space:]]*=" "${FLY_TOML}"
+assert_exit "HATCHET_CLIENT_HOST_PORT is a secret, not in fly.toml" 1 grep -q "^  HATCHET_CLIENT_HOST_PORT =" "${FLY_TOML}"
+assert_exit "HATCHET_CLIENT_API_URL is a secret, not in fly.toml" 1 grep -q "^  HATCHET_CLIENT_API_URL =" "${FLY_TOML}"
 assert_output_contains "TLS strategy is none" "HATCHET_CLIENT_TLS_STRATEGY = 'none'" cat "${FLY_TOML}"
 
 # --- Dockerfile ---

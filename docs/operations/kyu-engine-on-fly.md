@@ -4,6 +4,9 @@ This page covers the deployed Hatchet engine for the Kyu message bus: `infra/hat
 (issue #162). It does not cover the local stack — see `infra/hatchet/compose.yaml` and
 `infra/hatchet/token.sh` for that.
 
+Placeholders in angle brackets stand for this deployment's real names and ids. The real values live
+in the operator's password manager.
+
 Today there is one environment: dev, org `<fly-org>`, region `syd`. What exists on Fly for it
 as of 2026-09-27:
 
@@ -93,9 +96,11 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
    prepared statements and advisory locks, all of which a transaction pooler breaks), then runs
    `infra/hatchet/fly/secrets.sh` to see every command, fills in each placeholder — including
    `DATABASE_URL` with that string — from 1Password, and runs the `fly secrets set --stage ...`
-   commands it prints. There is no `fly mpg attach` step here. Four secrets are required
-   (`DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and
-   `SERVER_MSGQUEUE_RABBITMQ_URL` while the queue is RabbitMQ — see *Queue on RabbitMQ*); the
+   commands it prints. There is no `fly mpg attach` step here. Eight secrets are required
+   (`DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`,
+   `SERVER_MSGQUEUE_RABBITMQ_URL` while the queue is RabbitMQ — see *Queue on RabbitMQ* — and the
+   four deployment values `SERVER_URL`, `SERVER_AUTH_COOKIE_DOMAIN`,
+   `SERVER_GRPC_BROADCAST_ADDRESS` and `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS`); the
    script's `Optional overrides` block covers the four keyset and cookie secrets, which the engine
    otherwise generates itself into the volume created in step 4. Confirmed on first deploy: the
    direct connection string needed no `sslmode` parameter — the schema migration ran clean with no
@@ -103,8 +108,8 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
    every boot. The seed creates that user only when no user has the email yet, and never changes
    an existing user's password. The password must be 8 to 64 characters with an upper-case
    letter, a lower-case letter and a number, or the seed refuses it and logs an error. Use a
-   lower-case `<company-domain>` address: `fly.toml` restricts signup and login to that domain, and the
-   match is exact.
+   lower-case `<company-domain>` address: the domain staged as `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS` restricts signup and login,
+   and the match is exact.
 6. Deploy: `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`
 7. Check health: `curl -s https://<engine-app>.fly.dev/api/ready` should return 200. Confirmed
    through the edge on first deploy. If the gRPC port on 7077 fails with a TLS handshake error
@@ -161,9 +166,8 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
        --stage -a <engine-app> <NAME> ...` (`fly secrets list -a <engine-app>` shows names
        only).
     2. Only once the old database is gone, put the `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS` line
-       back in `[env]` in `fly.toml`, set to the company domain, with a one-line comment that it
-       is checked at login too. In the same change, turn the `config.test.sh` row that fails on it
-       into one that requires it. From then on every deploy from `main` carries the setting.
+       back, as a secret set to the company domain (it moved out of `fly.toml` on 2026-10-01; see
+       *Deployment values are secrets* below). From then on every deploy carries the setting.
     3. Deploy (*First deploy* step 6) with the setting in place. On an empty database the seed
        creates the tenant and the `ADMIN_EMAIL` user in the same boot and makes that user the
        tenant's Owner; with `ADMIN_EMAIL` set it never creates the image's default account
@@ -191,6 +195,23 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
     sign up with a company address, then set it back to `'f'` and deploy again. Limits: tenant
     limits, including the worker limit, are off (`SERVER_ENFORCE_LIMITS` is unset — the engine
     default). Retention: `168h` on dev — see *Retention* below.
+
+## Deployment values are secrets
+
+`fly.toml` carries no app name and four engine settings live in Fly secrets instead, so the file can
+be public: `SERVER_URL`, `SERVER_AUTH_COOKIE_DOMAIN`, `SERVER_GRPC_BROADCAST_ADDRESS` and
+`SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS`. Do this once, before deploying a `fly.toml` that no longer
+holds them:
+
+1. Run `bash infra/hatchet/fly/secrets.sh` to print the commands.
+2. Stage the four new secrets with today's values from the password manager.
+3. `fly secrets list -a <engine-app>` shows all eight names.
+4. Deploy (*First deploy* step 6).
+
+Staging first is safe on a live engine: Fly gives a secret priority over an `[env]` value of the
+same name. The shop harness app likewise takes `HATCHET_CLIENT_HOST_PORT` and
+`HATCHET_CLIENT_API_URL` as secrets; stage them before the next harness run. Every `fly` command
+passes `-a`, because `fly.toml` no longer names the app.
 
 ## Retention
 
@@ -435,7 +456,7 @@ second, separate app — `<shop-harness-app>` — plus its own database cluster
 destroyed on the CTO's instruction; see "Destroying the cluster" below. Neither exists now. Machine
 ids below are from before that date. To run the harness again, recreate both
 with the steps that follow, in order: "One-time setup" (the app, a new cluster and its
-`kyu_shop_inregion` database), then "The CTO's steps, in order" (the two secrets through
+`kyu_shop_inregion` database), then "The CTO's steps, in order" (the four secrets through
 `infra/shop-harness/fly/secrets.sh`, from the new cluster's direct connection string and a newly
 minted engine token), then "Running it". A new cluster gets a new cluster id: use it wherever this
 section says `<shop-cluster-id>`. Before a report-size run, move the new cluster to Launch (see
@@ -443,7 +464,7 @@ section says `<shop-cluster-id>`. Before a report-size run, move the new cluster
 
 **Who does what:** an engineer (or an agent, for the parts that touch no secret) creates the app,
 the cluster, and the image, and drives every deploy, start, collect and stop below. The CTO sets
-the two secrets on the harness app and never anything on `<engine-app>`. Neither role reads a
+the secrets on the harness app and never anything on `<engine-app>`. Neither role reads a
 Fly connection string or a token back once set — the checks below use names-only listings.
 
 ### One-time setup
@@ -470,7 +491,8 @@ Fly connection string or a token back once set — the checks below use names-on
    same reason step 5 of the first-deploy section above gives). Change the database name at the
    end of its path to `kyu_shop_inregion`. Store the string in 1Password.
 2. Run `bash infra/shop-harness/fly/secrets.sh`, fill in its `KYU_SHOP_DATABASE_URL` line from
-   step 1, and run it.
+   step 1, and run it. Run the two `HATCHET_CLIENT_HOST_PORT` and `HATCHET_CLIENT_API_URL` lines
+   as well, with the engine's private addresses it names.
 3. Run `fly ssh issue` for the org, only if that has not already been done (it was, for #162).
 4. Run the token line `secrets.sh` prints exactly as written, so the token never reaches the
    screen or shell history as an argument:
@@ -485,14 +507,14 @@ Fly connection string or a token back once set — the checks below use names-on
    up is the CTO's decision.
 5. Reply "done" on the tracking issue, with no values in the reply.
 
-Whether the two secrets are staged can be checked with names only, never by reading a value:
+Whether the four secrets are staged can be checked with names only, never by reading a value:
 
 ```bash
 fly secrets list -a <shop-harness-app> --json | node -e \
   'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).map(x=>x.name ?? x.Name).sort().join("\n")))'
 ```
 
-This should list exactly `HATCHET_CLIENT_TOKEN` and `KYU_SHOP_DATABASE_URL`. Whether the database
+This should list exactly `HATCHET_CLIENT_API_URL`, `HATCHET_CLIENT_HOST_PORT`, `HATCHET_CLIENT_TOKEN` and `KYU_SHOP_DATABASE_URL`. Whether the database
 string actually names `kyu_shop_inregion` and works cannot be checked without reading it — the
 first run's `migrate-done` log line is the check; a wrong name fails loudly with `refusing to
 create database "<name>"`, which names the database, not the credentials.
@@ -556,18 +578,19 @@ reaches the engine in production. If that path does not answer, `run.sh`'s prefl
 (`GET $HATCHET_CLIENT_API_URL/api/ready`) fails within seconds and the run never starts a
 scenario. The fallback is the public edge, the same path the laptop-to-Fly run (#164) used:
 
+The two address values are app secrets, and a secret beats a `-e` value on a machine, so stage the
+public ones first; then override the TLS settings on the machine:
+
 ```bash
+fly secrets set --stage -a <shop-harness-app> HATCHET_CLIENT_HOST_PORT=<engine-app>.fly.dev:7077 HATCHET_CLIENT_API_URL=https://<engine-app>.fly.dev
 fly machine update <id> -a <shop-harness-app> --skip-start \
-  -e HATCHET_CLIENT_HOST_PORT=<engine-app>.fly.dev:7077 \
-  -e HATCHET_CLIENT_API_URL=https://<engine-app>.fly.dev \
   -e HATCHET_CLIENT_TLS_STRATEGY=tls \
   -e HATCHET_CLIENT_TLS_SERVER_NAME=<engine-app>.fly.dev
 fly machine start <id> -a <shop-harness-app>
 ```
 
 If a run used this fallback, the proof page says so and labels that column "in-region via edge".
-If the fallback becomes the standing path, also edit `fly.toml`'s `[env]` block, or the next
-`fly deploy` reverts it.
+To go back to the standing path, stage the two internal values again (`secrets.sh` prints them).
 
 ### Cancelling a harness namespace
 
