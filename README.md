@@ -9,6 +9,7 @@ Formerly Qtaxis (and before that Kinesin); renamed on 2026-09-19.
 ## Start here
 
 - [Design](docs/design/kyu-requirements-and-design.md): requirements, architecture, the integration plan.
+- [First consumer](docs/operations/first-consumer.md): the ordered steps a project follows to publish its first event and run its first subscriber.
 - [Decisions](docs/architecture/adr/): why it is standalone, why Hatchet, why migrations are immutable, why user-defined workflows run through one interpreter.
 - [Contributing](CONTRIBUTING.md): setup, the loop, layout, gates.
 - [Agent notes](AGENTS.md): the rules agents work under. [Glossary](CONTEXT.md).
