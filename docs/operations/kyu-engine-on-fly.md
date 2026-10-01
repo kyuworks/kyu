@@ -70,6 +70,10 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
 - The CTO does the rebuild in step 11. The signup restriction went live with the sub-step 3 deploy
   on 2026-09-27 — see the dated paragraph at the end of step 11. Signup itself is now off
   (`SERVER_ALLOW_SIGNUP = 'f'`); admitting a new user is a CTO step, below.
+- The CTO creates each project's bus tenant (step 12), signed in to the dashboard as the
+  company-domain admin, and is its only Owner until they invite someone. The CTO, or an engineer
+  the CTO has given an SSH certificate for the org, mints its token straight into the project's
+  secret store. An agent never signs in to the dashboard.
 
 ## First deploy
 
@@ -124,8 +128,8 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
    `token.sh` defaults to the tenant id the local stack seeds (`707d0855-80ab-4e1f-a156-f1c4546cbf52`).
    Confirmed on first deploy: this Fly instance seeded the same id (read off the engine's own boot
    log, `created tenant tenant_id=707d0855-...`), so the default works with no `--tenant-id`
-   override. If a future re-seed ever produces a different id, read the real one off the
-   dashboard's tenant settings and pass it with `--tenant-id`.
+   override. If a future re-seed ever produces a different id, read the real one from the
+   dashboard's address bar (step 12, sub-step 4) and pass it with `--tenant-id`.
 10. Register one worker against it (see the shop example's README, "Against the deployed dev
     engine") and confirm it shows up in the dashboard.
 11. **Before leaving the dashboard reachable, confirm the admin login uses an account the CTO
@@ -193,6 +197,113 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
     sign up with a company address, then set it back to `'f'` and deploy again. Limits: tenant
     limits, including the worker limit, are off (`SERVER_ENFORCE_LIMITS` is unset — the engine
     default). Retention: `168h` on dev — see *Retention* below.
+
+12. **A bus tenant for each consuming project.** Each company project gets its own bus tenant (a
+    Hatchet tenant) per environment, so its worker token cannot see another project's runs
+    (design § 6.2). The tenant the seed created at first boot (step 9, the boot tenant) is not one
+    of them: the shop example and its harness use it. Repeat this step for each project and
+    environment. The CTO does sub-steps 1 to 7, signed in to the dashboard as the company-domain
+    admin (step 11). An agent never signs in to the dashboard or to Fly, and never mints, reads or
+    prints a token. Engine facts below are from the engine's source at v0.107.0.
+
+    1. Check the engine allows it: `curl -s https://<engine-app>.fly.dev/api/v1/meta` shows
+       `"allowCreateTenant":true`. Signup being off does not block this: the tenant-create
+       handler checks only `SERVER_ALLOW_CREATE_TENANT`, which is on by default and not set in
+       `fly.toml`, and `SERVER_ALLOW_SIGNUP` guards only new users
+       (`api/v1/server/handlers/tenants/create.go:20`, `api/v1/server/handlers/users/create.go:26`,
+       `pkg/config/server/server.go:238-247`).
+    2. Name it `<project>-<env>`, for example `<project>-dev`: lower-case letters, digits and `-`.
+    3. Create it in the dashboard: open the tenant switcher at the top right (it shows the current
+       tenant's name), choose **New Tenant**, type the name under **Tenant Name**, and press **Get
+       started**. The dashboard opens the new tenant's Overview. The signed-in user becomes the
+       tenant's only Owner (`tenants/create.go:88-92`); invite anyone else from that tenant's **Settings >
+       Members**. The dashboard adds `-` and up to five random characters to the tenant's slug; workers do not
+       use the slug, and the switcher shows the name.
+
+       Or through the API, from a bash shell with `jq` (run this in bash, not zsh: `read -p` is
+       bash-only):
+
+       ```bash
+       ENGINE=https://<engine-app>.fly.dev
+       ADMIN_EMAIL=<admin-email>
+       TENANT=<project>-<env>
+       JAR="$(mktemp)"
+       read -r -s -p 'Admin password: ' ADMIN_PASSWORD; echo
+       jq -n --arg email "$ADMIN_EMAIL" --arg password "$ADMIN_PASSWORD" '{email: $email, password: $password}' |
+         curl -s -c "$JAR" -o /dev/null -w 'login %{http_code}\n' -X POST "$ENGINE/api/v1/users/login" \
+           -H 'Content-Type: application/json' --data-binary @-
+       unset ADMIN_PASSWORD
+       jq -n --arg name "$TENANT" '{name: $name, slug: $name}' |
+         curl -s -b "$JAR" -X POST "$ENGINE/api/v1/tenants" -H 'Content-Type: application/json' --data-binary @- |
+         jq '{id: .metadata.id, name, slug, errors}'
+       rm -f "$JAR"
+       ```
+
+       `login 200` means signed in; any other code means sign-in failed and
+       the rest prints nulls. A slug already in use shows `Tenant with that slug already exists.`
+       under `errors` (`tenants/create.go:33-45`). A worker token cannot create a tenant: the engine answers 403
+       (`api/v1/server/authn/middleware.go:310`).
+    4. Read the tenant id from the dashboard's address bar while the new tenant is selected: it is
+       the part after `/tenants/` (`/tenants/<id>/overview`). **Settings > General** does not show
+       it. The API block prints it as `id`. Record the name and id in the operator password manager
+       beside the project's token entry.
+    5. Mint the project's worker token with
+       `bash infra/hatchet/fly/token.sh -a <engine-app> --tenant-id <id>`, sending its output
+       straight into the project's secret store, never to the screen, a file or chat. The CTO, or
+       an engineer the CTO has given an SSH certificate for the org, runs it (step 8). A token lasts
+       90 days (`cmd/hatchet-admin/cli/token.go:65`): note the date and mint a new one before then.
+       Each mint adds a token named `default` under that tenant's **Settings > API Tokens**, where
+       an old one can be revoked. Check the command's exit status, since the output is not
+       shown: non-zero means no token. On the local stack a mistyped id exits 1 with `violates
+       foreign key constraint` on stderr. On Fly, `token.sh` keeps only the last output line, so
+       a failed mint may leave an error line in the secret store. If the exit status was
+       non-zero, fix the id and mint again rather than trusting the stored value.
+    6. Give the project its tenant name and id, and tell it the token is in its secret store. It
+       sets the variables in `docs/operations/first-consumer.md` section 8 and keeps its own
+       namespace.
+    7. Confirm: once the project's worker has started with that token, select the new tenant in
+       the switcher and open **Workers**. The worker is listed, its name starting with the
+       project's namespace. Select the boot tenant: the worker is not listed there. The CTO reports
+       only "it worked" or "it did not".
+    8. What is per tenant and what is engine-wide:
+
+       | Per tenant | Engine-wide, the same for every tenant |
+       |---|---|
+       | worker tokens, workers, workflows and runs, the dashboard view, members, alert switches (failed runs, expiring tokens) | retention (`SERVER_LIMITS_DEFAULT_TENANT_RETENTION_PERIOD`, *Retention* below) |
+       | the project's namespace, which only separates processes inside one tenant | limits: the engine writes default limits for the new tenant (`tenants/create.go:83`) but enforces none, because `SERVER_ENFORCE_LIMITS` is unset |
+       | | user accounts, signup and the company-domain restriction, tenant creation (`SERVER_ALLOW_CREATE_TENANT`), the Slack app for alerts |
+       | | the machine, the database cluster and RabbitMQ: one project's load slows every tenant |
+
+    9. A tenant cannot be removed at v0.107.0: no dashboard page or API call deletes one (the API
+       spec's tenant paths delete only invites, members and alert email groups,
+       `api-contracts/openapi/paths/tenant/tenant.yaml`). A tenant made by mistake stays; rename it
+       under **Settings > General** and revoke its tokens.
+    10. Rehearse on the local stack first (same image tag). Run `pnpm hatchet:up`, sign in at
+        `http://localhost:8888` with the account in the comment at the top of
+        `infra/hatchet/compose.yaml`, and do sub-steps 3 and 4 with the name `rehearsal-<date>`
+        (for the API block, set `ENGINE=http://localhost:8888` and that account's email). Then:
+
+        ```bash
+        export HATCHET_CLIENT_TOKEN="$(KYU_HATCHET_TENANT_ID=<id> bash infra/hatchet/token.sh)"
+        export HATCHET_CLIENT_TLS_STRATEGY=none
+        ```
+
+        Start any Kyu worker in that shell (the shop example's `pnpm worker`, see its README "Run
+        it locally", or the worker in `first-consumer.md` section 7) and do sub-step 7. The
+        shop README's "Run it locally" starts by exporting a token for the boot tenant and
+        tells you to re-export the same variables for the worker: skip those exports and keep
+        this shell's `HATCHET_CLIENT_TOKEN`, or the worker lands under the boot tenant and
+        sub-step 7 fails. Local
+        tenants cannot be removed either, and `pnpm hatchet:down` keeps them.
+
+    Rehearsed on the local stack on 2026-10-02 (issue #15): the seeded admin created one tenant
+    from the dashboard and one with the API block; each came back with a new id and the admin as
+    its Owner. A token minted with `KYU_HATCHET_TENANT_ID=<id> bash infra/hatchet/token.sh`
+    registered an SDK worker that the API listed under the new tenant and not under the boot
+    tenant, and the same token got 403 reading the boot tenant's workers. A worker token got 403
+    creating a tenant, a reused slug got 400, and a made-up id failed the mint with the foreign
+    key error. The rehearsal tenants stay on that stack. Not yet done on the dev engine; the CTO
+    adds a dated line here when it is.
 
 ## Deployment values are secrets
 

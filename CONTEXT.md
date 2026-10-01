@@ -44,6 +44,7 @@
 | Word | Meaning |
 | --- | --- |
 | bus tenant | A Hatchet tenant. One per company project per environment. Holds worker tokens. |
+| boot tenant | The bus tenant the engine's seed creates on first boot. The shop example uses it; a consuming project gets its own bus tenant instead (runbook, First deploy step 12). |
 | business tenant | `tenantId` on the envelope: a customer organisation in the producer's own model. Never a Hatchet concept. |
 | paused tenant | A business tenant whose new messages the relay holds in the outbox (`kyu.tenants.pause`). Runs already in the engine carry on. |
 | ids-only | Payloads carry identifiers and small discriminators. Consumers load state from their own database. |
