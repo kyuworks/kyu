@@ -60,7 +60,7 @@ if [ -n "${PR_BODY_FILE:-}" ]; then
   echo "[verify:gates] check-agent-ship-loop"
   bash scripts/gates/check-agent-ship-loop.sh --body "${PR_BODY_FILE}" --author "${PR_AUTHOR:-}" --branch "${PR_BRANCH:-}"
 else
-  echo "[verify:gates] check-agent-ship-loop skipped: PR_BODY_FILE is not set (the Ship loop workflow sets it on a pull request)"
+  echo "[verify:gates] check-agent-ship-loop skipped: PR_BODY_FILE is not set (set PR_BODY_FILE to check a pull request body)"
 fi
 
 echo "[verify:gates] OK"
