@@ -1,4 +1,4 @@
 {
   "files": [],
-  "references": [{ "path": "packages/schemas" }, { "path": "packages/sdk" }, { "path": "examples/shop" }]
+  "references": [{ "path": "packages/schemas" }, { "path": "packages/sdk" }]
 }

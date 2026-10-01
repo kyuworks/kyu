@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      # Build first: type-aware oxlint needs @kyuworks/sdk's dist so examples/ resolve real types, not `any`.
+      # Build first: type-aware oxlint needs @kyuworks/sdk's dist so packages/sdk resolves @kyuworks/schemas types, not `any`.
       - uses: ./.github/actions/setup
         with:
           build: 'true'
@@ -136,47 +136,6 @@ jobs:
       KYU_INTEGRATION_SHARD: '2'
     services: *engine-services
     steps: *sdk-integration-steps
-
-  test-integration-shop-1:
-    name: Integration Tests (shop 1/2)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      # The example's own runner creates kyu_shop itself; this only names where to connect.
-      KYU_SHOP_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/kyu_shop
-      KYU_INTEGRATION_SHARD: '1'
-    services: *engine-services
-    steps: &shop-integration-steps
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup
-        with:
-          build: 'true'
-      - name: Wait for the engine
-        run: |
-          for i in $(seq 1 60); do
-            if curl -fsS http://localhost:8888/api/ready >/dev/null 2>&1; then echo ready; exit 0; fi
-            sleep 2
-          done
-          echo "hatchet-lite never became ready" >&2
-          docker logs "${{ job.services.hatchet-lite.id }}" | tail -50
-          exit 1
-      - name: Mint a worker token
-        run: |
-          TOKEN="$(docker exec "${{ job.services.hatchet-lite.id }}" /hatchet-admin token create --config /config --tenant-id 707d0855-80ab-4e1f-a156-f1c4546cbf52 | tr -d '\r\n')"
-          echo "::add-mask::${TOKEN}"
-          echo "HATCHET_CLIENT_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
-          echo "HATCHET_CLIENT_TLS_STRATEGY=none" >> "$GITHUB_ENV"
-      - run: pnpm --filter @kyuworks/shop test:integration
-
-  test-integration-shop-2:
-    name: Integration Tests (shop 2/2)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      KYU_SHOP_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/kyu_shop
-      KYU_INTEGRATION_SHARD: '2'
-    services: *engine-services
-    steps: *shop-integration-steps
 
   self-tests:
     name: Gate Self Tests

@@ -7,6 +7,4 @@ Type Check
 Unit Tests
 Integration Tests (1/2)
 Integration Tests (2/2)
-Integration Tests (shop 1/2)
-Integration Tests (shop 2/2)
 Gate Self Tests

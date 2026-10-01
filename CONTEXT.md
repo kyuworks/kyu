@@ -56,3 +56,4 @@
 | check:changed | The quiet local verify loop. Silent on success. |
 | RED₁ / GREEN / RED₂ | A test seen failing before the change, passing after it, failing again with the change removed. |
 | stack | The local Hatchet Lite + Postgres containers from `infra/hatchet/compose.yaml`. |
+| shop example | The test application in `kyuworks/shop-example`. Installs the published SDK; a daily run also tests this repository's `main`. |

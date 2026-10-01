@@ -6,7 +6,7 @@ Read this file in full before any task. It applies to every harness, not only Cl
 
 ## Current mission
 
-Ship the SDK, then prove it with a test application. In order: the envelope and message definitions (`packages/schemas`), the outbox and `publish()`, the relay, the subscribe and durable helpers (`packages/sdk`), then a test application under `examples/` that exercises events, commands and durable handlers end to end. The design document's phases are the roadmap; GitHub issues are the queue.
+Ship the SDK, then prove it with a test application. In order: the envelope and message definitions (`packages/schemas`), the outbox and `publish()`, the relay, the subscribe and durable helpers (`packages/sdk`), then a test application, the shop example in [`kyuworks/shop-example`](https://github.com/kyuworks/shop-example), that exercises events, commands and durable handlers end to end. The design document's phases are the roadmap; GitHub issues are the queue.
 
 **Non-goals until explicitly scheduled:** a dashboard of our own, non-TypeScript SDKs, a Hatchet fork, multi-region, synchronous request/response over the bus.
 
@@ -79,7 +79,7 @@ Before writing code, stop at the first rung that holds:
 - `packages/sdk` (`@kyuworks/sdk`): `publish()` and the outbox, the relay, `subscribe()` / `durable()` over the Hatchet SDK, `onceById()`, the worker. Ships `migrations/` SQL for consumers.
 - `infra/hatchet`: the local engine stack and, later, the Fly deployment.
 - Consumers never call the Hatchet SDK directly for bus work. If the SDK lacks something, add it to the SDK.
-- `examples/*`: test applications that consume the SDK the way a real project would. They are the proof, not the product.
+- The shop example lives in `kyuworks/shop-example` and installs the published packages. A daily workflow there runs it against this repository's `main`; a red run there is an SDK regression until shown otherwise. `examples/*` stays open for a future example; the gates still scan it.
 
 **Delivery rules**
 
@@ -127,12 +127,10 @@ The commit is the verification checkpoint. `.husky/pre-commit` runs `scripts/che
 |---|---|---|
 | Mid-work, as often as you like | `pnpm check:changed` | You, for feedback on what you just wrote |
 | Every commit | `check:changed --staged` | The hook |
-| Every PR | Lint, Type Check, Unit Tests, Integration Tests (1/2), Integration Tests (2/2), Integration Tests (shop 1/2), Integration Tests (shop 2/2), Gate Self Tests | Hosted Actions ([`REQUIRED.md`](.github/workflows/REQUIRED.md)) |
-| Push to `main` | The same eight plus Build | Hosted Actions |
+| Every PR | Lint, Type Check, Unit Tests, Integration Tests (1/2), Integration Tests (2/2), Gate Self Tests | Hosted Actions ([`REQUIRED.md`](.github/workflows/REQUIRED.md)) |
+| Push to `main` | The same six plus Build | Hosted Actions |
 
 **Do not run `check:changed` as a final "am I done" step** — the commit runs it on staged files. **Do not run a full suite locally**; CI owns exhaustive coverage. Iterating on one test file is feedback, not verification: `pnpm --filter @kyuworks/sdk exec vitest run <file>`.
-
-The shop's failure harness (`examples/shop/src/__tests__/harness/`) is run by hand, not by CI; it may SIGKILL and proxy only processes and ports it started itself.
 
 ## Test-driven changes
 
@@ -144,7 +142,7 @@ A new test that still passes after reverting the production change does not coun
 
 Levels: unit (`*.test.ts`, colocated), integration (`*.integration.test.ts`, against the local engine), manual (justified, listed). There is no browser level.
 
-Every SDK integration file starts from empty `kyu_outbox` and `kyu_processed`, because `packages/sdk/vitest.integration.clearBusTables.ts` runs before each file. Every shop integration file starts from empty bus tables and empty shop tables the same way, through `examples/shop/vitest.integration.clearTables.ts`. Seeded rows (`shop_product` and the demo workflow definition and version) are never cleaned. A file must still clean up after itself rather than rely on the next one.
+Every SDK integration file starts from empty `kyu_outbox` and `kyu_processed`, because `packages/sdk/vitest.integration.clearBusTables.ts` runs before each file. A file must still clean up after itself rather than rely on the next one.
 
 A suite that builds a git repository sources `scripts/lib/git-env.sh` and unsets the variables it lists. The gate `check-selftest-git-isolation.sh` fails one that does not.
 

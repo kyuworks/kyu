@@ -1,6 +1,5 @@
 packages:
   - 'packages/*'
-  - 'examples/*'
 # Every install verifies that each lockfile entry is at least this old (minutes).
 # 7 days. Do not zero it and do not pass --trust-lockfile anywhere.
 minimumReleaseAge: 10080

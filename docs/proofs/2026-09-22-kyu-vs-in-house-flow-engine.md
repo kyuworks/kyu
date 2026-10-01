@@ -1,5 +1,7 @@
 # Kyu against the consuming project's in-house flow engine
 
+> The shop now lives in [`kyuworks/shop-example`](https://github.com/kyuworks/shop-example). `examples/shop/` paths below are as of kyu commit 4bbff93; in that repository they start at its root.
+
 ## What this settles
 
 The consuming project's automation flows are moving onto Kyu. This document answers the same nine failure and

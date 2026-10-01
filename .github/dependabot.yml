@@ -12,7 +12,7 @@ version: 2
 updates:
   # --- npm / pnpm workspace: root + every workspace package ---
   - package-ecosystem: "npm"
-    # Globs mirror pnpm-workspace.yaml (packages/*, examples/*) so every
+    # Globs mirror pnpm-workspace.yaml (packages/*) so every
     # current and future workspace package is covered without editing this list.
     directories:
       - "/"

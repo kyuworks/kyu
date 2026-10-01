@@ -1,5 +1,7 @@
 # Proof: the shop's failure harness (issue #144)
 
+> The shop now lives in [`kyuworks/shop-example`](https://github.com/kyuworks/shop-example). `examples/shop/` paths below are as of kyu commit 4bbff93; in that repository they start at its root.
+
 What this is: a written record of one run of `examples/shop/src/__tests__/harness/` against the local Hatchet engine, at the scale the issue asked for. Ten scenarios: four crash scenarios shipped in #147 (relay killed before mark, worker killed mid-step, worker killed while parked, relay's database connection dropped), and six more in this pull request (engine outage, tenant load, a 48-hour delay hand-off, two cancels, and a backlog drain).
 
 ## How this was produced

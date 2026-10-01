@@ -201,7 +201,8 @@ async function runDurableHandler<S extends MessageSchema>(
  * wait longer than that, do not sleep. Record where the run got to and
  * publish the handler's own trigger message again with `publishAt` set to
  * the wake time and a field saying where to continue, in one transaction,
- * then return. `examples/shop/src/handlers/runWorkflow.ts` does this.
+ * then return. The shop example's `src/handlers/runWorkflow.ts`
+ * (`kyuworks/shop-example`) does this.
  *
  * A worker stopping mid-run is handled in two halves. A run already parked in
  * `sleepFor`/`waitFor` is evicted by the engine and continues on the next
