@@ -28,6 +28,8 @@ shard 2 runs every other file. `scripts/gates/check-integration-shards.sh`
 `Build` is not required. It `needs:` the others, so a failed sibling skips it,
 and a skipped required check passes. Require each name above instead.
 
+`Publish packages` in `release.yml` runs only on a `v*` tag. It is not a pull-request check; do not add it to `required-checks.txt` or the ruleset.
+
 ## Branch protection
 
 `main` needs a ruleset that requires the eight names above, requires a pull

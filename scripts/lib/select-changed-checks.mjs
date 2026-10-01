@@ -99,6 +99,10 @@ for (const raw of changedFiles()) {
   const pkg = [...ws.keys()].find((d) => f.startsWith(d + '/'))
   if (pkg) {
     if (f.startsWith(`${pkg}/migrations/`)) add('gate:migration-immutability', 'bash scripts/gates/check-migration-immutability.sh')
+    if (f === `${pkg}/package.json` || f === 'packages/sdk/src/version.ts') {
+      add('gate:package-versions', 'bash scripts/gates/check-package-versions.sh')
+      add('gate:package-exports', 'bash scripts/gates/check-package-exports.sh')
+    }
     for (const d of [pkg, ...dependants(pkg)]) {
       const meta = ws.get(d)
       const name = meta.name

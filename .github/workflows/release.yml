@@ -1,0 +1,59 @@
+name: Release
+
+# A tag v<version> on a commit that is on main and passed CI there publishes
+# both packages to npm by trusted publishing. Not a pull-request check (REQUIRED.md).
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag is on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "FAIL: ${GITHUB_REF_NAME} points at ${GITHUB_SHA}, which is not on main." >&2
+            exit 1
+          fi
+      # The eight PR checks already ran on this commit when it landed on main; require that run, do not repeat it.
+      - name: CI passed on main for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          passed="$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow ci.yml --branch main --event push \
+            --commit "${GITHUB_SHA}" --json conclusion --jq '[.[] | select(.conclusion == "success")] | length')"
+          if [ "${passed}" -lt 1 ]; then
+            echo "FAIL: CI on main has not passed for ${GITHUB_SHA}. Re-run this workflow once it has." >&2
+            exit 1
+          fi
+      - uses: ./.github/actions/setup
+        with:
+          build: 'true'
+      - name: Tag matches the package versions
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bash scripts/gates/check-package-versions.sh
+      - name: Tarballs hold their entry points and migrations
+        run: bash scripts/gates/check-package-exports.sh
+      # No token: pnpm trades the job's OIDC token with npm (trusted publisher on each package).
+      - name: Publish
+        run: pnpm -r --filter './packages/*' publish --no-git-checks --access public --provenance

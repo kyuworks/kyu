@@ -65,9 +65,11 @@ A gate is a script under `scripts/gates/` that fails the commit or the PR. Each 
 | `check-no-escape-hatches.sh` | `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error` or a disable comment in production source |
 | `check-durable-wall-clock.sh` | `Date.now` (called or passed) or an argument-less `new Date()`, even with its `)` on the next line, in a production file that holds a durable handler; a grep error also fails it |
 | `check-package-boundaries.sh` | a package imports another by relative path or deep `src`/`dist` path |
+| `check-package-versions.sh` | the published packages' versions or `SDK_VERSION` differ, the SDK's range on schemas is not `workspace:*`, or (release only) the tag is not `v<version>` |
+| `check-package-exports.sh` | a package tarball lacks a file its `main`, `types` or `exports` names, or a file from its `migrations/` |
 | `check-required-ci-jobs.sh` | `required-checks.txt` names a job that is not in `ci.yml` |
 | `check-agent-ship-loop.sh` | an agent PR body has an incomplete ship-loop section (CI only) |
 
 ## Releases
 
-The SDK publishes under the `@kyuworks` npm scope from `main` on a tag. Not wired yet; tracked as an issue.
+Tag-driven, from `main`. See [Releasing](README.md#releasing).

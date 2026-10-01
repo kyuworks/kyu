@@ -24,6 +24,14 @@ export KYU_TEST_DATABASE_URL=postgresql://hatchet:hatchet@localhost:15432/kyu_te
 pnpm check
 ```
 
+## Install
+
+`pnpm add @kyuworks/sdk` (it brings `@kyuworks/schemas` at the same version; add it too only if you import it directly). Both are public on npm with provenance from this repository.
+
+pnpm 11 refuses a version younger than a day (`minimumReleaseAge`, default 1440 minutes). To take a new Kyu release the day it ships, add to your `pnpm-workspace.yaml`: `minimumReleaseAgeExclude: ['@kyuworks/*']`.
+
+Apply the SDK's migrations with your own migration runner: every `*.sql` file in `MIGRATIONS_DIRECTORY` (exported by the SDK), in file-name order, each once. A released file never changes; a new version may add files, and the changelog in the GitHub release for the tag says which one a feature needs.
+
 ## Packages
 
 | Package | Purpose |
@@ -101,3 +109,17 @@ A subscription also declares how long a run may wait in the queue for a free slo
 [`examples/shop`](examples/shop) is a small app that uses `@kyuworks/sdk` the way a real project would.
 
 Status: design accepted, SDK in progress. See the issues.
+
+## Releasing
+
+1. Open a PR that sets the same version in `packages/schemas/package.json`, `packages/sdk/package.json` and `packages/sdk/src/version.ts` (`check-package-versions.sh` fails the PR otherwise).
+2. Merge it and wait for CI on `main` to pass.
+3. The CTO pushes tag `v<version>` on that commit. `release.yml` checks the tag is on `main`, that CI passed there, that the tag matches the version and that the tarballs are complete, then publishes both packages to npm with provenance. No token is involved: npm trusts this repository's `release.yml` (trusted publishing). If the run fails part way (schemas published, sdk not), re-run the workflow: `pnpm -r publish` skips a version already on the registry and publishes only what is missing.
+
+### First release only (CTO)
+
+1. Check the scope: `npm org ls kyuworks` lists you as owner; `npm view @kyuworks/sdk` and `npm view @kyuworks/schemas` return 404.
+2. Reserve each name with a placeholder from your own machine, logged in with two-factor authentication: a folder holding only a `package.json` with the package name, version `0.0.1-reserved.0` and a description pointing at this repository, then `npm publish --access public --tag reserved`; then `npm deprecate <name>@0.0.1-reserved.0 "Placeholder. Use 0.1.0 or later."`. Do not store the login as a secret anywhere.
+3. On npmjs.com, for each package: Settings, Trusted publishing, GitHub Actions; organisation `kyuworks`, repository `kyu`, workflow `release.yml`, no environment. Then Settings, Publishing access, "Require two-factor authentication and disallow tokens".
+4. In this repository's settings add a tag ruleset for `v*` that only repository admins can create, update or delete.
+5. Push tag `v0.1.0` on `main`.

@@ -17,5 +17,6 @@
 /scripts/hooks/ @matt-camba
 /.claude/settings.json @matt-camba
 /.github/workflows/ci.yml @matt-camba
+/.github/workflows/release.yml @matt-camba
 /.github/workflows/required-checks.txt @matt-camba
 /.github/CODEOWNERS @matt-camba

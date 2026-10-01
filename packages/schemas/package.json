@@ -1,13 +1,16 @@
 {
   "name": "@kyuworks/schemas",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Kyu message envelope, naming rules and schema adapters. Runtime-light; depends on Zod only.",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kyuworks/kyu.git",
     "directory": "packages/schemas"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,11 +21,13 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo",
+    "prepack": "tsc -b",
     "typecheck": "tsc -b --pretty false",
     "typecheck:tests": "tsc -b --pretty false tsconfig.test.json",
     "test": "vitest run",
