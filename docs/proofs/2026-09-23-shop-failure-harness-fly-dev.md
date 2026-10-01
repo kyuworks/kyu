@@ -1,5 +1,7 @@
 # Proof: the shop's failure harness against the deployed dev engine (issue #162)
 
+> The shop now lives in [`kyuworks/shop-example`](https://github.com/kyuworks/shop-example). `examples/shop/` paths below are as of kyu commit 4bbff93; in that repository they start at its root.
+
 What this is: a written record of `engine-outage`, `outbox-backlog` and `tenant-load` run at
 report size against the Kyu engine deployed to Fly (`<engine-app>`, dev), compared against the
 same scenarios run on a laptop against the local engine (`docs/proofs/2026-09-22-shop-failure-harness.md`).

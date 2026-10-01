@@ -1,5 +1,7 @@
 # A CRM flow definition on Kyu
 
+> The shop now lives in [`kyuworks/shop-example`](https://github.com/kyuworks/shop-example). `examples/shop/` paths below are as of kyu commit 4bbff93; in that repository they start at its root.
+
 A CRM flow definition in the consuming project's node shape runs to an end node on Kyu through the shop's one durable interpreter. Two more definitions in the same shape exercise a `branch` node and a `duration` wait, the two kinds the order follow-up flow does not use.
 
 ## What ran
