@@ -741,7 +741,7 @@ From the smoke run's start to the end: no `ERROR` line and no `invalid auth toke
 
 **Issue #162, criterion 3** (the three load scenarios pass at report size on the deployed engine): **met: two scenarios on this topology, `engine-outage` from the #162 Postgres-queue run, not re-run.** `tenant-load` and `outbox-backlog` pass in-region with the queue on RabbitMQ; `engine-outage` passed against the deployed engine in #162's laptop-to-Fly run, on the Postgres queue, and was not re-run on RabbitMQ.
 
-**For the Camba decision**, the evidence supports: the dev engine on hatchet-lite, with its queue on RabbitMQ and both clusters on Launch, handled this report-size load with no lost or doubled effect, no error line and all windows met. It does not support: any claim about production — one run; hatchet-lite in RabbitMQ mode, not Hatchet's separate-image production shape; one engine machine and one RabbitMQ node; dev-sized machines; no metrics; and an engine restart that coincided with the queue change. Keeping RabbitMQ adds a datastore family, which requirement N1 in the design document rules out as written. The CTO decides whether RabbitMQ stays and what follows.
+**For the adoption decision**, the evidence supports: the dev engine on hatchet-lite, with its queue on RabbitMQ and both clusters on Launch, handled this report-size load with no lost or doubled effect, no error line and all windows met. It does not support: any claim about production — one run; hatchet-lite in RabbitMQ mode, not Hatchet's separate-image production shape; one engine machine and one RabbitMQ node; dev-sized machines; no metrics; and an engine restart that coincided with the queue change. Keeping RabbitMQ adds a datastore family, which requirement N1 in the design document rules out as written. The CTO decides whether RabbitMQ stays and what follows.
 
 **Decided on 2026-09-25:** RabbitMQ stays as the engine's queue in every deployed environment, and requirement N1 is amended for it: [`20260925-engine-queue-runs-on-rabbitmq.md`](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md). The shop harness app and its cluster were destroyed the same day.
 
@@ -808,4 +808,4 @@ The saved 100-line tail runs 2026-09-23 12:09:31Z–12:14:45Z, the same lines as
 
 **Issue #162, criterion 3** (the three load scenarios pass at report size on the deployed engine): unchanged, still met on Launch + RabbitMQ (issue #176). This run shows Basic is not enough for this load.
 
-**For the Camba decision**: on this evidence keep the engine's cluster on Launch or larger for this load: Basic failed (one run) and Launch passed (issue #176); Starter is untried with RabbitMQ. Which plan dev stays on is the CTO's decision.
+**For the adoption decision**: on this evidence keep the engine's cluster on Launch or larger for this load: Basic failed (one run) and Launch passed (issue #176); Starter is untried with RabbitMQ. Which plan dev stays on is the CTO's decision.

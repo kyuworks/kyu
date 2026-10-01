@@ -8,9 +8,8 @@ import type { ShopLeadProjection } from './crmFlowConditions.js'
 export const flowNodeIdSchema = z.string().min(1).max(32)
 
 // The seven staff-facing action keys this walker knows, each with its own
-// exits. An
-// action key not in this list fails the trust edge, so an unsupported action
-// is loud, never a widened `string`.
+// exits. An action key not in this list fails the trust edge, so an
+// unsupported action is loud, never a widened `string`.
 const ACTION_KEYS = [
   'create_task',
   'unassign_lead',
