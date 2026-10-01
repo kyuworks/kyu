@@ -24,6 +24,7 @@
 | Word | Meaning |
 | --- | --- |
 | outbox | The `kyu_outbox` table in a producer's own database. `publish()` writes there inside the caller's transaction. |
+| service seam | The one function in a project where a change is committed and its message is published, in the same transaction. |
 | relay | The process that ships outbox rows to the engine and marks them published. One per project per environment, beside the worker. |
 | sidecar | A process that runs beside a project's own processes and does one job for them; the relay is one. |
 | at-least-once | The only delivery guarantee. A handler may see the same envelope id twice. |

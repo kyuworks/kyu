@@ -315,7 +315,7 @@ An operator who fixes the envelope by hand revives the row so the relay claims i
 UPDATE kyu_outbox SET dead_at = NULL, attempts = 0, last_error = NULL WHERE id = $1;
 ```
 
-Rows published more than 7 days ago are pruned by a scheduled bus task (`prunePublished`); retired rows are pruned by the same task with `pruneRetired` once an operator has seen them.
+The SDK never deletes outbox rows on its own: `prunePublished({ publishedBefore })` deletes published rows and `pruneRetired({ retiredBefore })` retired ones, and the producer schedules them, or keeps every row while open question 3 is unanswered.
 
 ### 8.6 Handler emit (proposed)
 
@@ -479,7 +479,7 @@ The shop example ([`kyuworks/shop-example`](https://github.com/kyuworks/shop-exa
 
 ### Phase 3: first consumer (one to two weeks)
 
-One real project adds the outbox table, starts the relay beside it, publishes its first event from a service seam, and replaces its hand-wired dispatchers with subscribers. Success is the fixed delay and the in-process dispatcher chain both gone.
+One real project adds the outbox table, starts the relay beside it, publishes its first event from a service seam, and replaces its hand-wired dispatchers with subscribers. Success is the fixed delay and the in-process dispatcher chain both gone. The steps, in order, are in [docs/operations/first-consumer.md](../operations/first-consumer.md).
 
 ### Phase 4: workflow orchestration (two to three weeks)
 
