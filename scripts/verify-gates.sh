@@ -56,4 +56,11 @@ bash scripts/gates/check-tsconfig-references.sh
 echo "[verify:gates] check-selftest-git-isolation"
 bash scripts/gates/check-selftest-git-isolation.sh
 
+if [ -n "${PR_BODY_FILE:-}" ]; then
+  echo "[verify:gates] check-agent-ship-loop"
+  bash scripts/gates/check-agent-ship-loop.sh --body "${PR_BODY_FILE}" --author "${PR_AUTHOR:-}" --branch "${PR_BRANCH:-}"
+else
+  echo "[verify:gates] check-agent-ship-loop skipped: PR_BODY_FILE is not set (set PR_BODY_FILE to check a pull request body)"
+fi
+
 echo "[verify:gates] OK"

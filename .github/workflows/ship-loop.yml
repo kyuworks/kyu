@@ -1,0 +1,29 @@
+name: Ship loop
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ship-loop:
+    name: Ship loop
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Check the pull request body
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_BRANCH: ${{ github.head_ref }}
+        run: |
+          jq -r '.pull_request.body // ""' "${GITHUB_EVENT_PATH}" > "${RUNNER_TEMP}/pr-body.md"
+          bash scripts/gates/check-agent-ship-loop.sh --body "${RUNNER_TEMP}/pr-body.md" --author "${PR_AUTHOR}" --branch "${PR_BRANCH}"

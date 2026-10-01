@@ -29,6 +29,8 @@ and a skipped required check passes. Require each name above instead.
 
 `Publish packages` in `release.yml` runs only on a `v*` tag. It is not a pull-request check; do not add it to `required-checks.txt` or the ruleset.
 
+`Ship loop` in `ship-loop.yml` checks the agent ship-loop section of the pull request body. It is a separate workflow so that it re-runs when the body is edited. It is not a required check unless the CTO adds it to the ruleset; `scripts/gates/check-required-ci-jobs.sh` reads `ci.yml` only, so it is not in `required-checks.txt`.
+
 ## Branch protection
 
 `main` needs a ruleset that requires the six names above, requires a pull
