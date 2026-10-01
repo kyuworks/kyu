@@ -1,8 +1,7 @@
 // Vendored from https://github.com/dmmulroy/anti-slop @ 6d53855
 // (skills/install-anti-slop/assets/anti-slop), upstream tests dropped.
 //
-// Kept as its own plugin, separate from the other plugin next door: these rules
-// are generic, ours are architecture-specific. Re-vendor by re-copying that
+// Kept as its own plugin: these rules are generic, ours are architecture-specific. Re-vendor by re-copying that
 // directory rather than hand-patching files here.
 import { eslintCompatPlugin } from "@oxlint/plugins";
 

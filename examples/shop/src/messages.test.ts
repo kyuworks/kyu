@@ -83,9 +83,9 @@ describe('messages', () => {
     ).rejects.toThrow()
   })
 
-  // Camba's generated node ids draws from a digit-first base36 alphabet, so
-  // a real Camba node id can start with a digit; the trust edge must walk it (#157).
-  it('accepts a digit-leading resumeStepId, the shape Camba node ids can take (#157)', async () => {
+  // Generated CRM node ids draw from a digit-first base36 alphabet, so one can
+  // start with a digit; the trust edge must walk it (#157).
+  it('accepts a digit-leading resumeStepId, the shape generated CRM node ids can take (#157)', async () => {
     await expect(
       createEnvelope(
         workflowTriggered,

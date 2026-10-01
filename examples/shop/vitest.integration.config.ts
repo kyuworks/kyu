@@ -4,7 +4,7 @@ import { configDefaults, defineConfig } from 'vitest/config'
 // Shard 2 is every file not listed here. Gate: scripts/gates/check-integration-shards.sh.
 const INTEGRATION_SHARD_ONE_FILES = [
   'src/__tests__/workflow.integration.test.ts',
-  'src/__tests__/cambaFlow.integration.test.ts',
+  'src/__tests__/crmFlow.integration.test.ts',
   'src/__tests__/busCounts.integration.test.ts',
 ]
 const integrationShard = process.env['KYU_INTEGRATION_SHARD']

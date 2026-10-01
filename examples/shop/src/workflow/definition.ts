@@ -1,16 +1,16 @@
 import type { Unparsed } from '@kyuworks/sdk'
 import { NonRetryableError } from '@kyuworks/sdk'
 import { z } from 'zod'
-import { cambaFlowSchema } from './cambaDefinition.js'
-import type { CambaFlow } from './cambaDefinition.js'
+import { crmFlowSchema } from './crmFlowDefinition.js'
+import type { CrmFlow } from './crmFlowDefinition.js'
 
 export const stepIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,38}$/)
 
-// Covers a shop step id (lowercase, stepIdSchema above) and a Camba node id
-// (the consuming project's flow code's newNodeId draws from a base36 alphabet,
-// digits first, so a generated id can start with a digit, e.g. "3f8a2b91c4").
+// Covers a shop step id (lowercase, stepIdSchema above) and a CRM flow node id
+// (generated ids draw from a base36 alphabet, digits first, so one can start
+// with a digit, e.g. "3f8a2b91c4").
 // Used on message fields that carry either shape's node id: a leading-letter
-// rule here would parse a Camba definition but dead-letter the walker's first
+// rule here would parse a CRM flow definition but dead-letter the walker's first
 // publish of a digit-leading id (#157).
 export const workflowNodeIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/)
 
@@ -152,15 +152,15 @@ export function parseWorkflowDefinition(value: Unparsed): WorkflowDefinition {
   return result.data
 }
 
-export type StoredWorkflow = { shape: 'shop'; definition: WorkflowDefinition } | { shape: 'flow'; flow: CambaFlow }
+export type StoredWorkflow = { shape: 'shop'; definition: WorkflowDefinition } | { shape: 'flow'; flow: CrmFlow }
 
-// Camba is tried first: both shapes carry schemaVersion 1 and are separated
+// The CRM flow shape is tried first: both shapes carry schemaVersion 1 and are separated
 // only by `nodes` (flow) versus `steps` (shop); .strict() on both keeps a
 // shop definition from ever parsing as a flow, and definition.test.ts /
-// cambaDefinition.test.ts each pin their own shape stays theirs.
-/** Trust edge: the stored definition, in either the shop's step shape or Camba's node shape. */
+// crmFlowDefinition.test.ts each pin their own shape stays theirs.
+/** Trust edge: the stored definition, in either the shop's step shape or the CRM flow's node shape. */
 export function parseStoredWorkflow(value: Unparsed): StoredWorkflow {
-  const flow = cambaFlowSchema.safeParse(value)
+  const flow = crmFlowSchema.safeParse(value)
   if (flow.success) return { shape: 'flow', flow: flow.data }
   const shop = workflowDefinitionSchema.safeParse(value)
   if (shop.success) return { shape: 'shop', definition: shop.data }

@@ -170,9 +170,9 @@ describe('createWorker', () => {
     const { client, workerCallCount } = fakeHatchetClient(() => Promise.resolve(fakeWorker({})))
     const subscriptions = [stubSubscription('record-order', 'event', 'shop.order.placed')]
 
-    await expect(createWorker(client, 'marketplace-pool', { subscriptions, serves: ['sync-marketplace'] })).rejects.toThrow(
-      /sync-marketplace/,
-    )
+    await expect(
+      createWorker(client, 'marketplace-pool', { subscriptions, serves: ['sync-marketplace'] }),
+    ).rejects.toThrow(/sync-marketplace/)
     expect(workerCallCount()).toBe(0)
   })
 
@@ -180,7 +180,9 @@ describe('createWorker', () => {
     const { client, workerCallCount } = fakeHatchetClient(() => Promise.resolve(fakeWorker({})))
     const subscriptions = [stubSubscription('record-order', 'event', 'shop.order.placed')]
 
-    await expect(createWorker(client, 'marketplace-pool', { subscriptions, serves: [] })).rejects.toBeInstanceOf(KyuError)
+    await expect(createWorker(client, 'marketplace-pool', { subscriptions, serves: [] })).rejects.toBeInstanceOf(
+      KyuError,
+    )
     expect(workerCallCount()).toBe(0)
   })
 

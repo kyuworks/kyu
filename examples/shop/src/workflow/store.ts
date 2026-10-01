@@ -1,9 +1,9 @@
 import type { Queryable, RelayQueryable, Unparsed } from '@kyuworks/sdk'
 import { NonRetryableError } from '@kyuworks/sdk'
 import { z } from 'zod'
-import { shopLeadProjectionSchema } from './cambaConditions.js'
-import type { ShopLeadProjection } from './cambaConditions.js'
-import { flowActionKey, flowNodeById } from './cambaDefinition.js'
+import { shopLeadProjectionSchema } from './crmFlowConditions.js'
+import type { ShopLeadProjection } from './crmFlowConditions.js'
+import { flowActionKey, flowNodeById } from './crmFlowDefinition.js'
 import { parseStoredWorkflow, stepById } from './definition.js'
 import type { StoredWorkflow } from './definition.js'
 
@@ -89,7 +89,7 @@ export async function insertRun(client: Queryable, input: InsertRunInput): Promi
   )
 }
 
-// outcome is a shop step's `end` (always null) or a Camba `end` node's own
+// outcome is a shop step's `end` (always null) or a CRM flow `end` node's own
 // outcome string (0006_shop.sql).
 export async function finishRun(client: Queryable, runId: string, outcome: string | null): Promise<void> {
   await client.query('UPDATE shop_workflow_run SET finished_at = now(), outcome = $2 WHERE run_id = $1', [
@@ -102,7 +102,7 @@ export interface RecordStepInput {
   runId: string
   stepId: string
   tenantId: string
-  // A shop step's own kind, or a Camba node's action key / 'wait_for_completion' /
+  // A shop step's own kind, or a CRM flow node's action key / 'wait_for_completion' /
   // 'end' (#157): shop_workflow_step_log.kind is plain text (0004_shop.sql),
   // so this is intentionally not WorkflowStep['kind']'s closed literal union.
   kind: string
@@ -151,9 +151,9 @@ export async function isOrderShipped(client: RelayQueryable, tenantId: string, o
   return row.shipped_at !== null
 }
 
-// The stub lead projection a Camba branch condition is evaluated against
+// The stub lead projection a CRM flow branch condition is evaluated against
 // (examples/shop/migrations/0007_shop.sql). A missing row is a
-// NonRetryableError, not a silent otherwise: unlike Camba's own
+// NonRetryableError, not a silent otherwise: unlike the CRM flow engine's own
 // "no projection means take otherwise", a missing row here means the test —
 // or a caller — forgot to seed it.
 export async function readLeadProjection(
@@ -180,7 +180,7 @@ export interface ReadNotifyNoteInput {
 
 // notify-staff only carries the version id and the step id (no definition
 // id), so this loads the version directly rather than through loadPinnedVersion.
-// A shop `notify` step's own authored text; a Camba action node's
+// A shop `notify` step's own authored text; a CRM flow action node's
 // "<actionKey> <nodeId>" (the executors are out of scope, ADR decision 8).
 export async function readNotifyNote(client: RelayQueryable, input: ReadNotifyNoteInput): Promise<string> {
   const result = await client.query('SELECT steps FROM shop_workflow_version WHERE id = $1 AND tenant_id = $2', [
