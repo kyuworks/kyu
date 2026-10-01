@@ -39,9 +39,9 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/node": "^24.13.5",
-    "oxlint": "^1.83.0",
-    "oxlint-tsgolint": "7.0.2001",
+    "@types/node": "^24.13.6",
+    "oxlint": "^1.85.0",
+    "oxlint-tsgolint": "7.0.2002",
     "typescript": "^6.0.0",
     "vitest": "^4.1.0"
   }
