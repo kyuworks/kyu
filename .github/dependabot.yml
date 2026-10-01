@@ -35,8 +35,8 @@ updates:
     labels:
       - "dependencies"
     commit-message:
-      prefix: "chore(deps)"
-      prefix-development: "chore(deps-dev)"
+      # include: scope appends (deps) or (deps-dev); the prefix must not carry a scope.
+      prefix: "chore"
       include: "scope"
 
   # --- GitHub Actions used by the workflow files ---
@@ -58,5 +58,5 @@ updates:
       - "dependencies"
       - "github-actions"
     commit-message:
-      prefix: "chore(ci)"
+      prefix: "ci"
       include: "scope"

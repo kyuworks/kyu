@@ -2,8 +2,8 @@
 # check-agent-ship-loop.sh — agent PR ship-loop checklist (#1974).
 #
 # Humans may omit the section. Agents may not claim Ready without a
-# completed one. This is not in verify-gates.sh: there is no PR body on
-# a local lint, and typo PRs must not run the ceremony.
+# completed one. verify-gates.sh runs it when PR_BODY_FILE is set;
+# ship-loop.yml runs it on every pull request.
 #
 # Self-test: bash scripts/gates/check-agent-ship-loop.test.sh
 #

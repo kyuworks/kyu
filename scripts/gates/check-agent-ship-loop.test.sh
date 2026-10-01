@@ -246,5 +246,11 @@ assert_file_contains "plan skill has Call stacks" \
   "${ROOT_DIR}/.agents/skills/plan/SKILL.md" "## Call stacks"
 assert_file_contains "pr-review rejects a missing red proof on agent PRs" \
   "${ROOT_DIR}/.agents/skills/pr-review/SKILL.md" "Agent ship loop"
+assert_file_contains "verify-gates.sh runs the gate" \
+  "${ROOT_DIR}/scripts/verify-gates.sh" "check-agent-ship-loop"
+assert_file_contains "the Ship loop workflow runs the gate on a body edit" \
+  "${ROOT_DIR}/.github/workflows/ship-loop.yml" "edited"
+assert_file_contains "the Ship loop workflow runs the gate script" \
+  "${ROOT_DIR}/.github/workflows/ship-loop.yml" "scripts/gates/check-agent-ship-loop.sh"
 
 gate_test_finish
