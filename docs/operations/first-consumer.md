@@ -44,10 +44,15 @@ pnpm 11 needs two settings in `pnpm-workspace.yaml`, as in the shop's [`pnpm-wor
 minimumReleaseAgeExclude:
   - '@kyuworks/sdk'
   - '@kyuworks/schemas'
-# The engine SDK's install script must run.
+# Lifecycle scripts run only when true. The engine SDK's postinstall is required;
+# protobufjs only prints a banner, and without this line pnpm 11 stops with ERR_PNPM_IGNORED_BUILDS.
 allowBuilds:
+  esbuild: true
   '@hatchet-dev/typescript-sdk': true
+  protobufjs: false
 ```
+
+`esbuild: true` is for a project that runs TypeScript with `tsx`; leave it out if you do not. Compile your code with `tsc`, or run it with `tsx`. The worker snippet in section 7 uses top-level `await`, so your `package.json` needs `"type": "module"`.
 
 ## 3. Database
 
@@ -186,7 +191,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
 The shop's version is [`src/relay.ts`](https://github.com/kyuworks/shop-example/blob/main/src/relay.ts).
 
 - **Database handle:** a small `pg.Pool` of its own (`max: 1`), not your application's pool and not a single `pg.Client`. Every relay statement stands alone, so a pool is safe and replaces a dropped connection on the next tick. Attach `pool.on('error')`, or an idle connection that drops takes the process down ([`README.md`](../../README.md#packages); [`queryable.ts`](../../packages/sdk/src/db/queryable.ts), `RelayQueryable`).
-- **Transaction pooler:** the relay holds no session state and takes no advisory lock; its claim is a stamp on the row, not a lock held by the connection ([design § 8.3](../design/kyu-requirements-and-design.md#83-relay)). It can therefore run through a transaction pooler.
+- **Transaction pooler:** the relay holds no session state and takes no advisory lock; its claim is a stamp on the row, not a lock held by the connection ([design § 8.3](../design/kyu-requirements-and-design.md#83-relay)). This is reasoning, not a tested fact: the relay's statements hold no session state ([`queryable.ts`](../../packages/sdk/src/db/queryable.ts), `RelayQueryable`; [`relay.ts`](../../packages/sdk/src/relay/relay.ts)), and `publish()` is one `INSERT` ([`outboxRepository.ts`](../../packages/sdk/src/outbox/outboxRepository.ts)), but no test in this repository runs through a transaction-mode pooler. Prove it in your own dev environment before you rely on it.
 - **`workerId`:** unique per running process ([`relay.ts`](../../packages/sdk/src/relay/relay.ts), `RelayOptions`).
 - **Supervision:** restart it on exit. On `relay.closed` rejecting (`RelayConnectionLostError`), exit non-zero. On SIGTERM, call `relay.stop()`. A relay killed without `stop()` leaves its claimed rows for `staleClaimMs` (default 5 minutes) before another relay takes them; the shop sets 30 seconds.
 - **Environment:** the SDK reads no environment variable itself. The engine client reads `HATCHET_CLIENT_TOKEN`, `HATCHET_CLIENT_API_URL`, `HATCHET_CLIENT_HOST_PORT`, `HATCHET_CLIENT_TLS_STRATEGY` and `HATCHET_CLIENT_NAMESPACE` (section 8; the shop's [README](https://github.com/kyuworks/shop-example/blob/main/README.md#environment-variables) lists them). Your own variable gives the database URL.
@@ -247,9 +252,9 @@ export function pushContactSubscription(kyu: Kyu, pool: Pool): Subscription {
 - `ctx.signal` — aborts when the engine cancels this run, including a `cancel_in_progress` cancel. Pass it to your HTTP client so a stale push stops;
 - `ctx.retryCount`, `ctx.runId`, `ctx.logger`, `ctx.metadata`.
 
-Throw to retry, up to `retries` with `backoff`. Throw `NonRetryableError` for a condition no retry can fix, such as a 4xx answer or a record that no longer exists. Either way an exhausted run is a failed run, which is the dead letter.
+Throw to retry, up to `retries` with `backoff`. Throw `NonRetryableError` for a condition no retry can fix, such as a 400 or 404 answer that will not change on retry (408 and 429 are retryable), or a record that no longer exists. Either way an exhausted run is a failed run, which is the dead letter.
 
-**The idempotency guard.** A push of current state is idempotent by itself. A handler that writes to your database wraps the write in `onceById` inside the handler's own transaction:
+**The idempotency guard.** A push of current state is idempotent by itself. A handler that writes to your database wraps the write in `onceById` inside the handler's own transaction. `withTransaction` below is your project's own helper: `withTransaction(pool, fn)` opens a client, runs `BEGIN`, calls `fn(client)`, then `COMMIT`s, or `ROLLBACK`s and rethrows if `fn` throws. The shop's is [`src/db/pool.ts`](https://github.com/kyuworks/shop-example/blob/main/src/db/pool.ts).
 
 ```ts
 await withTransaction(pool, (tx) =>
@@ -309,7 +314,7 @@ The shop's version is [`src/worker.ts`](https://github.com/kyuworks/shop-example
 
 In dev you use the deployed dev engine. Its addresses and tokens are held by the CTO in the operator password manager; this page names none ([runbook](kyu-engine-on-fly.md)).
 
-1. **Bus tenant.** Each project gets its own bus tenant (a Hatchet tenant) per environment. Your project never shares one with another project ([design § 6.2](../design/kyu-requirements-and-design.md#62-bus-tenants-and-tokens)). Ask the CTO for your project's dev bus tenant.
+1. **Bus tenant.** Each project gets its own bus tenant (a Hatchet tenant) per environment. Your project never shares one with another project ([design § 6.2](../design/kyu-requirements-and-design.md#62-bus-tenants-and-tokens)). The runbook has no step yet for creating a second bus tenant on the dev engine. Until it does, the first slice in dev uses the tenant the engine created at boot, with your project's own worker namespace (item 4). The per-project tenant comes before staging; ask the CTO.
 2. **Worker token.** An operator mints it: the CTO, or an engineer the CTO has given an SSH certificate for the engine's Fly organisation. From a Kyu checkout: `bash infra/hatchet/fly/token.sh -a <engine-app> --tenant-id <your-bus-tenant-id>` ([`token.sh`](../../infra/hatchet/fly/token.sh); [runbook, Who does what](kyu-engine-on-fly.md#who-does-what)). The token goes straight into your project's secret store. An agent never mints, reads or prints a token. Never commit it or log it.
 3. **The three variables** every process that talks to the engine needs (the relay, the worker, anything that reads run outcomes):
 
@@ -346,7 +351,10 @@ Before you turn it on, write down how the old path behaves at that seam: the fix
 - **Outbox lag:** the oldest-pending query in section 6.
 - **Duplicates and coalescing:** pushes the external system received twice; runs ending `cancelled` because a newer edit replaced them.
 
-Turning the flag off stops new messages. Messages already in the outbox are still delivered, so leave the relay and worker running until the oldest-pending query returns `null`.
+Turning the flag off stops new messages. Messages already in the outbox are still delivered, so leave the relay and worker running until the outbox and the engine are both drained:
+
+- No row is pending: the oldest-pending query in section 6 returns `null`, and the scheduled-rows query ([design § 8.5](../design/kyu-requirements-and-design.md#85-operations), rows with `publish_at > now()`) returns no rows. The oldest-pending query skips future `publish_at` rows and paused tenants' rows, so it alone is not enough.
+- The engine has nothing in flight: a row is marked published once the engine accepts it, while its run may still be queued. The engine dashboard's run list for the subscription shows no queued or running run, or `kyu.runs.forEnvelope(id)` returns only `completed`, `failed` or `cancelled` outcomes ([`runOutcomes.ts`](../../packages/sdk/src/consume/runOutcomes.ts), `RunOutcome`).
 
 ## 10. Checks
 
@@ -355,7 +363,7 @@ See each delivery rule hold in dev before you widen the flag. Each one also has 
 | Rule | How to see it in dev | SDK test |
 |---|---|---|
 | A rolled-back publish never arrives | In a script: `BEGIN`, `publish()`, `ROLLBACK`. Then `SELECT count(*) FROM kyu_outbox WHERE id = '<envelope id>'` is 0 and `kyu.runs.forEnvelope('<envelope id>')` returns `[]` | [`publish.integration.test.ts`](../../packages/sdk/src/outbox/publish.integration.test.ts): "a rolled-back transaction leaves no outbox row" |
-| A redelivery is idempotent | Replay a completed run from the engine dashboard. The external system shows no second change, and `kyu_processed` still has one row for that envelope id and handler | [`onceById.integration.test.ts`](../../packages/sdk/src/outbox/onceById.integration.test.ts): "runs the body once across repeated calls for the same envelope id and handler" |
+| A redelivery is idempotent | Replay a completed run from the engine dashboard (a local engine's dashboard is at `http://localhost:8888` after `pnpm hatchet:up`; the seeded admin sign-in is in the header comment of [`infra/hatchet/compose.yaml`](../../infra/hatchet/compose.yaml)). The external system shows no second change, and `kyu_processed` still has one row for that envelope id and handler | [`onceById.integration.test.ts`](../../packages/sdk/src/outbox/onceById.integration.test.ts): "runs the body once across repeated calls for the same envelope id and handler" |
 | The tenant id reaches the handler unchanged | Log `ctx.envelope.tenantId` in the handler and compare it with the `tenantId` you published. The SDK fails a run whose metadata tenant and envelope tenant disagree | [`subscribe.integration.test.ts`](../../packages/sdk/src/consume/subscribe.integration.test.ts): "reaches the handler with the tenant id unchanged (flow 5)" |
 | Ordering holds per key | Make three quick edits to one record. With `fifo`, the handler logs them in publish order. With `cancel_in_progress`, the earlier runs end `cancelled` and the external system holds the last edit | [`subscribe.integration.test.ts`](../../packages/sdk/src/consume/subscribe.integration.test.ts): "preserves publish order per key (flow 7)" and "lets only the newest complete (flow 8)" |
 
