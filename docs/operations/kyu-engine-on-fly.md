@@ -216,11 +216,12 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
     3. Create it in the dashboard: open the tenant switcher at the top right (it shows the current
        tenant's name), choose **New Tenant**, type the name under **Tenant Name**, and press **Get
        started**. The dashboard opens the new tenant's Overview. The signed-in user becomes the
-       tenant's only Owner (`create.go:88-92`); invite anyone else from that tenant's **Settings >
-       Members**. The dashboard adds five random characters to the tenant's slug; workers do not
+       tenant's only Owner (`tenants/create.go:88-92`); invite anyone else from that tenant's **Settings >
+       Members**. The dashboard adds `-` and up to five random characters to the tenant's slug; workers do not
        use the slug, and the switcher shows the name.
 
-       Or through the API, from a shell with `jq`:
+       Or through the API, from a bash shell with `jq` (run this in bash, not zsh: `read -p` is
+       bash-only):
 
        ```bash
        ENGINE=https://<engine-app>.fly.dev
@@ -234,12 +235,13 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
        unset ADMIN_PASSWORD
        jq -n --arg name "$TENANT" '{name: $name, slug: $name}' |
          curl -s -b "$JAR" -X POST "$ENGINE/api/v1/tenants" -H 'Content-Type: application/json' --data-binary @- |
-         jq '{id: .metadata.id, name, slug}'
+         jq '{id: .metadata.id, name, slug, errors}'
        rm -f "$JAR"
        ```
 
-       `login 200` means signed in. A slug already in use answers `Tenant with that slug already
-       exists.` (`create.go:33-45`). A worker token cannot create a tenant: the engine answers 403
+       `login 200` means signed in; any other code means sign-in failed and
+       the rest prints nulls. A slug already in use shows `Tenant with that slug already exists.`
+       under `errors` (`tenants/create.go:33-45`). A worker token cannot create a tenant: the engine answers 403
        (`api/v1/server/authn/middleware.go:310`).
     4. Read the tenant id from the dashboard's address bar while the new tenant is selected: it is
        the part after `/tenants/` (`/tenants/<id>/overview`). **Settings > General** does not show
@@ -251,9 +253,11 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
        an engineer the CTO has given an SSH certificate for the org, runs it (step 8). A token lasts
        90 days (`cmd/hatchet-admin/cli/token.go:65`): note the date and mint a new one before then.
        Each mint adds a token named `default` under that tenant's **Settings > API Tokens**, where
-       an old one can be revoked. On the local stack a mistyped id printed no token and failed
-       with `violates foreign key constraint`; if the output on dev is anything but a token, check
-       the id.
+       an old one can be revoked. Check the command's exit status, since the output is not
+       shown: non-zero means no token. On the local stack a mistyped id exits 1 with `violates
+       foreign key constraint` on stderr. On Fly, `token.sh` keeps only the last output line, so
+       a failed mint may leave an error line in the secret store. If the exit status was
+       non-zero, fix the id and mint again rather than trusting the stored value.
     6. Give the project its tenant name and id, and tell it the token is in its secret store. It
        sets the variables in `docs/operations/first-consumer.md` section 8 and keeps its own
        namespace.
@@ -266,7 +270,7 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
        | Per tenant | Engine-wide, the same for every tenant |
        |---|---|
        | worker tokens, workers, workflows and runs, the dashboard view, members, alert switches (failed runs, expiring tokens) | retention (`SERVER_LIMITS_DEFAULT_TENANT_RETENTION_PERIOD`, *Retention* below) |
-       | the project's namespace, which only separates processes inside one tenant | limits: the engine writes default limits for the new tenant (`create.go:83`) but enforces none, because `SERVER_ENFORCE_LIMITS` is unset |
+       | the project's namespace, which only separates processes inside one tenant | limits: the engine writes default limits for the new tenant (`tenants/create.go:83`) but enforces none, because `SERVER_ENFORCE_LIMITS` is unset |
        | | user accounts, signup and the company-domain restriction, tenant creation (`SERVER_ALLOW_CREATE_TENANT`), the Slack app for alerts |
        | | the machine, the database cluster and RabbitMQ: one project's load slows every tenant |
 
@@ -285,7 +289,11 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
         ```
 
         Start any Kyu worker in that shell (the shop example's `pnpm worker`, see its README "Run
-        it locally", or the worker in `first-consumer.md` section 7) and do sub-step 7. Local
+        it locally", or the worker in `first-consumer.md` section 7) and do sub-step 7. The
+        shop README's "Run it locally" starts by exporting a token for the boot tenant and
+        tells you to re-export the same variables for the worker: skip those exports and keep
+        this shell's `HATCHET_CLIENT_TOKEN`, or the worker lands under the boot tenant and
+        sub-step 7 fails. Local
         tenants cannot be removed either, and `pnpm hatchet:down` keeps them.
 
     Rehearsed on the local stack on 2026-10-02 (issue #15): the seeded admin created one tenant
