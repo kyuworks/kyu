@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { readdir } from 'node:fs/promises'
 import { defineEvent } from '@kyuworks/schemas'
-import { Client, Pool } from 'pg'
+import { Client, Pool, type ClientBase } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { createHatchetClient } from '../hatchet.js'
@@ -56,24 +56,83 @@ function newWorkerId(): string {
   return `worker-${randomUUID()}`
 }
 
-async function backendPid(client: Client): Promise<number> {
+async function backendPid(client: ClientBase): Promise<number> {
   const result = await client.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')
   const row = result.rows.at(0)
   if (row === undefined) throw new Error('pg_backend_pid() returned no row')
   return row.pid
 }
 
+// Server connections the SDK steps ran on; the last case asserts there was more than one.
+const serverPids = new Set<number>()
+let holdRounds = 0
+
+// PgBouncer hands a client the server released last, so back-to-back steps would share one server and
+// hide session state. Holding 1 to 3 open transactions while `run` goes makes the step take another server.
+async function onOtherServers<T>(databaseName: string, run: () => Promise<T>): Promise<T> {
+  const holders: Client[] = []
+  try {
+    for (let held = 0; held <= holdRounds % 3; held += 1) {
+      const holder = poolerClient(databaseName)
+      await holder.connect()
+      await holder.query('BEGIN')
+      holders.push(holder)
+    }
+    holdRounds += 1
+    return await run()
+  } finally {
+    for (const holder of holders) {
+      await holder.query('ROLLBACK')
+      await holder.end()
+    }
+  }
+}
+
+async function onOtherLaneServers<T>(run: () => Promise<T>): Promise<T> {
+  return onOtherServers(databaseNameOf(POOLER_URL), run)
+}
+
+// Best effort: the pool's statements may land on another server than this probe, unlike a pid read inside a transaction.
+async function recordPoolServer(): Promise<void> {
+  const result = await pool.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')
+  const row = result.rows.at(0)
+  if (row !== undefined) serverPids.add(row.pid)
+}
+
+async function claimRows(staleAfterMs: number, workerId = newWorkerId()) {
+  return onOtherLaneServers(async () => {
+    await recordPoolServer()
+    return claimPendingRows(pool, { limit: 10, workerId, staleAfterMs })
+  })
+}
+
+// The relay polls from the moment it starts, so it starts inside the held window.
+async function runRelayTick(workerId: string, staleClaimMs = 300_000) {
+  return onOtherLaneServers(async () => {
+    await recordPoolServer()
+    const relay = startRelay({ db: pool, hatchet, workerId, pollIntervalMs: 60_000, staleClaimMs })
+    try {
+      return await relay.tick()
+    } finally {
+      await relay.stop()
+    }
+  })
+}
+
 // As a consumer's service seam does it: a pool client, BEGIN, publish, COMMIT.
 async function publishCommitted(n: number, tenantId: string | null): Promise<string> {
-  const tx = await pool.connect()
-  try {
-    await tx.query('BEGIN')
-    const envelope = await publisher.publish(tx, thingHappened, { n }, { tenantId })
-    await tx.query('COMMIT')
-    return envelope.id
-  } finally {
-    tx.release()
-  }
+  return onOtherLaneServers(async () => {
+    const tx = await pool.connect()
+    try {
+      await tx.query('BEGIN')
+      serverPids.add(await backendPid(tx))
+      const envelope = await publisher.publish(tx, thingHappened, { n }, { tenantId })
+      await tx.query('COMMIT')
+      return envelope.id
+    } finally {
+      tx.release()
+    }
+  })
 }
 
 beforeAll(async () => {
@@ -152,7 +211,7 @@ describe('SDK database paths through a transaction-mode pooler', () => {
     const tenantId = randomUUID()
     const envelopeId = await publishCommitted(1, tenantId)
 
-    const claimed = await claimPendingRows(pool, { limit: 10, workerId: newWorkerId(), staleAfterMs: 300_000 })
+    const claimed = await claimRows(300_000)
 
     expect(claimed.rows.map((row) => row.id)).toEqual([envelopeId])
     expect(claimed.rows[0]?.tenant_id).toBe(tenantId)
@@ -160,23 +219,27 @@ describe('SDK database paths through a transaction-mode pooler', () => {
   })
 
   it('a publish rolled back through the pooler is never claimable', async () => {
-    const tx = await pool.connect()
     let envelopeId = ''
-    try {
-      await tx.query('BEGIN')
-      const envelope = await publisher.publish(tx, thingHappened, { n: 2 }, { tenantId: null })
-      envelopeId = envelope.id
-      // Positive control: the row exists inside the transaction, so a publish that wrote nothing cannot pass.
-      const inside = await tx.query<{ count: number }>('SELECT count(*)::int AS count FROM kyu_outbox WHERE id = $1', [
-        envelope.id,
-      ])
-      expect(inside.rows[0]?.count).toBe(1)
-      await tx.query('ROLLBACK')
-    } finally {
-      tx.release()
-    }
+    await onOtherLaneServers(async () => {
+      const tx = await pool.connect()
+      try {
+        await tx.query('BEGIN')
+        serverPids.add(await backendPid(tx))
+        const envelope = await publisher.publish(tx, thingHappened, { n: 2 }, { tenantId: null })
+        envelopeId = envelope.id
+        // Positive control: the row exists inside the transaction, so a publish that wrote nothing cannot pass.
+        const inside = await tx.query<{ count: number }>(
+          'SELECT count(*)::int AS count FROM kyu_outbox WHERE id = $1',
+          [envelope.id],
+        )
+        expect(inside.rows[0]?.count).toBe(1)
+        await tx.query('ROLLBACK')
+      } finally {
+        tx.release()
+      }
+    })
 
-    const claimed = await claimPendingRows(pool, { limit: 10, workerId: newWorkerId(), staleAfterMs: 0 })
+    const claimed = await claimRows(0)
     expect(claimed.rows).toEqual([])
     const after = await direct.query<{ count: number }>('SELECT count(*)::int AS count FROM kyu_outbox WHERE id = $1', [
       envelopeId,
@@ -190,14 +253,9 @@ describe('SDK database paths through a transaction-mode pooler', () => {
     const second = await publishCommitted(4, tenantId)
     const workerId = newWorkerId()
 
-    const relay = startRelay({ db: pool, hatchet, workerId, pollIntervalMs: 60_000 })
-    try {
-      const result = await relay.tick()
-      expect(result.pushed).toBe(2)
-      expect(result.failed).toBe(0)
-    } finally {
-      await relay.stop()
-    }
+    const result = await runRelayTick(workerId)
+    expect(result.pushed).toBe(2)
+    expect(result.failed).toBe(0)
 
     const rows = await direct.query<{ claimed_by: string | null; published_at: Date | null }>(
       'SELECT claimed_by, published_at FROM kyu_outbox WHERE id = ANY($1::uuid[])',
@@ -206,29 +264,24 @@ describe('SDK database paths through a transaction-mode pooler', () => {
     expect(rows.rows).toHaveLength(2)
     expect(rows.rows.every((row) => row.claimed_by === workerId && row.published_at !== null)).toBe(true)
 
-    const again = await claimPendingRows(pool, { limit: 10, workerId: newWorkerId(), staleAfterMs: 0 })
+    const again = await claimRows(0)
     expect(again.rows).toEqual([])
   })
 
   it('a stale claim is taken over through the pooler, and the old worker cannot mark it', async () => {
     const envelopeId = await publishCommitted(5, null)
     const deadWorker = newWorkerId()
-    const firstClaim = await claimPendingRows(pool, { limit: 10, workerId: deadWorker, staleAfterMs: 300_000 })
+    const firstClaim = await claimRows(300_000, deadWorker)
     expect(firstClaim.rows.map((row) => row.id)).toEqual([envelopeId])
 
     // The claim is a stamp on the row, not a lock on a server connection, so it holds across the pooler.
-    const whileFresh = await claimPendingRows(pool, { limit: 10, workerId: newWorkerId(), staleAfterMs: 300_000 })
+    const whileFresh = await claimRows(300_000)
     expect(whileFresh.rows).toEqual([])
 
     await new Promise<void>((resolve) => setTimeout(resolve, 600))
     const liveWorker = newWorkerId()
-    const relay = startRelay({ db: pool, hatchet, workerId: liveWorker, pollIntervalMs: 60_000, staleClaimMs: 500 })
-    try {
-      const result = await relay.tick()
-      expect(result.pushed).toBe(1)
-    } finally {
-      await relay.stop()
-    }
+    const result = await runRelayTick(liveWorker, 500)
+    expect(result.pushed).toBe(1)
 
     const shipped = await direct.query<{ claimed_by: string | null; published_at: Date | null }>(
       'SELECT claimed_by, published_at FROM kyu_outbox WHERE id = $1',
@@ -238,7 +291,7 @@ describe('SDK database paths through a transaction-mode pooler', () => {
     const publishedAt = shipped.rows[0]?.published_at ?? null
     expect(publishedAt).not.toBeNull()
 
-    await markPublished(pool, deadWorker, [envelopeId])
+    await onOtherLaneServers(() => markPublished(pool, deadWorker, [envelopeId]))
     const after = await direct.query<{ published_at: Date | null }>(
       'SELECT published_at FROM kyu_outbox WHERE id = $1',
       [envelopeId],
@@ -249,19 +302,21 @@ describe('SDK database paths through a transaction-mode pooler', () => {
   it('onceById() through the pooler runs the body once for one envelope id', async () => {
     const envelopeId = randomUUID()
     let calls = 0
-    const handle = async (): Promise<boolean> => {
-      const tx = await pool.connect()
-      try {
-        await tx.query('BEGIN')
-        const outcome = await onceById(tx, envelopeId, 'pooler-handler', async () => {
-          calls += 1
-        })
-        await tx.query('COMMIT')
-        return outcome.ran
-      } finally {
-        tx.release()
-      }
-    }
+    const handle = async (): Promise<boolean> =>
+      onOtherLaneServers(async () => {
+        const tx = await pool.connect()
+        try {
+          await tx.query('BEGIN')
+          serverPids.add(await backendPid(tx))
+          const outcome = await onceById(tx, envelopeId, 'pooler-handler', async () => {
+            calls += 1
+          })
+          await tx.query('COMMIT')
+          return outcome.ran
+        } finally {
+          tx.release()
+        }
+      })
 
     expect(await handle()).toBe(true)
     expect(await handle()).toBe(false)
@@ -275,33 +330,34 @@ describe('SDK database paths through a transaction-mode pooler', () => {
 
   it("tenants.pause holds a tenant's rows through the pooler, and resume releases them", async () => {
     const tenantId = randomUUID()
-    await publisher.tenants.pause(pool, tenantId)
-    expect(await publisher.tenants.isPaused(pool, tenantId)).toBe(true)
+    await onOtherLaneServers(() => publisher.tenants.pause(pool, tenantId))
+    expect(await onOtherLaneServers(() => publisher.tenants.isPaused(pool, tenantId))).toBe(true)
     const envelopeId = await publishCommitted(6, tenantId)
 
-    const held = await claimPendingRows(pool, { limit: 10, workerId: newWorkerId(), staleAfterMs: 0 })
+    const held = await claimRows(0)
     expect(held.rows).toEqual([])
 
-    await publisher.tenants.resume(pool, tenantId)
-    expect(await publisher.tenants.isPaused(pool, tenantId)).toBe(false)
-    const released = await claimPendingRows(pool, { limit: 10, workerId: newWorkerId(), staleAfterMs: 0 })
+    await onOtherLaneServers(() => publisher.tenants.resume(pool, tenantId))
+    expect(await onOtherLaneServers(() => publisher.tenants.isPaused(pool, tenantId))).toBe(false)
+    const released = await claimRows(0)
     expect(released.rows.map((row) => row.id)).toEqual([envelopeId])
   })
 
   it('applies every migration file to a fresh database through the pooler', async () => {
-    const migrationDatabase = `${databaseNameOf(POOLER_URL)}_mig`
+    const migrationDatabase = `${databaseNameOf(POOLER_URL)}_mig_${randomBytes(4).toString('hex')}`
     if (!/^kyu_test[a-z0-9_]*$/.test(migrationDatabase)) {
       throw new Error(`Refusing to create or drop ${migrationDatabase}: not a kyu_test database name.`)
     }
     const admin = new Client({ connectionString: withDatabase(DIRECT_URL, 'postgres') })
     await admin.connect()
+    let created = false
     try {
-      await admin.query(`DROP DATABASE IF EXISTS "${migrationDatabase}" WITH (FORCE)`)
       await admin.query(`CREATE DATABASE "${migrationDatabase}"`)
+      created = true
       const viaPooler = poolerClient(migrationDatabase)
       await viaPooler.connect()
       try {
-        const applied = await applyMigrations(viaPooler, MIGRATIONS_DIRECTORY)
+        const applied = await onOtherServers(migrationDatabase, () => applyMigrations(viaPooler, MIGRATIONS_DIRECTORY))
         const files = (await readdir(MIGRATIONS_DIRECTORY)).filter((name) => name.endsWith('.sql')).sort()
         expect(files.length).toBeGreaterThan(0)
         expect(applied).toEqual(files)
@@ -314,9 +370,15 @@ describe('SDK database paths through a transaction-mode pooler', () => {
         await viaPooler.end()
       }
     } finally {
-      // FORCE ends the server connection PgBouncer still holds to this database.
-      await admin.query(`DROP DATABASE IF EXISTS "${migrationDatabase}" WITH (FORCE)`)
+      // FORCE ends the server connection PgBouncer still holds to the database this test created, and only that one.
+      if (created) await admin.query(`DROP DATABASE IF EXISTS "${migrationDatabase}" WITH (FORCE)`)
       await admin.end()
     }
+  })
+
+  it('the SDK steps ran on more than one server connection', async () => {
+    for (let n = 0; n < 4; n += 1) await publishCommitted(n, null)
+    await claimRows(0)
+    expect(serverPids.size).toBeGreaterThan(1)
   })
 })

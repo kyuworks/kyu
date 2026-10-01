@@ -89,8 +89,11 @@ services:
       AUTH_TYPE: scram-sha-256
       POOL_MODE: transaction
       LISTEN_PORT: '6432'
-      # 0 turns off PgBouncer's prepared-statement tracking, so a named statement fails here.
+      # 0 turns off PgBouncer's prepared-statement tracking, so a named statement run on a
+      # server other than the one that prepared it fails here (the pooler test forces that).
       MAX_PREPARED_STATEMENTS: '0'
+      # Idle server connections end after 10 s, so an interrupted run does not keep the lane database in use.
+      SERVER_IDLE_TIMEOUT: '10'
     healthcheck:
       test: ['CMD', 'pg_isready', '-h', '127.0.0.1', '-p', '6432', '-U', 'hatchet', '-d', 'hatchet']
       interval: 5s

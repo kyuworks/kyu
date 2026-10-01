@@ -70,6 +70,7 @@ export default async function setup(): Promise<void> {
       if (message.includes('being accessed by other users')) {
         throw new Error(
           `Database ${databaseName} is in use by another session (another worktree's run, or an open psql). ` +
+            `PgBouncer's idle server connections can be the holder too (application_name kyu-pooler-test); they close on their own after about 10 seconds. ` +
             `Give this lane its own database: KYU_TEST_DATABASE_URL=postgresql://…/kyu_test_<lane>.`,
           { cause: error },
         )

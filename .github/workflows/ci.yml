@@ -117,6 +117,7 @@ jobs:
           POOL_MODE: transaction
           LISTEN_PORT: '6432'
           MAX_PREPARED_STATEMENTS: '0'
+          SERVER_IDLE_TIMEOUT: '10'
         ports:
           - 6432:6432
         options: >-
