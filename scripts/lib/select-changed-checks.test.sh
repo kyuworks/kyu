@@ -153,4 +153,15 @@ assert_output_contains "a ROOT_DIR export alongside it does not override SELECT_
   "lint:packages/sdk" \
   env SELECT_CHANGED_ROOT="${REPO}" ROOT_DIR="${DECOY}" CHECK_CHANGED_RANGE="${REPO_BASE}...HEAD" node "${SELECTOR}"
 
+# --- A package manifest change selects the package gates ---
+MANIFEST="${WORK}/manifest"
+init_fixture "${MANIFEST}"
+printf '\n' >> "${MANIFEST}/packages/sdk/package.json"
+git -C "${MANIFEST}" add packages/sdk/package.json
+git -C "${MANIFEST}" commit -qm "touch sdk manifest"
+assert_output_contains "manifest change selects the package versions gate" \
+  "gate:package-versions" run_select "${MANIFEST}" "HEAD~1...HEAD"
+assert_output_contains "manifest change selects the package exports gate" \
+  "gate:package-exports" run_select "${MANIFEST}" "HEAD~1...HEAD"
+
 gate_test_finish

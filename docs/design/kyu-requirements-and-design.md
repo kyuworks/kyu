@@ -507,7 +507,7 @@ Synchronous third-party lookups get a shared HTTP client with timeouts, retries 
 
 ## 14. Open questions
 
-1. **npm scope and home — resolved.** The `@kyuworks` npm scope is registered. The SDK lives in this repository, public at `kyuworks/kyu`, with the Hatchet deployment config alongside.
+1. **npm scope and home — resolved.** The `@kyuworks` npm scope is registered. The SDK lives in this repository, public at `kyuworks/kyu`, with the Hatchet deployment config alongside. Both packages publish to npm as public packages from a tag on `main` by trusted publishing (#2).
 2. **Relay placement — resolved 2026-09-22.** A sidecar process per project per environment ships the relay. A project with a single long-lived process may run it in-process instead (section 8.3).
 3. **Outbox retention and the audit question.** Is the outbox also the producer's durable event log, or is Hatchet's history enough?
 4. **Non-TypeScript projects.** Which languages will the other company projects use, and does the outbox SDK need a second implementation soon?

@@ -1,13 +1,16 @@
 {
   "name": "@kyuworks/sdk",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Kyu client SDK: publish through a transactional outbox, subscribe with Hatchet, run durable handlers.",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kyuworks/kyu.git",
     "directory": "packages/sdk"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,6 +27,7 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo",
+    "prepack": "tsc -b",
     "typecheck": "tsc -b --pretty false",
     "typecheck:tests": "tsc -b --pretty false tsconfig.test.json",
     "test": "vitest run",
