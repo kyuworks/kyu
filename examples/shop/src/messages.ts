@@ -43,6 +43,6 @@ export const notifyStaff = defineCommand({
   name: 'shop.staff.notify',
   version: 1,
   // stepId reuses workflow/definition.ts's workflowNodeIdSchema: a shop step
-  // id or a Camba node id, one rule (#157).
+  // id or a CRM flow node id, one rule (#157).
   data: z.object({ runId: z.uuidv7(), versionId: z.uuid(), stepId: workflowNodeIdSchema, orderId: z.uuid() }),
 })

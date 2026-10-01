@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Client } from 'pg'
-import { BRANCH_FLOW, DURATION_FLOW } from './cambaFixtures.js'
-import { PULL_BACK_AND_REASSIGN } from './cambaTemplate.js'
+import { BRANCH_FLOW, DURATION_FLOW, ORDER_FOLLOW_UP_FLOW } from './crmFlowFixtures.js'
 
 export interface WorkflowFixtureSteps {
   waitSeconds: number
@@ -177,17 +176,17 @@ export async function insertTwoDelayWorkflowDefinition(
   return { definitionId, versionId }
 }
 
-// Camba's a CRM flow template, stored verbatim (issue #157).
-export async function insertCambaFlowDefinition(admin: Client, tenantId: string): Promise<InsertedDefinition> {
+// The order follow-up flow, stored as written (issue #157).
+export async function insertCrmFlowDefinition(admin: Client, tenantId: string): Promise<InsertedDefinition> {
   const definitionId = randomUUID()
   const versionId = randomUUID()
   await admin.query(
     'INSERT INTO shop_workflow_definition (id, tenant_id, name, enabled, current_version_id) VALUES ($1, $2, $3, false, NULL)',
-    [definitionId, tenantId, 'camba-CRM flow'],
+    [definitionId, tenantId, 'crm-order-follow-up'],
   )
   await admin.query(
     'INSERT INTO shop_workflow_version (id, definition_id, tenant_id, version, steps) VALUES ($1, $2, $3, 1, $4)',
-    [versionId, definitionId, tenantId, JSON.stringify(PULL_BACK_AND_REASSIGN)],
+    [versionId, definitionId, tenantId, JSON.stringify(ORDER_FOLLOW_UP_FLOW)],
   )
   await admin.query('UPDATE shop_workflow_definition SET enabled = true, current_version_id = $2 WHERE id = $1', [
     definitionId,
@@ -196,14 +195,13 @@ export async function insertCambaFlowDefinition(admin: Client, tenantId: string)
   return { definitionId, versionId }
 }
 
-// Camba's branch test fixture, stored verbatim (issue #157 PR B,
-// the consuming project's tests).
-export async function insertCambaBranchDefinition(admin: Client, tenantId: string): Promise<InsertedDefinition> {
+// The branch fixture, stored as written (issue #157 PR B).
+export async function insertCrmBranchDefinition(admin: Client, tenantId: string): Promise<InsertedDefinition> {
   const definitionId = randomUUID()
   const versionId = randomUUID()
   await admin.query(
     'INSERT INTO shop_workflow_definition (id, tenant_id, name, enabled, current_version_id) VALUES ($1, $2, $3, false, NULL)',
-    [definitionId, tenantId, 'camba-branch'],
+    [definitionId, tenantId, 'crm-branch'],
   )
   await admin.query(
     'INSERT INTO shop_workflow_version (id, definition_id, tenant_id, version, steps) VALUES ($1, $2, $3, 1, $4)',
@@ -216,14 +214,13 @@ export async function insertCambaBranchDefinition(admin: Client, tenantId: strin
   return { definitionId, versionId }
 }
 
-// Camba's duration-wait test fixture, stored verbatim (issue #157 PR B,
-// the consuming project's tests).
-export async function insertCambaDurationDefinition(admin: Client, tenantId: string): Promise<InsertedDefinition> {
+// The duration-wait fixture, stored as written (issue #157 PR B).
+export async function insertCrmDurationDefinition(admin: Client, tenantId: string): Promise<InsertedDefinition> {
   const definitionId = randomUUID()
   const versionId = randomUUID()
   await admin.query(
     'INSERT INTO shop_workflow_definition (id, tenant_id, name, enabled, current_version_id) VALUES ($1, $2, $3, false, NULL)',
-    [definitionId, tenantId, 'camba-duration-wait'],
+    [definitionId, tenantId, 'crm-duration-wait'],
   )
   await admin.query(
     'INSERT INTO shop_workflow_version (id, definition_id, tenant_id, version, steps) VALUES ($1, $2, $3, 1, $4)',
@@ -243,7 +240,7 @@ export interface InsertLeadProjectionInput {
 }
 
 // Eleven fields fixed, only scoreBand varies: the branch fixture's one
-// condition is the only field either test reads (workflow/cambaConditions.ts).
+// condition is the only field either test reads (workflow/crmFlowConditions.ts).
 const DEFAULT_LEAD_PROJECTION = {
   channel: 'web',
   source: 'organic',

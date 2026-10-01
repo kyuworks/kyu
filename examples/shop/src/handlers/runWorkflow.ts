@@ -3,8 +3,8 @@ import { NonRetryableError } from '@kyuworks/sdk'
 import type { Pool } from 'pg'
 import { withTransaction } from '../db/pool.js'
 import { notifyStaff, workflowTriggered } from '../messages.js'
-import type { FlowNode } from '../workflow/cambaDefinition.js'
-import { flowActionKey, flowBranchExit, flowExitTarget, flowNodeById } from '../workflow/cambaDefinition.js'
+import type { FlowNode } from '../workflow/crmFlowDefinition.js'
+import { flowActionKey, flowBranchExit, flowExitTarget, flowNodeById } from '../workflow/crmFlowDefinition.js'
 import type { WorkflowStep } from '../workflow/definition.js'
 import { stepById } from '../workflow/definition.js'
 import {
@@ -71,8 +71,8 @@ async function runWorkflow(pool: Pool, kyu: Kyu, ctx: TriggerContext): Promise<v
     throw new NonRetryableError(`${RUN_WORKFLOW_NAME}: run ${runId} did not reach an end step`)
   }
 
-  // A Camba flow (#157): same shape, walked from entryNodeId instead of start.
-  // Unlike definition.ts's workflowDefinitionSchema, cambaDefinition.ts's
+  // A CRM flow (#157): same shape, walked from entryNodeId instead of start.
+  // Unlike definition.ts's workflowDefinitionSchema, crmFlowDefinition.ts's
   // trust edge does not walk for a cycle (a two-action `next` cycle parses
   // fine): this hop bound is what turns a cycle into a NonRetryableError,
   // at run time instead of at parse time.
@@ -85,8 +85,8 @@ async function runWorkflow(pool: Pool, kyu: Kyu, ctx: TriggerContext): Promise<v
 }
 
 // A branch's exit is never null: the shop's whenTrue/whenFalse always name a
-// step (workflow/definition.ts), and the Camba trust edge refuses a null
-// branch target at parse time (cambaFlowSchema's superRefine). Only an
+// step (workflow/definition.ts), and the CRM flow trust edge refuses a null
+// branch target at parse time (crmFlowSchema's superRefine). Only an
 // `end` step's ledger row legitimately carries a null exit. A null here
 // would otherwise read as "the run is finished" one level up and end it silently.
 function branchExitStepId(runId: string, stepId: string, exitStepId: string | null): string {
@@ -218,7 +218,7 @@ async function walkStep(
             kind: step.kind,
             exitStepId: null,
           })
-          // A shop `end` step has no outcome; only a Camba `end` node does (0006_shop.sql).
+          // A shop `end` step has no outcome; only a CRM flow `end` node does (0006_shop.sql).
           await finishRun(tx, run.runId, null)
         }),
       )
@@ -248,7 +248,7 @@ async function walkFlowNode(
 ): Promise<string | undefined> {
   switch (node.kind) {
     case 'action': {
-      // Camba's seven action executors are out of scope (ADR decision 8): the
+      // The CRM flow engine's seven action executors are out of scope (ADR decision 8): the
       // proof is the walker, so every action reuses the shop's one
       // notify-staff command and records the action key it would have run.
       await withTransaction(pool, (tx) =>
@@ -298,9 +298,9 @@ async function walkFlowNode(
     }
     case 'wait': {
       if (node.wait === 'duration') {
-        // The shortest Camba duration wait (1 minute) is exactly the shop's
+        // The shortest CRM flow duration wait (1 minute) is exactly the shop's
         // hand-off threshold, so every duration wait ends here; none parks
-        // in sleepFor (docs/proofs/2026-09-22-camba-flow-on-kyu.md).
+        // in sleepFor (docs/proofs/2026-09-22-crm-flow-on-kyu.md).
         const exitNodeId = requireFlowExitTarget(node, 'done')
         const durationSeconds = node.input.minutes * 60
 
