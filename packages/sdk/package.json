@@ -4,6 +4,11 @@
   "description": "Kyu client SDK: publish through a transactional outbox, subscribe with Hatchet, run durable handlers.",
   "type": "module",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kyuworks/kyu.git",
+    "directory": "packages/sdk"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

@@ -2,7 +2,7 @@
 
 **Status:** accepted on 2026-09-21
 **Date:** 2026-09-20
-**Parent:** [#111](https://github.com/Camba-nz/kyu/issues/111)
+**Parent:** [#1](https://github.com/kyuworks/kyu/issues/1)
 **This is not** a decision about worker pools or engine-side rate limits for third-party API calls; that is its own record.
 
 A consuming project runs every user-defined workflow definition through one durable handler that reads the definition as data and walks its steps. It does not compile a definition into a Hatchet workflow of its own.
@@ -54,16 +54,16 @@ The SDK already gives a durable handler what a run needs: `sleepFor`, `waitFor` 
 **Negative**
 
 - The interpreter is one code path for every tenant's workflows. A bug in it reaches all of them.
-- One interpreter serves every business tenant, so a busy tenant can crowd out the quiet ones. The mitigation now exists: `concurrency: { key: TENANT_CONCURRENCY_KEY, maxRuns: 1, strategy: 'round-robin' }` on the interpreter's subscription ([#104](https://github.com/Camba-nz/kyu/issues/104)).
+- One interpreter serves every business tenant, so a busy tenant can crowd out the quiet ones. The mitigation now exists: `concurrency: { key: TENANT_CONCURRENCY_KEY, maxRuns: 1, strategy: 'round-robin' }` on the interpreter's subscription (archived issue 104).
 - A run replays. Parked in `sleepFor` or `waitFor`, it is evicted when its worker stops and continues on the next worker; a body that reaches a wait while its worker is stopping fails that attempt with `WorkerStoppingError` and retries, because `durable()` defaults `retries` to 3 (`packages/sdk/src/consume/durable.ts`). That is why every step effect must go through `onceById`.
 - Branch conditions are code, so a new kind of condition is a deploy, not a definition edit.
 - The SDK lacks six things the interpreter needs. Each is its own issue:
-  - cron and scheduled publishing — [#98](https://github.com/Camba-nz/kyu/issues/98)
-  - cancelling a run — [#99](https://github.com/Camba-nz/kyu/issues/99)
-  - a progress view rolled up by `correlationId` — [#100](https://github.com/Camba-nz/kyu/issues/100)
-  - fan-out child steps — [#101](https://github.com/Camba-nz/kyu/issues/101)
-  - a wait over several fields, re-checked on any event for the subject — [#102](https://github.com/Camba-nz/kyu/issues/102)
-  - delays that outlast the execution timeout, such as 30 days against the 24-hour default in `durable()` — [#113](https://github.com/Camba-nz/kyu/issues/113), answered in the addendum below
+  - cron and scheduled publishing — archived issue 98
+  - cancelling a run — archived issue 99
+  - a progress view rolled up by `correlationId` — archived issue 100
+  - fan-out child steps — archived issue 101
+  - a wait over several fields, re-checked on any event for the subject — archived issue 102
+  - delays that outlast the execution timeout, such as 30 days against the 24-hour default in `durable()` — archived issue 113, answered in the addendum below
 
 ---
 
@@ -97,12 +97,12 @@ The continuation keeps the trigger's message name, so it queues in the same conc
 
 A run waiting for its continuation is an outbox row with a future `publish_at`. `runs.forEnvelope` reports the run that handed off as `completed`, and the run's `finished_at` is still empty.
 
-Not solved here: cancelling a run, or disabling a definition, between the two runs. A scheduled outbox row cannot be recalled today. That is [#99](https://github.com/Camba-nz/kyu/issues/99).
+Not solved here: cancelling a run, or disabling a definition, between the two runs. A scheduled outbox row cannot be recalled today. That is archived issue 99.
 
 ---
 
 ## Addendum — 24 September 2026: cancelling a hand-off (#180, #185)
 
-Since [#180](https://github.com/Camba-nz/kyu/issues/180) ([PR #184](https://github.com/Camba-nz/kyu/pull/184)) and [#185](https://github.com/Camba-nz/kyu/issues/185) ([PR #189](https://github.com/Camba-nz/kyu/pull/189)), a cancel can recall a scheduled outbox row; the addendum above was written before that. Given the caller's own transaction, `kyu.runs.cancelForCorrelation(runId, { outbox: tx })` cancels the engine's runs under the run id and then every outbox row under it that the relay has not claimed, whether its `publish_at` is still ahead or has already passed. The hand-off continuation carries the run id as its correlation id, so it gets `cancelled_at` and the relay never ships it. Two kinds of row can still reach the engine: one the relay has already claimed, and one whose push the engine took but the relay recorded as failed. The README's paragraph that begins "Given the caller's own transaction" says when, and that a later cancel for the same id stops the run either one starts.
+Since archived issue 180 (archived PR 184) and archived issue 185 (archived PR 189), a cancel can recall a scheduled outbox row; the addendum above was written before that. Given the caller's own transaction, `kyu.runs.cancelForCorrelation(runId, { outbox: tx })` cancels the engine's runs under the run id and then every outbox row under it that the relay has not claimed, whether its `publish_at` is still ahead or has already passed. The hand-off continuation carries the run id as its correlation id, so it gets `cancelled_at` and the relay never ships it. Two kinds of row can still reach the engine: one the relay has already claimed, and one whose push the engine took but the relay recorded as failed. The README's paragraph that begins "Given the caller's own transaction" says when, and that a later cancel for the same id stops the run either one starts.
 
 Disabling a definition between the two runs is still not solved.
