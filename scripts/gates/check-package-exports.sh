@@ -18,7 +18,9 @@ FAIL=0
 for manifest in packages/*/package.json; do
   [ -f "${manifest}" ] || continue
   dir="$(dirname "${manifest}")"
-  if [ "$(node -p "require('./${manifest}').private === true")" = "true" ]; then
+  # An unreadable manifest aborts the gate (set -e); it is never treated as "not private".
+  private="$(MANIFEST="${manifest}" node -e 'process.stdout.write(String(JSON.parse(require("node:fs").readFileSync(process.env.MANIFEST, "utf8")).private === true))')"
+  if [ "${private}" = "true" ]; then
     continue
   fi
   out="${WORK}/$(basename "${dir}")"

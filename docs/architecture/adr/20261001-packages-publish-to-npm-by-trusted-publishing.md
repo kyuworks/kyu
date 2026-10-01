@@ -33,7 +33,8 @@ Every company project consumes the SDK, and nothing was installable: both manife
 2. **Lockstep versions.** Both manifests and `SDK_VERSION` carry one version. A bump is a reviewed PR; `check-package-versions.sh` fails a mismatch.
 3. **A tag publishes.** A `v<version>` tag on a commit that is on `main` and passed CI there runs `release.yml`, which checks the tag, checks the tarballs (`check-package-exports.sh`) and publishes with `pnpm publish --provenance`.
 4. **No token.** npm trusts the `release.yml` workflow of this repository on each package. The workflow references no secret.
-5. **First publish is manual.** npm needs the package to exist before a trusted publisher can be set, so the CTO reserves each name once from their own machine (README, "First release only").
+5. **First publish is manual.** npm needs the package to exist before a trusted publisher can be set ("The package you're configuring must already exist on the npm registry", [`npm trust`](https://docs.npmjs.com/cli/v11/commands/npm-trust)), so the CTO reserves each name once from their own machine (README, "First release only").
+6. **A partial failure is re-run.** If schemas is published and sdk is not, the operator re-runs the workflow: `pnpm -r publish` skips a version already on the registry.
 
 ---
 

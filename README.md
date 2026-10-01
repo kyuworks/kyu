@@ -30,7 +30,7 @@ pnpm check
 
 pnpm 11 refuses a version younger than a day (`minimumReleaseAge`, default 1440 minutes). To take a new Kyu release the day it ships, add to your `pnpm-workspace.yaml`: `minimumReleaseAgeExclude: ['@kyuworks/*']`.
 
-Apply the SDK's migrations with your own migration runner: every `*.sql` file in `MIGRATIONS_DIRECTORY` (exported by the SDK), in file-name order, each once. A released file never changes; a new version may add files, and its release notes say which one a feature needs.
+Apply the SDK's migrations with your own migration runner: every `*.sql` file in `MIGRATIONS_DIRECTORY` (exported by the SDK), in file-name order, each once. A released file never changes; a new version may add files, and the changelog in the GitHub release for the tag says which one a feature needs.
 
 ## Packages
 
@@ -114,7 +114,7 @@ Status: design accepted, SDK in progress. See the issues.
 
 1. Open a PR that sets the same version in `packages/schemas/package.json`, `packages/sdk/package.json` and `packages/sdk/src/version.ts` (`check-package-versions.sh` fails the PR otherwise).
 2. Merge it and wait for CI on `main` to pass.
-3. The CTO pushes tag `v<version>` on that commit. `release.yml` checks the tag is on `main`, that CI passed there, that the tag matches the version and that the tarballs are complete, then publishes both packages to npm with provenance. No token is involved: npm trusts this repository's `release.yml` (trusted publishing).
+3. The CTO pushes tag `v<version>` on that commit. `release.yml` checks the tag is on `main`, that CI passed there, that the tag matches the version and that the tarballs are complete, then publishes both packages to npm with provenance. No token is involved: npm trusts this repository's `release.yml` (trusted publishing). If the run fails part way (schemas published, sdk not), re-run the workflow: `pnpm -r publish` skips a version already on the registry and publishes only what is missing.
 
 ### First release only (CTO)
 
