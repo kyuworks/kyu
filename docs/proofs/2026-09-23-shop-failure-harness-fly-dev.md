@@ -54,7 +54,7 @@ pnpm --filter @kyuworks/shop harness --scenario tenant-load    --size report --o
 ```
 
 The committed `report-162b-engine-outage.json` has its `proxyTargetHost` replaced with a placeholder
-(2026-10-01), so a sha256 taken of the file before that change no longer matches.
+in the pre-public scrub (issue #223), so a sha256 taken of the file before that change no longer matches.
 
 - Commit: each run JSON's own `commitSha` reads `caa4dc155b382e08ba44062effdbeb7bc0ccb620-dirty` — the
   working tree at run time, one commit past this branch's first (`caa4dc1`), dirty with the

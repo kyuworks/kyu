@@ -25,6 +25,8 @@ SET_LINES="$(printf '%s\n' "${OUT}" | grep 'fly secrets set' || true)"
 BAD_SET_LINES="$(printf '%s\n' "${SET_LINES}" | grep -vE "='<REPLACE_ME>'\$" || true)"
 assert_eq "every fly secrets set line ends in ='<REPLACE_ME>'" "" "${BAD_SET_LINES}"
 gate_test_record "at least one fly secrets set line" "$([ -n "${SET_LINES}" ] && echo 0 || echo 1)"
+SET_LINE_COUNT="$(printf '%s\n' "${OUT}" | grep -c '^fly secrets set' || true)"
+assert_eq "three fly secrets set lines (database, host port, API URL)" 3 "${SET_LINE_COUNT}"
 
 TOKEN_LINE="$(printf '%s\n' "${OUT}" | grep 'HATCHET_CLIENT_TOKEN=' | grep 'fly secrets import' || true)"
 gate_test_record "token line uses fly secrets import --stage" "$([[ "${TOKEN_LINE}" == *'fly secrets import --stage'* ]] && echo 0 || echo 1)"

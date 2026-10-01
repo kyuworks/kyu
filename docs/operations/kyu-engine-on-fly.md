@@ -166,7 +166,7 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
        --stage -a <engine-app> <NAME> ...` (`fly secrets list -a <engine-app>` shows names
        only).
     2. Only once the old database is gone, put the `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS` line
-       back, as a secret set to the company domain (it moved out of `fly.toml` on 2026-10-01; see
+       back, as a secret set to the company domain (it moved out of `fly.toml` in the pre-public scrub, issue #223; see
        *Deployment values are secrets* below). From then on every deploy carries the setting.
     3. Deploy (*First deploy* step 6) with the setting in place. On an empty database the seed
        creates the tenant and the `ADMIN_EMAIL` user in the same boot and makes that user the
@@ -578,8 +578,9 @@ reaches the engine in production. If that path does not answer, `run.sh`'s prefl
 (`GET $HATCHET_CLIENT_API_URL/api/ready`) fails within seconds and the run never starts a
 scenario. The fallback is the public edge, the same path the laptop-to-Fly run (#164) used:
 
-The two address values are app secrets, and a secret beats a `-e` value on a machine, so stage the
-public ones first; then override the TLS settings on the machine:
+The two address values are app secrets. Fly's configuration reference says "Secrets take precedence
+over env variables with the same name", and the `-e` flag sets the same machine env, so a `-e` address
+loses to the secret. Stage the public ones first; then override the TLS settings on the machine:
 
 ```bash
 fly secrets set --stage -a <shop-harness-app> HATCHET_CLIENT_HOST_PORT=<engine-app>.fly.dev:7077 HATCHET_CLIENT_API_URL=https://<engine-app>.fly.dev
@@ -590,7 +591,10 @@ fly machine start <id> -a <shop-harness-app>
 ```
 
 If a run used this fallback, the proof page says so and labels that column "in-region via edge".
-To go back to the standing path, stage the two internal values again (`secrets.sh` prints them).
+To go back to the standing path, stage the two internal values again (`secrets.sh` prints them), then
+run `fly deploy` as in "Running it" step 1. The deploy applies the staged secrets and puts back the
+`[env]` TLS strategy, clearing the `-e HATCHET_CLIENT_TLS_STRATEGY=tls` override. A secret outlives a
+deploy; the `-e` override does not.
 
 ### Cancelling a harness namespace
 
@@ -598,7 +602,9 @@ A scenario run can leave runs queued or running on the engine under its own name
 harness exits — a durable run whose worker stopped mid-retry is invisible to a single check (#165).
 `fly machine start <id>` cannot be used to clean these up: starting `<shop-harness-machine-id>` runs the image's
 own `CMD`, `bash infra/shop-harness/fly/run.sh`, which is the full report-size scenario suite, not a
-one-off command.
+one-off command. After a fallback run, restore the internal secrets first (see the end of
+"Network path and its fallback"): the public address secrets would otherwise override the `-e`
+internal addresses below while the TLS strategy is still `none`.
 
 Instead, build and push an image without touching any machine:
 
