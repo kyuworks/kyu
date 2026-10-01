@@ -60,7 +60,7 @@ process.stdout.write(head + "é" + "y".repeat(1500000) + "\",\"scenarios\":[]}")
 : > "${TMP}/fly-calls.log"
 make_fake_fly "${TMP}/ok" "${TMP}/small.json" "$(sha_of "${TMP}/small.json")"
 assert_exit "matching sha exits 0" 0 env "PATH=${TMP}/ok:${PATH}" bash "${COLLECT}" \
-  -a <shop-harness-app> -m 1234abcd -s outbox-backlog -o "${TMP}/out-ok.json"
+  -a test-harness-app -m 1234abcd -s outbox-backlog -o "${TMP}/out-ok.json"
 assert_exit "matching sha writes the out file" 0 test -f "${TMP}/out-ok.json"
 assert_eq "written file matches the report content" "${REPORT_CONTENT}" "$(cat "${TMP}/out-ok.json")"
 
@@ -68,7 +68,7 @@ assert_eq "written file matches the report content" "${REPORT_CONTENT}" "$(cat "
 : > "${TMP}/fly-calls.log"
 make_fake_fly "${TMP}/large" "${TMP}/large.json" "$(sha_of "${TMP}/large.json")"
 assert_exit "a 2.5 MB report is collected" 0 env "PATH=${TMP}/large:${PATH}" bash "${COLLECT}" \
-  -a <shop-harness-app> -m 1234abcd -s outbox-backlog -o "${TMP}/out-large.json"
+  -a test-harness-app -m 1234abcd -s outbox-backlog -o "${TMP}/out-large.json"
 assert_eq "the 2.5 MB report is written byte for byte" "$(sha_of "${TMP}/large.json")" \
   "$(sha_of "${TMP}/out-large.json" 2>/dev/null || echo missing)"
 assert_eq "the 2.5 MB report is read in three parts" 3 "$(grep -c ' base64 -w0 ' "${TMP}/fly-calls.log")"
@@ -76,13 +76,13 @@ assert_eq "the 2.5 MB report is read in three parts" 3 "$(grep -c ' base64 -w0 '
 # --- mismatched sha exits non-zero and writes nothing ---
 make_fake_fly "${TMP}/bad-sha" "${TMP}/small.json" "${BAD_SHA}"
 assert_exit "mismatched sha exits non-zero" nonzero env "PATH=${TMP}/bad-sha:${PATH}" bash "${COLLECT}" \
-  -a <shop-harness-app> -m 1234abcd -s outbox-backlog -o "${TMP}/out-badsha.json"
+  -a test-harness-app -m 1234abcd -s outbox-backlog -o "${TMP}/out-badsha.json"
 assert_exit "mismatched sha writes nothing" nonzero test -f "${TMP}/out-badsha.json"
 
 # --- non-JSON content exits non-zero (sha matches, content still refused) ---
 make_fake_fly "${TMP}/not-json" "${TMP}/not-json.txt" "$(sha_of "${TMP}/not-json.txt")"
 assert_exit "non-JSON content exits non-zero" nonzero env "PATH=${TMP}/not-json:${PATH}" bash "${COLLECT}" \
-  -a <shop-harness-app> -m 1234abcd -s outbox-backlog -o "${TMP}/out-notjson.json"
+  -a test-harness-app -m 1234abcd -s outbox-backlog -o "${TMP}/out-notjson.json"
 assert_exit "non-JSON content writes nothing" nonzero test -f "${TMP}/out-notjson.json"
 
 # --- a scenario name with / or a space is rejected before fly is called ---
@@ -91,15 +91,15 @@ mkdir -p "${TMP}/reject"
 printf '%s\n' '#!/usr/bin/env bash' "echo \"\$*\" >> \"${TMP}/fly-calls.log\"" 'exit 9' > "${TMP}/reject/fly"
 chmod +x "${TMP}/reject/fly"
 assert_exit "scenario with a slash is rejected" nonzero env "PATH=${TMP}/reject:${PATH}" bash "${COLLECT}" \
-  -a <shop-harness-app> -m 1234abcd -s "outbox/backlog" -o "${TMP}/out-slash.json"
+  -a test-harness-app -m 1234abcd -s "outbox/backlog" -o "${TMP}/out-slash.json"
 assert_exit "scenario with a space is rejected" nonzero env "PATH=${TMP}/reject:${PATH}" bash "${COLLECT}" \
-  -a <shop-harness-app> -m 1234abcd -s "outbox backlog" -o "${TMP}/out-space.json"
+  -a test-harness-app -m 1234abcd -s "outbox backlog" -o "${TMP}/out-space.json"
 gate_test_record "rejected scenario names never invoked fly" "$([ ! -s "${TMP}/fly-calls.log" ] && echo 0 || echo 1)"
 
 # --- every fly call is one of the four read-only forms, on this scenario only ---
 : > "${TMP}/fly-calls.log"
-PATH="${TMP}/ok:${PATH}" bash "${COLLECT}" -a <shop-harness-app> -m 1234abcd -s outbox-backlog -o "${TMP}/out-ok2.json" >/dev/null
-ALLOWED='^machine exec 1234abcd (wc -c /reports/outbox-backlog\.json|split -b 1000000 -d -a 3 /reports/outbox-backlog\.json /tmp/kyu-collect-outbox-backlog\.part\.|base64 -w0 /tmp/kyu-collect-outbox-backlog\.part\.[0-9]{3}|sha256sum /reports/outbox-backlog\.json) --json -a <shop-harness-app>$'
+PATH="${TMP}/ok:${PATH}" bash "${COLLECT}" -a test-harness-app -m 1234abcd -s outbox-backlog -o "${TMP}/out-ok2.json" >/dev/null
+ALLOWED='^machine exec 1234abcd (wc -c /reports/outbox-backlog\.json|split -b 1000000 -d -a 3 /reports/outbox-backlog\.json /tmp/kyu-collect-outbox-backlog\.part\.|base64 -w0 /tmp/kyu-collect-outbox-backlog\.part\.[0-9]{3}|sha256sum /reports/outbox-backlog\.json) --json -a test-harness-app$'
 assert_eq "every fly call is wc, split, base64 or sha256sum on the scenario's report" "" \
   "$(grep -vE "${ALLOWED}" "${TMP}/fly-calls.log" || true)"
 assert_eq "a small report takes exactly four fly calls" 4 "$(wc -l < "${TMP}/fly-calls.log" | tr -d ' ')"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Print a worker API token for the deployed dev Hatchet engine.
 #
-#   export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/fly/token.sh -a <engine-app>)"
+#   export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/fly/token.sh -a '<engine-app>')"
 #
 # The token is written only to stdout — never logged, never echoed anywhere
 # else. Needs the Fly CLI and an SSH certificate for the org; the CTO runs

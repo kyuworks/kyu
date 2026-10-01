@@ -16,7 +16,7 @@ gate_test_record "never invoked fly" "$([ -e "${TMP}/fly-was-called" ] && echo 1
 for name in RABBITMQ_DEFAULT_USER RABBITMQ_DEFAULT_PASS; do
   assert_output_contains "names ${name}" "${name}" bash "${SECRETS}"
 done
-assert_output_contains "names the app" "<rabbitmq-app>" bash "${SECRETS}"
+assert_output_contains "names the app placeholder" "<rabbitmq-app>" bash "${SECRETS}"
 assert_output_contains "stages the secrets" "--stage" bash "${SECRETS}"
 assert_output_contains "names the deploy command" "fly deploy -c infra/hatchet/fly/rabbitmq/fly.toml" bash "${SECRETS}"
 assert_output_contains "warns to stage before the first deploy" "before the first deploy" bash "${SECRETS}"

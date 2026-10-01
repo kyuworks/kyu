@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Print the fly secrets set commands for <rabbitmq-app>. This script never
+# Print the fly secrets set commands for the Kyu RabbitMQ app. This script never
 # calls `fly` and never generates a value — it only prints commands with
 # placeholders for the CTO to fill in and run by hand.
 #
@@ -32,15 +32,15 @@ changes nothing.
 
 Commands to run:
 
-fly secrets set --stage -a ${APP} RABBITMQ_DEFAULT_USER='<REPLACE_ME>'
-fly secrets set --stage -a ${APP} RABBITMQ_DEFAULT_PASS='<REPLACE_ME>'
+fly secrets set --stage -a '${APP}' RABBITMQ_DEFAULT_USER='<REPLACE_ME>'
+fly secrets set --stage -a '${APP}' RABBITMQ_DEFAULT_PASS='<REPLACE_ME>'
 
 Then set the engine's SERVER_MSGQUEUE_RABBITMQ_URL from the same two
 values: bash infra/hatchet/fly/secrets.sh
 
 Then deploy (the kyu_rabbitmq_data volume must already exist):
 
-fly deploy -c infra/hatchet/fly/rabbitmq/fly.toml -a ${APP} --ha=false
+fly deploy -c infra/hatchet/fly/rabbitmq/fly.toml -a '${APP}' --ha=false
 
 Store every value in 1Password. Never paste one into a pull request or a
 chat message.

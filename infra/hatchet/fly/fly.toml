@@ -4,15 +4,14 @@
 # Every secret this app needs is set by the CTO, never by an agent: run
 # infra/hatchet/fly/secrets.sh to print the exact commands. Full runbook:
 # docs/operations/kyu-engine-on-fly.md
-app = '<engine-app>'
+# The app name and the four deployment-specific values (SERVER_URL, SERVER_AUTH_COOKIE_DOMAIN,
+# SERVER_GRPC_BROADCAST_ADDRESS, SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS) are secrets: see secrets.sh.
 primary_region = 'syd'
 
 [build]
   image = 'ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.107.0'
 
 [env]
-  SERVER_URL = 'https://<engine-app>.fly.dev'
-  SERVER_AUTH_COOKIE_DOMAIN = '<engine-app>.fly.dev'
   SERVER_AUTH_COOKIE_INSECURE = 'f'
   SERVER_AUTH_SET_EMAIL_VERIFIED = 't'
   SERVER_GRPC_BIND_ADDRESS = '0.0.0.0'
@@ -21,14 +20,11 @@ primary_region = 'syd'
   # the engine itself sees an insecure connection; the client still uses the
   # 'tls' strategy to the edge. Verify against /api/ready on first deploy.
   SERVER_GRPC_INSECURE = 't'
-  SERVER_GRPC_BROADCAST_ADDRESS = '<engine-app>.fly.dev:7077'
   SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS = 'localhost:7077'
   # Hatchet's internal queue (#176). Needs the SERVER_MSGQUEUE_RABBITMQ_URL
   # secret; hatchet-lite falls back to postgres only when none of the four
   # queue variables is set. Switch back: 'postgres' (runbook, "Queue on RabbitMQ").
   SERVER_MSGQUEUE_KIND = 'rabbitmq'
-  # The engine checks this at login as well as signup, so the admin account must be on this domain.
-  SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS = '<company-domain>'
   # Engine-wide: whole daily partitions (runs, events, logs, payloads) older than this are dropped.
   SERVER_LIMITS_DEFAULT_TENANT_RETENTION_PERIOD = '168h'
   # Refuses every signup (local form and OAuth starts) before the domain check runs. To admit a
@@ -77,7 +73,7 @@ primary_region = 'syd'
 
   [[services.ports]]
     port = 7077
-    # A bare 'tls' handler offers no ALPN on *.fly.dev; see step 7 of
+    # A bare 'tls' handler offers no ALPN on Fly's public hostnames; see step 7 of
     # docs/operations/kyu-engine-on-fly.md for why 'http' is needed too.
     handlers = ['tls', 'http']
 

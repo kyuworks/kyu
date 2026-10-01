@@ -15,7 +15,9 @@ assert_exit "prints without calling fly" 0 env "PATH=${TMP}/bin:${PATH}" bash "$
 gate_test_record "never invoked fly" "$([ -e "${TMP}/fly-was-called" ] && echo 1 || echo 0)"
 for name in DATABASE_URL SERVER_AUTH_COOKIE_SECRETS SERVER_ENCRYPTION_MASTER_KEYSET \
             SERVER_ENCRYPTION_JWT_PRIVATE_KEYSET SERVER_ENCRYPTION_JWT_PUBLIC_KEYSET \
-            ADMIN_EMAIL ADMIN_PASSWORD SERVER_MSGQUEUE_RABBITMQ_URL; do
+            ADMIN_EMAIL ADMIN_PASSWORD SERVER_MSGQUEUE_RABBITMQ_URL \
+            SERVER_URL SERVER_AUTH_COOKIE_DOMAIN SERVER_GRPC_BROADCAST_ADDRESS \
+            SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS; do
   assert_output_contains "names ${name}" "${name}" bash "${SECRETS}"
 done
 # A leading space: ADMIN_EMAIL=' alone is a substring of the old prefixed name.
@@ -25,7 +27,8 @@ done
 for old in SERVER_AUTH_ADMIN_EMAIL SERVER_AUTH_ADMIN_PASSWORD; do
   assert_output_lacks "does not name ${old}" "${old}" cat "${SECRETS}"
 done
-assert_output_contains "names the app" "<engine-app>" bash "${SECRETS}"
+assert_output_contains "names the app placeholder" "-a '<engine-app>'" bash "${SECRETS}"
+assert_output_lacks "names no real app" "kyu-" bash "${SECRETS}"
 assert_output_contains "stages the secrets" "--stage" bash "${SECRETS}"
 assert_output_lacks "carries no password" "Admin123" bash "${SECRETS}"
 assert_output_contains "marks the keysets optional" "Optional overrides" bash "${SECRETS}"
@@ -40,5 +43,5 @@ assert_eq "one <REPLACE_ME> per fly secrets set line" "${SET_LINE_COUNT}" "${PLA
 BAD_LINES="$(printf '%s\n' "${OUT}" | grep 'fly secrets set' | grep -vE "='<REPLACE_ME>'\$" || true)"
 assert_eq "every fly secrets set line ends in ='<REPLACE_ME>'" "" "${BAD_LINES}"
 REQUIRED_COUNT="$(printf '%s\n' "${OUT}" | sed '/Optional overrides/q' | grep -c 'fly secrets set' || true)"
-assert_eq "four required secrets" 4 "${REQUIRED_COUNT}"
+assert_eq "eight required secrets" 8 "${REQUIRED_COUNT}"
 gate_test_finish

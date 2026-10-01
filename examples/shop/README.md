@@ -393,7 +393,7 @@ missed their windows when run from a laptop in New Zealand. It is a separate Fly
 (`<shop-harness-app>`) and its own database cluster, built from `infra/shop-harness/fly/` and
 driven by `run.sh` inside the container rather than by hand. See
 `docs/operations/kyu-engine-on-fly.md`, "Running the shop harness in-region", for the full
-runbook — creating the app and cluster, the CTO's two secrets, deploying, then `fly machine start`,
+runbook — creating the app and cluster, the CTO's four secrets, deploying, then `fly machine start`,
 collecting each report with `collect.sh`, and stopping the machine again. The app and its cluster
 were destroyed on 2026-09-25; that runbook section says how to recreate them.
 

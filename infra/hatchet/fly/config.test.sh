@@ -22,10 +22,13 @@ assert_eq "the runbook names no other engine config volume" "" "${OTHER_VOLUMES}
 
 assert_output_lacks "no amqp URL" "amqp://" cat "${FLY_TOML}"
 assert_output_lacks "no RabbitMQ URL value" "SERVER_MSGQUEUE_RABBITMQ_URL =" cat "${FLY_TOML}"
-# Checked at login too; the dev engine rebuild (runbook step 11) put the admin account on this domain.
-# Anchored (not assert_output_contains) so a commented-out line cannot pass.
-assert_exit "signup and login are restricted to the company domain" 0 \
-  grep -qE "^[[:space:]]*SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS = '<company-domain>'\$" "${FLY_TOML}"
+# The app name and the deployment-specific values are secrets (infra/hatchet/fly/secrets.sh), not fly.toml.
+assert_exit "fly.toml names no app" 1 grep -qE "^app[[:space:]]*=" "${FLY_TOML}"
+assert_exit "fly.toml names no deployment host" 1 grep -qE "\.(fly\.dev|internal)" "${FLY_TOML}"
+assert_exit "the company domain is not in fly.toml" 1 grep -qE "^[[:space:]]*SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS =" "${FLY_TOML}"
+for name in SERVER_URL SERVER_AUTH_COOKIE_DOMAIN SERVER_GRPC_BROADCAST_ADDRESS; do
+  assert_exit "${name} is a secret, not env" 1 grep -q "^  ${name} =" "${FLY_TOML}"
+done
 
 # Engine-wide: the engine drops whole daily partitions older than this (runbook "Retention").
 assert_exit "dev retention is seven days" 0 \
