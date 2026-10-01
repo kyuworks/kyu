@@ -4,6 +4,11 @@
   "description": "Kyu message envelope, naming rules and schema adapters. Runtime-light; depends on Zod only.",
   "type": "module",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kyuworks/kyu.git",
+    "directory": "packages/schemas"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

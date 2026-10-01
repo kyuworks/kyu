@@ -2,7 +2,7 @@
 
 **Status:** proposed
 **Date:** 2026-09-25
-**Parent:** [#217](https://github.com/Camba-nz/kyu/issues/217)
+**Parent:** archived issue 217
 **This is not** a decision about the relay's own connection, how the API process is deployed, how the CRM issues and rotates its service tokens, or how an integration machine obtains or renews its short-lived CRM token.
 
 An integration handler announces its outcome with `ctx.emit()`, which pushes straight to the engine. This is a second publish path beside `publish()`, with weaker guarantees that are named below. Integration pools hold no database connection. One writer pool per project applies their outcomes to the project's tables.

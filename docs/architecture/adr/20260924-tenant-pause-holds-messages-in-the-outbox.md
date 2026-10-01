@@ -2,8 +2,8 @@
 
 **Status:** accepted on 2026-09-24
 **Date:** 2026-09-24
-**Parent:** [#181](https://github.com/Camba-nz/kyu/issues/181)
-**This is not** a decision about tenant-scoped cancel ([#182](https://github.com/Camba-nz/kyu/issues/182)) or product-unit rate limits ([#183](https://github.com/Camba-nz/kyu/issues/183)).
+**Parent:** archived issue 181
+**This is not** a decision about tenant-scoped cancel (archived issue 182) or product-unit rate limits (archived issue 183).
 
 `kyu.tenants.pause(db, tenantId)` holds a business tenant's new outbox rows unclaimed; the relay is the only reader that skips them. It does not call the engine.
 

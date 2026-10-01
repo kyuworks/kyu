@@ -1,6 +1,8 @@
 # Contributing to Kyu
 
-Kyu is the company message bus ([`Camba-nz/kyu`](https://github.com/Camba-nz/kyu)). Rules for agents and people are in [`AGENTS.md`](AGENTS.md); shared words in [`CONTEXT.md`](CONTEXT.md); the design in [`docs/design/kyu-requirements-and-design.md`](docs/design/kyu-requirements-and-design.md); decisions in [`docs/architecture/adr/`](docs/architecture/adr/).
+Kyu is the company message bus (public at [`kyuworks/kyu`](https://github.com/kyuworks/kyu)). Rules for agents and people are in [`AGENTS.md`](AGENTS.md); shared words in [`CONTEXT.md`](CONTEXT.md); the design in [`docs/design/kyu-requirements-and-design.md`](docs/design/kyu-requirements-and-design.md); decisions in [`docs/architecture/adr/`](docs/architecture/adr/).
+
+Issue and pull request numbers quoted in documents, ADRs and proof pages dated before 2026-10-01 refer to the archived private repository the project moved from, not to this repository. The three issues still open at the move were re-created here as #1 (workflow interpreter umbrella), #2 (release path) and #3 (failure alerts, deferred).
 
 ## People
 

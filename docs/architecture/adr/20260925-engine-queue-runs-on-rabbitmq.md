@@ -2,7 +2,7 @@
 
 **Status:** accepted on 2026-09-25
 **Date:** 2026-09-25
-**Parent:** [#202](https://github.com/Camba-nz/kyu/issues/202)
+**Parent:** archived issue 202
 **This is not** a decision about the engine's database plan, Hatchet's separate-image production topology, or the engine itself: [`20260916-hatchet-is-the-engine.md`](20260916-hatchet-is-the-engine.md) stands (hatchet-lite, a dedicated Postgres cluster per environment).
 
 Every deployed Kyu engine keeps Hatchet's internal message queue on a RabbitMQ broker of its own, not in its Postgres database. This amends requirement N1 ("no new datastore family") for the engine's queue only.
