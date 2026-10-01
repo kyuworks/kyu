@@ -166,7 +166,7 @@ shop cluster on Basic with the queue on RabbitMQ has not been measured at report
        --stage -a <engine-app> <NAME> ...` (`fly secrets list -a <engine-app>` shows names
        only).
     2. Only once the old database is gone, put the `SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS` line
-       back, as a secret set to the company domain (it moved out of `fly.toml` in the pre-public scrub, issue #223; see
+       back, as a secret set to the company domain (it moved out of `fly.toml` in the pre-public scrub, issue #2 (archived issue 223); see
        *Deployment values are secrets* below). From then on every deploy carries the setting.
     3. Deploy (*First deploy* step 6) with the setting in place. On an empty database the seed
        creates the tenant and the `ADMIN_EMAIL` user in the same boot and makes that user the

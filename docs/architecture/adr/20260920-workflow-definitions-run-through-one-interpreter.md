@@ -85,7 +85,7 @@ The SDK already gives a durable handler what a run needs: `sleepFor`, `waitFor` 
 
 ---
 
-## Addendum — 22 September 2026: how a long delay waits (#113)
+## Addendum — 22 September 2026: how a long delay waits (archived issue 113)
 
 A delay step under 60 seconds is `sleepFor`, as decision 5 says: the run parks and the engine holds it.
 
@@ -101,7 +101,7 @@ Not solved here: cancelling a run, or disabling a definition, between the two ru
 
 ---
 
-## Addendum — 24 September 2026: cancelling a hand-off (#180, #185)
+## Addendum — 24 September 2026: cancelling a hand-off (archived issues 180 and 185)
 
 Since archived issue 180 (archived PR 184) and archived issue 185 (archived PR 189), a cancel can recall a scheduled outbox row; the addendum above was written before that. Given the caller's own transaction, `kyu.runs.cancelForCorrelation(runId, { outbox: tx })` cancels the engine's runs under the run id and then every outbox row under it that the relay has not claimed, whether its `publish_at` is still ahead or has already passed. The hand-off continuation carries the run id as its correlation id, so it gets `cancelled_at` and the relay never ships it. Two kinds of row can still reach the engine: one the relay has already claimed, and one whose push the engine took but the relay recorded as failed. The README's paragraph that begins "Given the caller's own transaction" says when, and that a later cancel for the same id stops the run either one starts.
 
