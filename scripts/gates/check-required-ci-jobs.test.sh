@@ -172,6 +172,18 @@ write_second_workflow target.yml "on: [push, pull_request_target]" "Target Only"
 printf 'Migration Check\nTarget Only\n' > "${REQ}"
 assert_exit "workflow with no pull_request trigger is ignored" 1 run_check
 
+# --- A pull_request item nested under another trigger does not count ---
+write_workflow
+write_second_workflow nested.yml "$(printf 'on:\n  push:\n    branches:\n      - pull_request')" "Nested Item"
+printf 'Migration Check\nNested Item\n' > "${REQ}"
+assert_exit "a pull_request item under push branches does not count" 1 run_check
+
+# --- A workflow_call input named pull_request does not count ---
+write_workflow
+write_second_workflow called.yml "$(printf 'on:\n  workflow_call:\n    inputs:\n      pull_request:\n        type: boolean')" "Called Only"
+printf 'Migration Check\nCalled Only\n' > "${REQ}"
+assert_exit "a workflow_call input named pull_request does not count" 1 run_check
+
 # --- Real repo files (no env override) ---
 REAL_REQ="${ROOT_DIR}/.github/workflows/required-checks.txt"
 if [ -f "${REAL_REQ}" ]; then

@@ -111,10 +111,11 @@ parse_workflow_job_names() {
 }
 
 # Exit 0 when the top-level on: names pull_request: `on: pull_request`,
-# `on: [push, pull_request]`, or a `pull_request:` key / `- pull_request` item.
+# `on: [push, pull_request]`, or a `pull_request:` key / `- pull_request` item
+# that is a direct child of on: (not nested under another trigger).
 workflow_has_pull_request_trigger() {
   awk '
-    BEGIN { in_on = 0; found = 0 }
+    BEGIN { in_on = 0; found = 0; child = -1 }
 
     /^(on|"on"):/ {
       in_on = 1
@@ -127,7 +128,11 @@ workflow_has_pull_request_trigger() {
 
     in_on && /^[^[:space:]#]/ { in_on = 0 }
 
-    in_on && /^[[:space:]]+(-[[:space:]]+)?pull_request[[:space:]]*(:.*)?(#.*)?$/ { found = 1 }
+    in_on && /^[[:space:]]+[^[:space:]#]/ {
+      match($0, /^[[:space:]]+/)
+      if (child < 0) child = RLENGTH
+      if (RLENGTH == child && $0 ~ /^[[:space:]]+(-[[:space:]]+)?pull_request[[:space:]]*(:.*)?(#.*)?$/) found = 1
+    }
 
     END { exit(found ? 0 : 1) }
   ' "$1"
