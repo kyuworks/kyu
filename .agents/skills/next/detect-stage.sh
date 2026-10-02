@@ -78,10 +78,11 @@ DOCSPAT='^docs/|\.md$'
 HAS_TESTS=no; HAS_IMPL=no; DOCS_ONLY=no
 if [ "$AHEAD" -gt 0 ] 2>/dev/null && [ -n "$MERGE_BASE" ]; then
   CHANGED=$(git diff --name-only "$MERGE_BASE" HEAD 2>/dev/null)
-  printf '%s\n' "$CHANGED" | grep -qE "$TESTPAT" && HAS_TESTS=yes
-  printf '%s\n' "$CHANGED" | grep -vE "$TESTPAT" | grep -qE "$IMPLPAT" && HAS_IMPL=yes
+  grep -qE "$TESTPAT" <<< "$CHANGED" && HAS_TESTS=yes
+  NON_TEST=$(grep -vE "$TESTPAT" <<< "$CHANGED")
+  grep -qE "$IMPLPAT" <<< "$NON_TEST" && HAS_IMPL=yes
   # Docs-only commits must not read as a started build.
-  if printf '%s\n' "$CHANGED" | grep -qvE "$DOCSPAT"; then DOCS_ONLY=no; else DOCS_ONLY=yes; fi
+  if grep -qvE "$DOCSPAT" <<< "$CHANGED"; then DOCS_ONLY=no; else DOCS_ONLY=yes; fi
 fi
 emit HAS_TEST_COMMITS "$HAS_TESTS"; emit HAS_IMPL_COMMITS "$HAS_IMPL"
 emit DOCS_ONLY_COMMITS "${DOCS_ONLY:-no}"

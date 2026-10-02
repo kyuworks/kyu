@@ -127,7 +127,7 @@ fail_item() {
 # A checked line contains needle (case-insensitive).
 checked_has() {
   local needle="$1"
-  printf '%s\n' "${SECTION}" | grep -iE '^[[:space:]]*[-*][[:space:]]*\[[xX]\].*'"${needle}" >/dev/null
+  grep -iE '^[[:space:]]*[-*][[:space:]]*\[[xX]\].*'"${needle}" <<< "${SECTION}" >/dev/null
 }
 
 checked_has Plan || fail_item "Plan"
@@ -175,7 +175,7 @@ if [ "${BEHAVIOR_CHANGED}" -eq 1 ]; then
     echo "FAIL: behavior change needs a red proof (a test path), not the template placeholder." >&2
     exit 1
   fi
-  if printf '%s\n' "${must_hold_line}" | grep -qiE 'N/A'; then
+  if grep -qiE 'N/A' <<< "${must_hold_line}"; then
     echo "FAIL: behavior change cannot mark Red must-hold as N/A." >&2
     exit 1
   fi

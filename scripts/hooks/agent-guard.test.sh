@@ -24,7 +24,7 @@ echo "routing through the matcher in .claude/settings.json: ${MATCHER}"
 decision() {
   local payload="$1" name
   name="$(printf '%s' "${payload}" | jq -r '.tool_name // ""')"
-  if ! printf '%s' "${name}" | grep -qE "${MATCHER}"; then
+  if ! grep -qE "${MATCHER}" <<< "${name}"; then
     printf 'unrouted'
     return 0
   fi
