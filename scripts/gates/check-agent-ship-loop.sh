@@ -80,15 +80,16 @@ is_agent_author() {
   esac
 }
 
-SECTION="$(printf '%s\n' "${BODY_TEXT}" | awk '
+# Here-strings, not pipes: awk's exit and grep -q stop reading early and break the writer under pipefail.
+SECTION="$(awk '
   BEGIN { ign = 0 }
   /^##[ \t]+[Aa]gent[ \t]+ship[ \t]+loop/ { ign = 1; next }
   ign && /^##[ \t]/ { exit }
   ign { print }
-')"
+' <<< "${BODY_TEXT}")"
 
 HAS_HEADING=0
-if [ -n "${SECTION}" ] || printf '%s\n' "${BODY_TEXT}" | grep -Eq '^##[ \t]+[Aa]gent[ \t]+ship[ \t]+loop'; then
+if [ -n "${SECTION}" ] || grep -Eq '^##[ \t]+[Aa]gent[ \t]+ship[ \t]+loop' <<< "${BODY_TEXT}"; then
   HAS_HEADING=1
 fi
 

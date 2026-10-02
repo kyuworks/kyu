@@ -208,6 +208,25 @@ assert_exit "behavior change with N/A red proof fails" 1 \
 assert_output_contains "missing red proof is named" "red proof" \
   run_body "${NO_RED}" --agent --behavior-changed
 
+LARGE_TAIL="${TMP}/large-tail.md"
+{
+  cat "${COMPLETE}"
+  printf '\n## Notes\n'
+  awk 'BEGIN { for (i = 1; i <= 20000; i++) printf "padding line %05d keeps this body larger than a pipe buffer\n", i }'
+} > "${LARGE_TAIL}"
+
+EMPTY_SECTION_LARGE_TAIL="${TMP}/empty-section-large-tail.md"
+{
+  printf '## Agent ship loop\n\n## Notes\n'
+  awk 'BEGIN { for (i = 1; i <= 20000; i++) printf "padding line %05d keeps this body larger than a pipe buffer\n", i }'
+} > "${EMPTY_SECTION_LARGE_TAIL}"
+
+assert_exit "a complete body followed by a large section passes" 0 \
+  run_body "${LARGE_TAIL}" --agent
+assert_exit "an empty section followed by a large section fails" 1 \
+  run_body "${EMPTY_SECTION_LARGE_TAIL}" --agent
+assert_last_output_contains "the empty section names the first unchecked item" "not checked: Plan"
+
 assert_exit "complete agent body passes" 0 \
   run_body "${COMPLETE}" --agent
 assert_exit "complete agent body passes with behavior-changed" 0 \
