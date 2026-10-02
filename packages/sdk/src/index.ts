@@ -37,6 +37,7 @@ export {
   claimPendingRows,
   insertOutboxRow,
   markPublished,
+  pruneCancelled,
   prunePublished,
   pruneRetired,
   recordPublishFailure,
@@ -45,9 +46,12 @@ export {
 export type {
   ClaimedRows,
   ClaimPendingRowsOptions,
+  PruneCancelledOptions,
   PrunePublishedOptions,
   PruneRetiredOptions,
 } from './outbox/outboxRepository.js'
+export { pruneOutbox } from './outbox/pruneOutbox.js'
+export type { OutboxPruneCounts, PruneOutboxOptions } from './outbox/pruneOutbox.js'
 
 export { createPublisher, publishEnvelope } from './outbox/publish.js'
 export type { CreatePublisherOptions, Publisher, PublisherOptions } from './outbox/publish.js'

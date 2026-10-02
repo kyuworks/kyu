@@ -315,7 +315,13 @@ An operator who fixes the envelope by hand revives the row so the relay claims i
 UPDATE kyu_outbox SET dead_at = NULL, attempts = 0, last_error = NULL WHERE id = $1;
 ```
 
-The SDK never deletes outbox rows on its own: `prunePublished({ publishedBefore })` deletes published rows and `pruneRetired({ retiredBefore })` retired ones, and `pruneCancelled({ cancelledBefore })` cancelled ones (added by the [outbox-is-not-the-audit-log ADR](../architecture/adr/20261002-the-outbox-is-not-the-audit-log.md), proposed). The producer schedules all three and prunes nothing younger than its longest durable wait plus one engine retention period; the outbox is a delivery buffer, not the producer's event log or audit trail.
+**Oldest published row.** Alert when older than your retention plus two days: the prune job is not running.
+
+```sql
+SELECT min(published_at) AS oldest_published FROM kyu_outbox WHERE published_at IS NOT NULL;
+```
+
+The SDK never deletes outbox rows on its own, and the relay never prunes. `prunePublished({ publishedBefore, limit })`, `pruneRetired({ retiredBefore, limit })` and `pruneCancelled({ cancelledBefore, limit })` each run one statement and delete at most `limit` rows, lowest id first. `pruneOutbox(db, { olderThanMs, batchSize, allowBelowFloor })` is the job the producer schedules once a day: it runs the three in slices of `batchSize` (default 1000) until a slice comes back short, and refuses a retention below the 45-day prune floor unless `allowBelowFloor` is set. The floor is the longest durable wait plus one engine retention period; the outbox is a delivery buffer, not the producer's event log or audit trail ([ADR](../architecture/adr/20261002-the-outbox-is-not-the-audit-log.md)).
 
 ### 8.6 Handler emit (proposed)
 
@@ -380,7 +386,7 @@ A cancelled run ends as `cancelled`, not `failed`, and is not retried, so it nev
 Working shape; names to be finalised in review.
 
 ```ts
-import { createKyu, createPublisher, defineEvent } from '@kyuworks/sdk';
+import { createKyu, createPublisher, defineEvent, pruneOutbox } from '@kyuworks/sdk';
 
 const orderPlaced = defineEvent({ name: 'shop.order.placed', version: 1, data: z.object({ orderId: z.string(), customerId: z.string() }) });
 const orderShipped = defineEvent({ name: 'shop.order.shipped', version: 1, data: z.object({ orderId: z.string() }) });
@@ -422,6 +428,9 @@ const marketplaceWorker = await kyu.worker('shop-marketplace', { subscriptions: 
 
 // Relay, started once per project, in its own process
 const relay = kyu.startRelay({ db: pool, workerId: 'shop-api-1' });
+
+// Outbox prune, once a day from the producer's own scheduler (45-day floor)
+await pruneOutbox(pool);
 
 // Alerting: a run's outcome by envelope id, without the engine client
 const outcomes = await kyu.runs.forEnvelope(envelope.id);
@@ -509,7 +518,7 @@ Synchronous third-party lookups get a shared HTTP client with timeouts, retries 
 
 1. **npm scope and home — resolved.** The `@kyuworks` npm scope is registered. The SDK lives in this repository, public at `kyuworks/kyu`, with the Hatchet deployment config alongside. Both packages publish to npm as public packages from a tag on `main` by trusted publishing (#2).
 2. **Relay placement — resolved 2026-09-22.** A sidecar process per project per environment ships the relay. A project with a single long-lived process may run it in-process instead (section 8.3).
-3. **Outbox retention and the audit question — proposed 2026-10-02.** The outbox is a delivery buffer, not the producer's event log and never an audit trail. Producers prune published, retired and cancelled rows on a schedule, no younger than the longest durable wait plus one engine retention period; a handler's durable record is its own ledger row; a consumer that needs an audit trail keeps before/after state in its own database and stamps those rows with the envelope `id` and `correlationId` ([ADR](../architecture/adr/20261002-the-outbox-is-not-the-audit-log.md), awaiting review).
+3. **Outbox retention and the audit question — resolved 2026-10-02.** The outbox is a delivery buffer, not the producer's event log and never an audit trail. Producers prune published, retired and cancelled rows on a schedule, no younger than the longest durable wait plus one engine retention period; a handler's durable record is its own ledger row; a consumer that needs an audit trail keeps before/after state in its own database and stamps those rows with the envelope `id` and `correlationId` ([ADR](../architecture/adr/20261002-the-outbox-is-not-the-audit-log.md)).
 4. **Non-TypeScript projects.** Which languages will the other company projects use, and does the outbox SDK need a second implementation soon?
 5. **Hatchet retention and metrics.** Confirm the retention settings and whether the engine exposes Prometheus metrics in the pinned version.
 6. **Idempotency key on push — answered 2026-09-25.** Engine SDK v1.33.1 has no producer-side dedupe key on push. The proposed mechanism for duplicate runs is the engine's per-workflow idempotency key checked at run creation, keyed on the envelope id, pending a probe against the pinned engine ([ADR](../architecture/adr/20260925-handlers-may-emit-straight-to-the-engine.md)). `kyu_processed` stays for pools with a database.

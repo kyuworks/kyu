@@ -1,6 +1,6 @@
 # The outbox is not the audit log
 
-**Status:** proposed
+**Status:** accepted on 2026-10-02 (CTO, issue #30)
 **Date:** 2026-10-02
 **Parent:** none — raised as design open question 3 and answered while a consumer sized its own audit trail against the bus.
 **This is not** a decision about engine run-history retention (N6, open question 5), nor about what a consumer's audit trail contains or how it captures it. That is the consumer's design.
