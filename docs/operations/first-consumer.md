@@ -79,9 +79,23 @@ The shop's runner is a short example to copy: [`src/db/migrate.ts`](https://gith
 
 **Behind a transaction pooler.** Run migrations over a direct connection to the database where you have one. The files use no session state (no `SET`, no advisory lock, no `CREATE INDEX CONCURRENTLY`), and they also apply through a transaction-mode PgBouncer, each file in its own transaction as in step 2: [`pooler.integration.test.ts`](../../packages/sdk/src/db/pooler.integration.test.ts), "applies every migration file to a fresh database through the pooler".
 
-**Grants.** If the role that publishes is not the table owner, give it only what it needs: `INSERT` on `kyu_outbox` for `publish()`, `SELECT, UPDATE` on `kyu_outbox` and `SELECT` on `kyu_paused_tenant` for the relay, `INSERT, SELECT` on `kyu_processed` for `onceById()` (full table in [`migrations/README.md`](../../packages/sdk/migrations/README.md), Grants).
+**Grants.** If the role that publishes is not the table owner, give it only what it needs: `INSERT` on `kyu_outbox` for `publish()`, `SELECT, UPDATE` on `kyu_outbox` and `SELECT` on `kyu_paused_tenant` for the relay, `INSERT, SELECT` on `kyu_processed` for `onceById()`, `DELETE, SELECT` on `kyu_outbox` for the prune job (full table in [`migrations/README.md`](../../packages/sdk/migrations/README.md), Grants).
 
-**Retention and audit.** The SDK never deletes an outbox row by itself. It exports `prunePublished(db, { publishedBefore })` and `pruneRetired(db, { retiredBefore })` ([`outboxRepository.ts`](../../packages/sdk/src/outbox/outboxRepository.ts)), and nothing in the SDK calls them. Until your project decides whether the outbox is also its audit log ([design open question 3](../design/kyu-requirements-and-design.md#14-open-questions)), keep every row; schedule `prunePublished` later if it is not. The SDK has no prune for `kyu_processed`. If you delete old rows there, keep at least as many days as the engine keeps runs (dev 7, production 30; [design § 12](../design/kyu-requirements-and-design.md#12-deployment-and-operations)), so a replayed run still finds its row.
+**Retention and audit.** The outbox is a delivery buffer, not your event log or audit trail ([ADR](../architecture/adr/20261002-the-outbox-is-not-the-audit-log.md)); keep your audit record in your own tables, stamped with the envelope `id` and `correlationId`. The SDK never deletes an outbox row by itself. Schedule `pruneOutbox` once a day in your own scheduler (a cron entry, a scheduled machine, a CronJob):
+
+```ts
+import { pruneOutbox } from '@kyuworks/sdk'
+import { Pool } from 'pg'
+
+const db = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 })
+try {
+  console.log('outbox pruned', await pruneOutbox(db))
+} finally {
+  await db.end()
+}
+```
+
+It deletes published, retired and cancelled rows older than 45 days, 1000 rows per statement, and never a pending, scheduled or claimed row. 45 days is the floor: your longest durable wait plus the engine's 30-day retention. If your longest wait is longer than 15 days, pass a larger `olderThanMs`. A smaller one throws unless you pass `allowBelowFloor: true` ([`pruneOutbox.ts`](../../packages/sdk/src/outbox/pruneOutbox.ts)). The SDK has no prune for `kyu_processed`. If you delete old rows there, keep at least as many days as the engine keeps runs (dev 7, production 30; [design § 12](../design/kyu-requirements-and-design.md#12-deployment-and-operations)), so a replayed run still finds its row.
 
 ## 4. Message definitions
 
@@ -196,6 +210,7 @@ The shop's version is [`src/relay.ts`](https://github.com/kyuworks/shop-example/
 - **Supervision:** restart it on exit. On `relay.closed` rejecting (`RelayConnectionLostError`), exit non-zero. On SIGTERM, call `relay.stop()`. A relay killed without `stop()` leaves its claimed rows for `staleClaimMs` (default 5 minutes) before another relay takes them; the shop sets 30 seconds.
 - **Environment:** the SDK reads no environment variable itself. The engine client reads `HATCHET_CLIENT_TOKEN`, `HATCHET_CLIENT_API_URL`, `HATCHET_CLIENT_HOST_PORT`, `HATCHET_CLIENT_TLS_STRATEGY` and `HATCHET_CLIENT_NAMESPACE` (section 8; the shop's [README](https://github.com/kyuworks/shop-example/blob/main/README.md#environment-variables) lists them). Your own variable gives the database URL.
 - **Defaults:** up to 100 rows per tick, a poll every 250 ms when idle, a backoff up to 30 seconds after a failed push ([`relay.ts`](../../packages/sdk/src/relay/relay.ts)).
+- **Pruning:** the relay never deletes a row. Schedule the prune job from [section 3](#3-database).
 
 **Lag and backlog.** Run these against your database ([design § 8.5](../design/kyu-requirements-and-design.md#85-operations) has the full set). Alert when the oldest pending row is older than 60 seconds:
 

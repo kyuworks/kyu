@@ -8,6 +8,7 @@ import { createHatchetClient } from '../hatchet.js'
 import { MIGRATIONS_DIRECTORY } from '../migrations.js'
 import { onceById } from '../outbox/onceById.js'
 import { claimPendingRows, markPublished } from '../outbox/outboxRepository.js'
+import { pruneOutbox } from '../outbox/pruneOutbox.js'
 import { createPublisher } from '../outbox/publish.js'
 import { startRelay } from '../relay/relay.js'
 import { applyMigrations } from './applyMigrations.js'
@@ -297,6 +298,17 @@ describe('SDK database paths through a transaction-mode pooler', () => {
       [envelopeId],
     )
     expect(after.rows[0]?.published_at).toEqual(publishedAt)
+  })
+
+  it('pruneOutbox runs on a pooler pool, one statement per slice', async () => {
+    const old = await publishCommitted(1, null)
+    const young = await publishCommitted(2, null)
+    await direct.query(`UPDATE kyu_outbox SET published_at = now() - interval '46 days' WHERE id = $1`, [old])
+    await direct.query('UPDATE kyu_outbox SET published_at = now() WHERE id = $1', [young])
+
+    expect(await pruneOutbox(pool, { batchSize: 1 })).toEqual({ published: 1, retired: 0, cancelled: 0 })
+    const left = await direct.query<{ id: string }>('SELECT id FROM kyu_outbox')
+    expect(left.rows.map((row) => row.id)).toEqual([young])
   })
 
   it('onceById() through the pooler runs the body once for one envelope id', async () => {

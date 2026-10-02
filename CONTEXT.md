@@ -29,6 +29,7 @@
 | sidecar | A process that runs beside a project's own processes and does one job for them; the relay is one. |
 | at-least-once | The only delivery guarantee. A handler may see the same envelope id twice. |
 | processed table | `kyu_processed` in a consumer's database. `onceById()` records handled ids there, inside the handler's transaction. |
+| prune floor | The youngest a published, retired or cancelled outbox row may be when a producer deletes it: the longest durable wait plus one engine retention period, 45 days by default. `pruneOutbox` refuses less unless told `allowBelowFloor`. |
 | concurrency key | A CEL expression on the payload or metadata that groups runs. `maxRuns: 1` per key gives FIFO per key. |
 | coalescing | `CANCEL_IN_PROGRESS` (only the newest run matters) or `CANCEL_NEWEST` (drop if one is already running). |
 | rate limit | A cap on how many runs of one subscription start per window. `rateLimit: { per, limit, window }` counts per business tenant, per correlation or per payload field; `rateLimits` takes any CEL key. A run over the cap is queued, not failed, until its `scheduleTimeout`. |

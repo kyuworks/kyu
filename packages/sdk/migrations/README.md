@@ -25,6 +25,8 @@ Naming: `<YYYYMMDDHHMMSS>_<slug>.sql`.
 | relay | `kyu_outbox` | SELECT, UPDATE |
 | `prunePublished` | `kyu_outbox` | DELETE, SELECT |
 | `pruneRetired` | `kyu_outbox` | DELETE, SELECT |
+| `pruneCancelled` | `kyu_outbox` | DELETE, SELECT |
+| `pruneOutbox` | `kyu_outbox` | DELETE, SELECT |
 | `runs.cancelFor*` with `outbox` | `kyu_outbox` | SELECT, UPDATE |
 | `onceById` | `kyu_processed` | INSERT, SELECT |
 | `tenants.pause` / `tenants.resume` | `kyu_paused_tenant` | INSERT / DELETE |
