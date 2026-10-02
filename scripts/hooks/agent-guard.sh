@@ -89,8 +89,7 @@ rm_targets_all_rebuildable() {
   [ -n "$targets" ] || return 1
   while IFS= read -r target; do
     [ -n "$target" ] || continue
-    printf '%s' "$target" |
-      grep -qE '(^|/)(node_modules|dist|build|coverage|\.turbo|\.next|\.vite)(/|$)|^/tmp/|(^|/)tmp/' ||
+    grep -qE '(^|/)(node_modules|dist|build|coverage|\.turbo|\.next|\.vite)(/|$)|^/tmp/|(^|/)tmp/' <<<"$target" ||
       return 1
   done <<<"$targets"
   return 0

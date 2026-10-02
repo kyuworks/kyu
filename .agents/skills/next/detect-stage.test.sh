@@ -134,6 +134,25 @@ commit_file "${DOCS}" "packages/sdk/README.md" "package readme"
 assert_eq "docs/ and *.md commits are docs-only" "yes" "$(value "${DOCS}" DOCS_ONLY_COMMITS)"
 assert_eq "a docs-only commit is still at plan" "plan" "$(value "${DOCS}" STAGE)"
 
+# --- a branch whose changed-file list is larger than a pipe holds ---
+# A test path sorts first and about 240 KB of paths follow: more than a pipe holds.
+LARGE="${WORK}/large"
+init_repo "${LARGE}"
+fake_remote "${LARGE}"
+git -C "${LARGE}" checkout -q -b feat/large
+mkdir -p "${LARGE}/packages/a" "${LARGE}/packages/sdk/src/padding"
+printf 'test\n' > "${LARGE}/packages/a/first.test.ts"
+LARGE_PAD="$(printf '%0200d' 0)"
+for i in $(seq -w 1 1000); do
+  : > "${LARGE}/packages/sdk/src/padding/file-${LARGE_PAD}-${i}.ts"
+done
+git -C "${LARGE}" add -A
+git -C "${LARGE}" commit -qm "large branch"
+assert_eq "a test listed first on a large branch still counts" "yes" "$(value "${LARGE}" HAS_TEST_COMMITS)"
+assert_eq "implementation after a test on a large branch still counts" "yes" "$(value "${LARGE}" HAS_IMPL_COMMITS)"
+assert_eq "a large branch with code on it is not docs-only" "no" "$(value "${LARGE}" DOCS_ONLY_COMMITS)"
+assert_eq "an implementation commit is not docs-only" "no" "$(value "${IMPL}" DOCS_ONLY_COMMITS)"
+
 # --- unattended is read off the same variable the guard reads ---
 assert_eq "a local session is attended" "no" \
   "$(cd "${REMOTE}" && env -u CLAUDE_CODE_REMOTE bash "${DETECT}" | sed -n 's/^UNATTENDED=//p')"

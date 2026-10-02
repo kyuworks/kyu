@@ -208,6 +208,12 @@ assert_exit "behavior change with N/A red proof fails" 1 \
 assert_output_contains "missing red proof is named" "red proof" \
   run_body "${NO_RED}" --agent --behavior-changed
 
+NA_MUST_HOLD="${TMP}/na-must-hold.md"
+sed 's/^- \[x\] Red must-hold$/- [x] Red must-hold (N\/A: docs only)/' "${COMPLETE}" > "${NA_MUST_HOLD}"
+assert_exit "behavior change with a N/A red must-hold fails" 1 \
+  run_body "${NA_MUST_HOLD}" --agent --behavior-changed
+assert_last_output_contains "the N/A red must-hold is named" "cannot mark Red must-hold as N/A"
+
 LARGE_TAIL="${TMP}/large-tail.md"
 {
   cat "${COMPLETE}"

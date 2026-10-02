@@ -56,6 +56,9 @@ bash scripts/gates/check-tsconfig-references.sh
 echo "[verify:gates] check-selftest-git-isolation"
 bash scripts/gates/check-selftest-git-isolation.sh
 
+echo "[verify:gates] check-no-pipe-to-grep-q"
+bash scripts/gates/check-no-pipe-to-grep-q.sh
+
 if [ -n "${PR_BODY_FILE:-}" ]; then
   echo "[verify:gates] check-agent-ship-loop"
   bash scripts/gates/check-agent-ship-loop.sh --body "${PR_BODY_FILE}" --author "${PR_AUTHOR:-}" --branch "${PR_BRANCH:-}"

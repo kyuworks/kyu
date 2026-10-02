@@ -88,7 +88,7 @@ _gate_test_capture \
   env CHECK_NODE_ENGINE_VERSION=v22.23.2 \
       CHECK_STEPS="$(printf 'later\ttouch %s' "${MARKER}")" \
       bash "${CHECK}"
-if printf '%s' "${GATE_TEST_LAST_OUT}" | grep -qF 'FAILED: later'; then
+if grep -qF 'FAILED: later' <<< "${GATE_TEST_LAST_OUT}"; then
   gate_test_record "check.sh does not report a later step on old Node" 1
   _gate_test_dump "${GATE_TEST_LAST_OUT}"
 else
@@ -98,8 +98,8 @@ fi
 _gate_test_capture \
   env CHECK_NODE_ENGINE_VERSION=v22.23.2 bash "${CHANGED}" --dry-run
 if [ "${GATE_TEST_LAST_RC}" -ne 0 ] \
-  && printf '%s' "${GATE_TEST_LAST_OUT}" | grep -qF 'v22.23.2' \
-  && ! printf '%s' "${GATE_TEST_LAST_OUT}" | grep -qF 'selected'; then
+  && grep -qF 'v22.23.2' <<< "${GATE_TEST_LAST_OUT}" \
+  && ! grep -qF 'selected' <<< "${GATE_TEST_LAST_OUT}"; then
   gate_test_record "check-changed.sh fails before selecting checks" 0
 else
   gate_test_record "check-changed.sh fails before selecting checks" 1
