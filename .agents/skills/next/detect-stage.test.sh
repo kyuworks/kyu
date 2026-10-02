@@ -135,9 +135,7 @@ assert_eq "docs/ and *.md commits are docs-only" "yes" "$(value "${DOCS}" DOCS_O
 assert_eq "a docs-only commit is still at plan" "plan" "$(value "${DOCS}" STAGE)"
 
 # --- a branch whose changed-file list is larger than a pipe holds ---
-# A test path sorts first and about 240 KB of implementation paths follow. A
-# grep -q reading a pipe stopped at the first match, broke the writer's pipe,
-# and under pipefail all three answers came out wrong.
+# A test path sorts first and about 240 KB of paths follow: more than a pipe holds.
 LARGE="${WORK}/large"
 init_repo "${LARGE}"
 fake_remote "${LARGE}"

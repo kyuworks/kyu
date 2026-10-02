@@ -136,6 +136,37 @@ printf x | grep -q y
 SH
 assert_exit "node_modules and husky's generated .husky/_ are not scanned" 0 run_case vendored
 
+fixture dq-heredoc scripts/fixture.sh <<'SH'
+#!/usr/bin/env bash
+echo "<<EOF"
+printf x | grep -q y
+SH
+assert_exit "a << inside double quotes does not hide the lines after it" 1 run_case dq-heredoc
+assert_last_output_contains "the pipe after a quoted << is named" "scripts/fixture.sh:3:"
+
+fixture ansi-c scripts/fixture.sh <<'SH'
+#!/usr/bin/env bash
+echo $'it\'s' | grep -q s
+SH
+assert_exit "a dollar-quoted string with an escaped quote does not hide its own line" 1 run_case ansi-c
+assert_last_output_contains "the pipe after a dollar-quoted string is named" "scripts/fixture.sh:2:"
+
+fixture case-arm scripts/fixture.sh <<'SH'
+#!/usr/bin/env bash
+x="$(case "${y}" in
+  a) echo "it's" ;;
+esac)"
+SH
+assert_exit "a case arm inside a quoted command substitution fails closed" 1 run_case case-arm
+assert_last_output_contains "the lost quoting is named" "still open at end of file"
+
+fixture arithmetic-shift scripts/fixture.sh <<'SH'
+#!/usr/bin/env bash
+n=$(( a<<b ))
+SH
+assert_exit "a shift inside arithmetic fails closed" 1 run_case arithmetic-shift
+assert_last_output_contains "the open heredoc is named" "scripts/fixture.sh: the scanner lost track"
+
 mkdir -p "${WORK}/self/scripts/gates"
 cp "${CHECK}" "${SCRIPT_DIR}/check-no-pipe-to-grep-q.test.sh" "${WORK}/self/scripts/gates/"
 assert_exit "the gate and this suite pass their own check" 0 run_case self

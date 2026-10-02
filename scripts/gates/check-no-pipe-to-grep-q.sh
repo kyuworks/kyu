@@ -2,12 +2,14 @@
 # check-no-pipe-to-grep-q.sh — no shell script pipes a producer into grep -q.
 #
 # grep -q exits at its first match; a writer that still has text gets a broken
-# pipe, and under pipefail the match reads as a miss (#19, #20). Read a
-# here-string instead: grep -q PATTERN <<< "${text}". There is no allow marker.
+# pipe, and under pipefail the match reads as a miss. Read a here-string
+# instead: grep -q PATTERN <<< "${text}". There is no allow marker.
 #
 # Scans *.sh and extensionless sh/bash scripts (by shebang) under scripts/,
 # .agents/, .husky/ and infra/. Single-quoted text, comments and heredoc bodies
 # are data, not code. A line that ends in | carries the pipe to the next line.
+# A file that ends with a quote, command substitution or heredoc still open
+# fails: the scanner lost track and cannot vouch for the rest.
 #
 # Self-test: bash scripts/gates/check-no-pipe-to-grep-q.test.sh
 # Env (tests): ROOT_DIR
@@ -45,14 +47,15 @@ if [ "${#FILES[@]}" -gt 0 ]; then
       out = ""; n = length(line); prev = " "
       for (i = 1; i <= n; i++) {
         c = substr(line, i, 1)
-        if (sq) { if (c == "\047") sq = 0; out = out " "; continue }
-        if (c == "<" && prev != "<" && heredoc == "" && substr(line, i, 3) ~ /^<<[^<]/) heredoc = delimiter_of(substr(line, i + 2))
+        if (sq) { if (sq == 2 && c == "\\") i++; else if (c == "\047") sq = 0; out = out " "; continue }
+        if (c == "<" && !dq && prev != "<" && heredoc == "" && substr(line, i, 3) ~ /^<<[^<]/) heredoc = delimiter_of(substr(line, i + 2))
         if (c == "\\") { out = out "  "; i++; prev = "x"; continue }
         if (dq) {
           if (c == "\"") dq = 0
           else if (c == "$" && substr(line, i + 1, 1) == "(") { depth++; inner[depth] = 0; dq = 0; out = out "$("; i++; prev = "("; continue }
           out = out c; prev = c; continue
         }
+        if (c == "$" && substr(line, i + 1, 1) == "\047") { sq = 2; out = out "  "; i++; prev = "\047"; continue }
         if (c == "\047") { sq = 1; out = out " "; prev = c; continue }
         if (c == "\"") dq = 1
         else if (c == "#" && prev ~ /[ \t;&|()]/) break
@@ -69,7 +72,11 @@ if [ "${#FILES[@]}" -gt 0 ]; then
       match(rest, /^[A-Za-z_][A-Za-z0-9_]*/)
       return RSTART ? substr(rest, 1, RLENGTH) : ""
     }
-    FNR == 1 { sq = 0; dq = 0; depth = 0; heredoc = ""; in_body = ""; carry = 0 }
+    function check_closed(file) {
+      if (file != "" && (sq || dq || depth || heredoc != "" || in_body != ""))
+        print "LOST " file ": the scanner lost track: a quote, command substitution or heredoc is still open at end of file"
+    }
+    FNR == 1 { check_closed(seen); seen = FILENAME; sq = 0; dq = 0; depth = 0; heredoc = ""; in_body = ""; carry = 0 }
     in_body {
       body_line = $0
       if (strip_tabs) sub(/^\t+/, "", body_line)
@@ -85,9 +92,21 @@ if [ "${#FILES[@]}" -gt 0 ]; then
         print FILENAME ":" FNR ": " $0
       carry = (code ~ /(^|[^|])[|][ \t]*$/)
     }
+    END { check_closed(seen) }
   ' "${FILES[@]}")"
 fi
 
+LOST="$(grep '^LOST ' <<< "${HITS}" || true)"
+if [ -n "${LOST}" ]; then
+  HITS="$(grep -v '^LOST ' <<< "${HITS}" || true)"
+fi
+
+if [ -n "${LOST}" ]; then
+  echo "FAIL: a script could not be checked; simplify its quoting so the scanner can follow it:" >&2
+  sed 's/^LOST /  /' <<< "${LOST}" >&2
+  [ -n "${HITS}" ] && printf '%s\n' "${HITS}" | sed 's/^/  /' >&2
+  exit 1
+fi
 if [ -n "${HITS}" ]; then
   echo "FAIL: a pipe feeds grep -q; under pipefail an early exit breaks the writer and a match reads as a miss:" >&2
   printf '%s\n' "${HITS}" | sed 's/^/  /' >&2
