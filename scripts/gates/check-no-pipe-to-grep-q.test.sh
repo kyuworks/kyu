@@ -209,6 +209,35 @@ assert_last_output_contains "the continued -q pipe is named at its last line" "s
 assert_last_output_contains "the continued -m pipe is named at its last line" "scripts/fixture.sh:5:"
 assert_output_lacks "a continued grep -q reading a file is not named" "scripts/fixture.sh:7:" run_case continued
 
+fixture continued-stage scripts/fixture.sh <<'SH'
+#!/usr/bin/env bash
+printf x |
+  grep \
+  -q y
+SH
+assert_exit "a pipe whose grep stage is split by a backslash-newline fails" 1 run_case continued-stage
+assert_last_output_contains "the split grep stage is named at its last line" "scripts/fixture.sh:4:"
+
+fixture dangling scripts/fixture.sh <<'SH'
+#!/usr/bin/env bash
+printf x | grep -q y \
+SH
+assert_exit "a continued pipe at the end of a file fails" 1 run_case dangling
+assert_last_output_contains "the dangling continuation is named" "still open at end of file"
+
+mkdir -p "${WORK}/dangling-bare/scripts"
+printf '#!/usr/bin/env bash\nprintf x | grep -q y \\' > "${WORK}/dangling-bare/scripts/fixture.sh"
+assert_exit "a continued pipe at the end of a file without a newline fails" 1 run_case dangling-bare
+assert_last_output_contains "the bare dangling continuation is named" "still open at end of file"
+
+fixture attached-value scripts/fixture.sh <<'SH'
+#!/usr/bin/env bash
+printf x | grep -ehello
+printf x | grep -flist
+printf x | grep -iehello
+SH
+assert_exit "a value attached to -e or -f is not read as a flag" 0 run_case attached-value
+
 mkdir -p "${WORK}/self/scripts/gates"
 cp "${CHECK}" "${SCRIPT_DIR}/check-no-pipe-to-grep-q.test.sh" "${WORK}/self/scripts/gates/"
 assert_exit "the gate and this suite pass their own check" 0 run_case self

@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # check-no-pipe-to-grep-q.sh — no shell script pipes into a grep that stops early.
 #
-# grep -q, -m, -l and -L stop reading at the first match (or the count); a
-# writer that still has text gets a broken pipe, and under pipefail the match
-# reads as a miss. Read a here-string instead: grep -q PATTERN <<< "${text}".
+# grep -q, -m and -l stop reading at the first match (or the count), and so
+# does -L on GNU grep; a writer that still has text gets a broken pipe, and
+# under pipefail the match reads as a miss. Read a here-string instead:
+# grep -q PATTERN <<< "${text}".
 # Output sent to /dev/null is allowed: GNU grep reads the pipe to its end then.
 # There is no allow marker.
 #
 # Scans *.sh and extensionless sh/bash scripts (by shebang) under scripts/,
 # .agents/, .husky/ and infra/. Single-quoted text, comments and heredoc bodies
 # are data, not code. A line that ends in | carries the pipe to the next line;
-# a line that ends in \ joins the next line.
-# A file that ends with a quote, command substitution or heredoc still open
-# fails: the scanner lost track and cannot vouch for the rest.
+# a line that ends in \ joins the next line. A file that ends with a quote,
+# command substitution, heredoc or \ still open fails: the scanner lost track
+# and cannot vouch for the rest.
 #
 # Self-test: bash scripts/gates/check-no-pipe-to-grep-q.test.sh
 # Env (tests): ROOT_DIR
@@ -76,8 +77,8 @@ if [ "${#FILES[@]}" -gt 0 ]; then
       return RSTART ? substr(rest, 1, RLENGTH) : ""
     }
     function check_closed(file) {
-      if (file != "" && (sq || dq || depth || heredoc != "" || in_body != ""))
-        print "LOST " file ": the scanner lost track: a quote, command substitution or heredoc is still open at end of file"
+      if (file != "" && (sq || dq || depth || heredoc != "" || in_body != "" || held != ""))
+        print "LOST " file ": the scanner lost track: a quote, command substitution, heredoc or continued line is still open at end of file"
     }
     FNR == 1 { check_closed(seen); seen = FILENAME; sq = 0; dq = 0; depth = 0; heredoc = ""; in_body = ""; carry = 0; cont = 0; held = "" }
     in_body {
@@ -93,7 +94,7 @@ if [ "${#FILES[@]}" -gt 0 ]; then
       if (cont) { cont = 0; held = code; next }
       if (carry && code !~ /[^ \t]/) next
       staged = (carry ? "|" : "") code
-      if (staged ~ /(^|[^|])[|]&?[ \t]*(command[ \t]+)?([^ \t|;&]*\/)?[ef]?grep([ \t]+-[^ \t]*)*[ \t]+(-[A-Za-z0-9]*[qmlL][A-Za-z0-9]*|--(quiet|silent|max-count(=[^ \t;&|)]*)?|files-with(out)?-match(es)?))([ \t;&|)]|$)/)
+      if (staged ~ /(^|[^|])[|]&?[ \t]*(command[ \t]+)?([^ \t|;&]*\/)?[ef]?grep([ \t]+-[^ \t]*)*[ \t]+(-[A-Za-dg-z0-9]*[qmlL][A-Za-z0-9]*|--(quiet|silent|max-count(=[^ \t;&|)]*)?|files-with(out)?-match(es)?))([ \t;&|)]|$)/)
         print FILENAME ":" FNR ": " $0
       carry = (code ~ /(^|[^|])[|][ \t]*$/)
     }
