@@ -49,8 +49,9 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 deny() {
-  jq -nc --arg reason "$1" \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'
+  # On stdin: an escalated reason quotes the command, which can outgrow argv.
+  printf '%s' "$1" |
+    jq -Rsc '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:.}}'
   exit 0
 }
 
@@ -67,7 +68,7 @@ tool="$(printf '%s' "$payload" | jq -r '.tool_name // ""')"
 SELF_PATHS='scripts/hooks/agent-guard\.sh|scripts/hooks/scan-destructive\.sh|\.claude/settings\.json'
 
 guarded_path() {
-  printf '%s' "$1" | grep -qE "$SELF_PATHS"
+  grep -qE "$SELF_PATHS" <<<"$1"
 }
 
 # Recursive deletes a run legitimately needs: rebuildable output and scratch.
@@ -159,9 +160,10 @@ case "$tool" in
     ')" || deny "Denied: the command could not be normalised for screening. Nothing runs unscreened in an unattended session."
 
     # True when either reading matches. Quoting is not an escape hatch.
+    # Here-strings, not pipes: grep -q stops reading at its first match (see the 1.3 MB self-test cases).
     matches() {
-      printf '%s' "$CODE" | grep -qE -- "$1" && return 0
-      printf '%s' "$BARE" | grep -qE -- "$1"
+      grep -qE -- "$1" <<<"$CODE" && return 0
+      grep -qE -- "$1" <<<"$BARE"
     }
 
     if matches '\bgh\b[^|;&]*\bpr\b[^|;&]*\bcreate\b'; then

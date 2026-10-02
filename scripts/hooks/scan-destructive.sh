@@ -4,7 +4,8 @@
 # Reasons are built with jq, not string-interpolated into a heredoc. The
 # patterns contain backslash escapes (\s, \b) which are not valid JSON escapes,
 # so an interpolated heredoc emitted malformed JSON and the hook was silently
-# ignored. Keep every reason going through jq --arg.
+# ignored. Keep every reason going through jq, on stdin: a reason quotes the
+# command, and a large command is too long to be one argument.
 #
 # Two rules keep this from firing on every other command:
 #   1. Shell checks run against the command with quoted literals and heredoc
@@ -19,8 +20,8 @@ CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 [ -z "$CMD" ] && { echo '{}'; exit 0; }
 
 ask() {
-  jq -nc --arg reason "$1" \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$reason}}'
+  printf '%s' "$1" |
+    jq -Rsc '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:.}}'
   exit 0
 }
 
@@ -43,15 +44,16 @@ SHELL_PATTERNS=(
   '(^|[|;&(]|\s)wrangler\s[^|;&]*\bdelete\b'
 )
 
+# Here-strings, not pipes: under pipefail, grep -q stopping early breaks the writer's pipe and a match reads as a miss.
 for pat in "${SHELL_PATTERNS[@]}"; do
-  if printf '%s' "$CODE" | grep -qE "$pat"; then
+  if grep -qE "$pat" <<<"$CODE"; then
     ask "🔴 DESTRUCTIVE command detected: matches ${pat}. Command: ${CMD}"
   fi
 done
 
 # Tier 2: data-changing statements, but only when a database client runs them.
 DB_CLIENT='(^|[|;&(]|\s)(psql|mysql|mariadb|sqlite3|pg_dump|pg_restore|pgcli|cockroach|usql|drizzle-kit|prisma|atlas|flyway|sqlx)(\s|$)|\$DATABASE_URL|scripts/db/'
-if printf '%s' "$CMD" | grep -qE "$DB_CLIENT"; then
+if grep -qE "$DB_CLIENT" <<<"$CMD"; then
   MUTATION_PATTERNS=(
     '\bDROP\s+(TABLE|DATABASE|SCHEMA|INDEX|TYPE|VIEW|ROLE)\b'
     '\bTRUNCATE\b'
@@ -62,7 +64,7 @@ if printf '%s' "$CMD" | grep -qE "$DB_CLIENT"; then
     '\b(GRANT|REVOKE)\s'
   )
   for pat in "${MUTATION_PATTERNS[@]}"; do
-    if printf '%s' "$CMD" | grep -qEi "$pat"; then
+    if grep -qEi "$pat" <<<"$CMD"; then
       ask "🟡 Database mutation through a database client: matches ${pat}. Review before proceeding. Command: ${CMD}"
     fi
   done

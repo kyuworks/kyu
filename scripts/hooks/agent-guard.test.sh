@@ -36,6 +36,14 @@ bash_call() {
   jq -nc --arg cmd "$1" '{tool_name:"Bash",tool_input:{command:$cmd}}'
 }
 
+# About 1.3 MB of ordinary lines to follow the first line: more than a pipe
+# holds, and more than one argument may carry (128 KiB on Linux, 1 MiB on macOS).
+LARGE_PADDING="$(seq -f 'echo padding line %05g with ordinary words' 1 30000)"
+
+large_bash_call() {
+  printf '%s\n%s' "$1" "${LARGE_PADDING}" | jq -Rsc '{tool_name:"Bash",tool_input:{command:.}}'
+}
+
 echo "=== agent-guard tests ==="
 
 # --- local sessions are untouched -------------------------------------------
@@ -121,6 +129,19 @@ assert_eq "a cloud run may not delete the destructive-command screen from the sh
   "$(decision "$(bash_call 'rm -f scripts/hooks/scan-destructive.sh')")"
 assert_eq "a cloud run may not patch the guard from the shell" "deny" \
   "$(decision "$(bash_call 'sed -i.bak s/deny/echo/ scripts/hooks/agent-guard.sh')")"
+
+# --- commands larger than a pipe or an argument -----------------------------
+# A reader that stops at the first match breaks the pipe of a writer that still
+# has text to send, and a reason that carries the command can outgrow argv.
+# Either one used to turn a denial into a pass.
+assert_eq "a non-draft pull request inside a 1.3 MB command is still denied" "deny" \
+  "$(decision "$(large_bash_call 'gh pr create --base main --title x')")"
+assert_eq "patching the guard inside a 1.3 MB command is still denied" "deny" \
+  "$(decision "$(large_bash_call 'sed -i.bak s/deny/echo/ scripts/hooks/agent-guard.sh')")"
+assert_eq "a destructive delete inside a 1.3 MB command is still escalated to deny" "deny" \
+  "$(decision "$(large_bash_call 'rm -rf /Users/someone/Projects/other')")"
+assert_eq "a draft against main inside a 1.3 MB command still passes" "pass" \
+  "$(decision "$(large_bash_call 'gh pr create --draft --base main --title x')")"
 
 # --- the work the run is actually there to do -------------------------------
 assert_eq "a cloud run may push to its own claude/ branch" "pass" \
