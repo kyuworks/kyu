@@ -146,7 +146,7 @@ Every SDK integration file starts from empty `kyu_outbox` and `kyu_processed`, b
 
 A suite that builds a git repository sources `scripts/lib/git-env.sh` and unsets the variables it lists. The gate `check-selftest-git-isolation.sh` fails one that does not.
 
-A shell script feeds `grep -q` from a here-string (`grep -q PATTERN <<< "${text}"`), never a pipe: under `pipefail` the early exit breaks the writer and a match reads as a miss. The gate `check-no-pipe-to-grep-q.sh` fails a pipe.
+A shell script feeds `grep -q` (and `-m`, `-l`, `-L`) from a here-string (`grep -q PATTERN <<< "${text}"`), never a pipe: under `pipefail` the early exit breaks the writer and a match reads as a miss. The gate `check-no-pipe-to-grep-q.sh` fails a pipe.
 
 ## Branch / PR defaults
 
