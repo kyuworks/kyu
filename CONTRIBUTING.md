@@ -64,7 +64,7 @@ A gate is a script under `scripts/gates/` that fails the commit or the PR. Each 
 | `check-pr-size.sh` | more than 400 net production lines added (label `oversized-justified` plus a reason line is a human's hatch) |
 | `check-migration-immutability.sh` | a file under `packages/sdk/migrations/` already on `main` is edited, renamed or deleted |
 | `check-no-escape-hatches.sh` | `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error` or a disable comment in production source |
-| `check-no-pipe-to-grep-q.sh` | a shell script under `scripts/`, `.agents/`, `.husky/` or `infra/` pipes into `grep -q` (read a here-string instead) |
+| `check-no-pipe-to-grep-q.sh` | a shell script under `scripts/`, `.agents/`, `.husky/` or `infra/` pipes into `grep -q`, `-m`, `-l` or `-L`, also across a backslash-newline (read a here-string instead); a pipe into grep with output to `/dev/null` is allowed, because GNU grep then reads the whole pipe |
 | `check-durable-wall-clock.sh` | `Date.now` (called or passed) or an argument-less `new Date()`, even with its `)` on the next line, in a production file that holds a durable handler; a grep error also fails it |
 | `check-package-boundaries.sh` | a package imports another by relative path or deep `src`/`dist` path |
 | `check-package-versions.sh` | the published packages' versions or `SDK_VERSION` differ, the SDK's range on schemas is not `workspace:*`, or (release only) the tag is not `v<version>` |

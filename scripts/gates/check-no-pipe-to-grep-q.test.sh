@@ -95,7 +95,6 @@ cat <<'EOF'
 printf x | grep -q y
 EOF
 grep -q y <<< word
-printf x | grep -m1 y
 printf x | grep -c y
 SH
 assert_exit "comments, single-quoted text, heredoc bodies and other grep flags pass" 0 run_case not-code
@@ -166,6 +165,78 @@ n=$(( a<<b ))
 SH
 assert_exit "a shift inside arithmetic fails closed" 1 run_case arithmetic-shift
 assert_last_output_contains "the open heredoc is named" "scripts/fixture.sh: the scanner lost track"
+
+fixture early-exit scripts/fixture.sh <<'SH'
+#!/usr/bin/env bash
+printf x | grep -m1 y
+printf x | grep -m 1 y
+printf x | grep --max-count=1 y
+printf x | grep -l y
+printf x | grep -L y
+printf x | grep -il y
+printf x | grep --files-with-matches y
+printf x | grep --files-without-match y
+SH
+assert_exit "a pipe into grep -m, -l or -L fails" 1 run_case early-exit
+for line in 2 3 4 5 6 7 8 9; do
+  assert_last_output_contains "early-exit flag on line ${line} is named" "scripts/fixture.sh:${line}:"
+done
+
+fixture reads-all scripts/fixture.sh <<'SH'
+#!/usr/bin/env bash
+printf x | grep -c y
+printf x | grep y >/dev/null
+printf x | grep y > /dev/null 2>&1
+printf x | grep y 1>/dev/null
+printf x | grep y &>/dev/null
+grep -m1 y "${file}"
+grep -l y "${file}"
+grep -m1 y <<< "${text}"
+SH
+assert_exit "grep that reads all its input, or reads a file or here-string, passes" 0 run_case reads-all
+
+fixture continued scripts/fixture.sh <<'SH'
+#!/usr/bin/env bash
+printf x | grep \
+  -q y
+printf x \
+  | grep -m1 y
+grep -q y \
+  "${file}"
+SH
+assert_exit "a pipe into grep -q split by a backslash-newline fails" 1 run_case continued
+assert_last_output_contains "the continued -q pipe is named at its last line" "scripts/fixture.sh:3:"
+assert_last_output_contains "the continued -m pipe is named at its last line" "scripts/fixture.sh:5:"
+assert_output_lacks "a continued grep -q reading a file is not named" "scripts/fixture.sh:7:" run_case continued
+
+fixture continued-stage scripts/fixture.sh <<'SH'
+#!/usr/bin/env bash
+printf x |
+  grep \
+  -q y
+SH
+assert_exit "a pipe whose grep stage is split by a backslash-newline fails" 1 run_case continued-stage
+assert_last_output_contains "the split grep stage is named at its last line" "scripts/fixture.sh:4:"
+
+fixture dangling scripts/fixture.sh <<'SH'
+#!/usr/bin/env bash
+printf x | grep -q y \
+SH
+assert_exit "a continued pipe at the end of a file fails" 1 run_case dangling
+assert_last_output_contains "the dangling continuation is named" "still open at end of file"
+
+mkdir -p "${WORK}/dangling-bare/scripts"
+printf '#!/usr/bin/env bash\nprintf x | grep -q y \\' > "${WORK}/dangling-bare/scripts/fixture.sh"
+assert_exit "a continued pipe at the end of a file without a newline fails" 1 run_case dangling-bare
+assert_last_output_contains "the bare dangling continuation is named" "still open at end of file"
+
+fixture attached-value scripts/fixture.sh <<'SH'
+#!/usr/bin/env bash
+printf x | grep -ehello
+printf x | grep -flist
+printf x | grep -iehello
+SH
+assert_exit "a value attached to -e or -f is not read as a flag" 0 run_case attached-value
 
 mkdir -p "${WORK}/self/scripts/gates"
 cp "${CHECK}" "${SCRIPT_DIR}/check-no-pipe-to-grep-q.test.sh" "${WORK}/self/scripts/gates/"

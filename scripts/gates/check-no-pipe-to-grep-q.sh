@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
-# check-no-pipe-to-grep-q.sh — no shell script pipes a producer into grep -q.
+# check-no-pipe-to-grep-q.sh — no shell script pipes into a grep that stops early.
 #
-# grep -q exits at its first match; a writer that still has text gets a broken
-# pipe, and under pipefail the match reads as a miss. Read a here-string
-# instead: grep -q PATTERN <<< "${text}". There is no allow marker.
+# grep -q, -m and -l stop reading at the first match (or the count), and so
+# does -L on GNU grep; a writer that still has text gets a broken pipe, and
+# under pipefail the match reads as a miss. Read a here-string instead:
+# grep -q PATTERN <<< "${text}".
+# Output sent to /dev/null is allowed: GNU grep reads the pipe to its end then.
+# There is no allow marker.
 #
 # Scans *.sh and extensionless sh/bash scripts (by shebang) under scripts/,
 # .agents/, .husky/ and infra/. Single-quoted text, comments and heredoc bodies
-# are data, not code. A line that ends in | carries the pipe to the next line.
-# A file that ends with a quote, command substitution or heredoc still open
-# fails: the scanner lost track and cannot vouch for the rest.
+# are data, not code. A line that ends in | carries the pipe to the next line;
+# a line that ends in \ joins the next line. A file that ends with a quote,
+# command substitution, heredoc or \ still open fails: the scanner lost track
+# and cannot vouch for the rest.
 #
 # Self-test: bash scripts/gates/check-no-pipe-to-grep-q.test.sh
 # Env (tests): ROOT_DIR
 set -euo pipefail
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "${ROOT_DIR}"
-echo "=== no pipe into grep -q ==="
+echo "=== no pipe into an early-exit grep ==="
 
 SHEBANG='^#!.*[/[:space:]](ba|da|z)?sh([[:space:]]|$)'
 SEARCH_DIRS=()
@@ -49,7 +53,7 @@ if [ "${#FILES[@]}" -gt 0 ]; then
         c = substr(line, i, 1)
         if (sq) { if (sq == 2 && c == "\\") i++; else if (c == "\047") sq = 0; out = out " "; continue }
         if (c == "<" && !dq && prev != "<" && heredoc == "" && substr(line, i, 3) ~ /^<<[^<]/) heredoc = delimiter_of(substr(line, i + 2))
-        if (c == "\\") { out = out "  "; i++; prev = "x"; continue }
+        if (c == "\\") { if (i == n) cont = 1; out = out "  "; i++; prev = "x"; continue }
         if (dq) {
           if (c == "\"") dq = 0
           else if (c == "$" && substr(line, i + 1, 1) == "(") { depth++; inner[depth] = 0; dq = 0; out = out "$("; i++; prev = "("; continue }
@@ -73,10 +77,10 @@ if [ "${#FILES[@]}" -gt 0 ]; then
       return RSTART ? substr(rest, 1, RLENGTH) : ""
     }
     function check_closed(file) {
-      if (file != "" && (sq || dq || depth || heredoc != "" || in_body != ""))
-        print "LOST " file ": the scanner lost track: a quote, command substitution or heredoc is still open at end of file"
+      if (file != "" && (sq || dq || depth || heredoc != "" || in_body != "" || held != ""))
+        print "LOST " file ": the scanner lost track: a quote, command substitution, heredoc or continued line is still open at end of file"
     }
-    FNR == 1 { check_closed(seen); seen = FILENAME; sq = 0; dq = 0; depth = 0; heredoc = ""; in_body = ""; carry = 0 }
+    FNR == 1 { check_closed(seen); seen = FILENAME; sq = 0; dq = 0; depth = 0; heredoc = ""; in_body = ""; carry = 0; cont = 0; held = "" }
     in_body {
       body_line = $0
       if (strip_tabs) sub(/^\t+/, "", body_line)
@@ -86,9 +90,11 @@ if [ "${#FILES[@]}" -gt 0 ]; then
     {
       code = code_of($0)
       if (heredoc != "") { in_body = heredoc; heredoc = "" }
+      code = held code; held = ""
+      if (cont) { cont = 0; held = code; next }
       if (carry && code !~ /[^ \t]/) next
       staged = (carry ? "|" : "") code
-      if (staged ~ /(^|[^|])[|]&?[ \t]*(command[ \t]+)?([^ \t|;&]*\/)?[ef]?grep([ \t]+-[^ \t]*)*[ \t]+(-[A-Za-z0-9]*q[A-Za-z0-9]*|--quiet|--silent)([ \t;&|)]|$)/)
+      if (staged ~ /(^|[^|])[|]&?[ \t]*(command[ \t]+)?([^ \t|;&]*\/)?[ef]?grep([ \t]+-[^ \t]*)*[ \t]+(-[A-Za-dg-z0-9]*[qmlL][A-Za-z0-9]*|--(quiet|silent|max-count(=[^ \t;&|)]*)?|files-with(out)?-match(es)?))([ \t;&|)]|$)/)
         print FILENAME ":" FNR ": " $0
       carry = (code ~ /(^|[^|])[|][ \t]*$/)
     }
@@ -108,9 +114,9 @@ if [ -n "${LOST}" ]; then
   exit 1
 fi
 if [ -n "${HITS}" ]; then
-  echo "FAIL: a pipe feeds grep -q; under pipefail an early exit breaks the writer and a match reads as a miss:" >&2
+  echo "FAIL: a pipe feeds grep -q, -m, -l or -L; under pipefail an early exit breaks the writer and a match reads as a miss:" >&2
   printf '%s\n' "${HITS}" | sed 's/^/  /' >&2
   echo "Read a here-string instead: grep -q PATTERN <<< \"\${text}\"." >&2
   exit 1
 fi
-echo "OK: no script pipes into grep -q."
+echo "OK: no script pipes into grep -q, -m, -l or -L."
