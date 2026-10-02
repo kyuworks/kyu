@@ -108,12 +108,26 @@ rm -rf "${src}" "${dest}"
 SH
 }
 
+# Line 1 builds a repository; ~1.3 MB of padding keeps the gate's matcher
+# reading long after the match, which once broke a pipe and skipped the file.
+large_unisolated_body() {
+  printf '%s\n' 'git -C "${root}" init -q'
+  awk 'BEGIN { for (i = 1; i <= 20000; i++) printf ": padding line %05d keeps this suite larger than a pipe buffer\n", i }'
+}
+
 # --- an unisolated repo-building suite fails the gate ---
 mkdir -p "${WORK}/bad/scripts/gates"
 unisolated_body > "${WORK}/bad/scripts/gates/fixture.test.sh"
 assert_exit "unisolated repo-building suite fails" 1 env ROOT_DIR="${WORK}/bad" bash "${CHECK}"
 assert_output_contains "failure names the offending file" "fixture.test.sh" \
   env ROOT_DIR="${WORK}/bad" bash "${CHECK}"
+
+# --- a match on line 1 of a large unisolated suite still fails the gate ---
+mkdir -p "${WORK}/large/scripts/gates"
+large_unisolated_body > "${WORK}/large/scripts/gates/fixture.test.sh"
+assert_exit "a match on line 1 of a large suite still fails the gate" 1 \
+  env ROOT_DIR="${WORK}/large" bash "${CHECK}"
+assert_last_output_contains "the large-suite failure names the offending file" "fixture.test.sh"
 
 # --- the same suite passes once it sources scripts/lib/git-env.sh ---
 mkdir -p "${WORK}/good/scripts/gates" "${WORK}/good/scripts/lib"

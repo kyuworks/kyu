@@ -24,7 +24,8 @@ if [ "${#SEARCH_DIRS[@]}" -gt 0 ]; then
   while IFS= read -r file; do
     [ -n "${file}" ] || continue
     stripped="$(sed -E "s/'[^']*'//g" "${file}")"
-    printf '%s\n' "${stripped}" | grep -qE "${REPO_BUILD_PATTERN}" || continue
+    # A here-string, not a pipe: grep -q stops reading at its first match (see the large-suite self-test).
+    grep -qE "${REPO_BUILD_PATTERN}" <<< "${stripped}" || continue
     if ! grep -qF 'unset "${GIT_HOOK_ENV_VARS[@]}"' "${file}"; then
       echo "FAIL: ${file} builds a git repository but does not source scripts/lib/git-env.sh" >&2
       FAIL=1
