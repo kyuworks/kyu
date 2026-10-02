@@ -6,10 +6,11 @@
 #
 # Dashboard: http://localhost:8888  (admin@example.com / Admin123!!)
 # gRPC:      localhost:7077          (workers; TLS strategy "none")
+# PgBouncer: 127.0.0.1:16432        (transaction mode, any database; KYU_TEST_POOLER_DATABASE_URL)
 #
 # Ports are overridable so several worktrees can run their own stack:
 #   KYU_HATCHET_HTTP_PORT=18888 KYU_HATCHET_GRPC_PORT=17077 \
-#   KYU_POSTGRES_PORT=25432 COMPOSE_PROJECT_NAME=kyu-lane2 pnpm hatchet:up
+#   KYU_POSTGRES_PORT=25432 KYU_PGBOUNCER_PORT=26432 COMPOSE_PROJECT_NAME=kyu-lane2 pnpm hatchet:up
 # A second lane also points its integration tests at its own database name,
 # e.g. KYU_TEST_DATABASE_URL=postgresql://hatchet:hatchet@localhost:25432/kyu_test_lane2
 name: kyu-hatchet
@@ -69,6 +70,36 @@ services:
       timeout: 5s
       retries: 30
       start_period: 15s
+
+  # Transaction-mode PgBouncer in front of the same Postgres, for packages/sdk/src/db/pooler.integration.test.ts.
+  # `*` passes any database name through, so lane databases work. Same tag as .github/workflows/ci.yml.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${KYU_PGBOUNCER_PORT:-16432}:6432'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_USER: hatchet
+      DB_PASSWORD: hatchet
+      # SCRAM needs the plain password in the userlist to log in to postgres:15.6.
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      LISTEN_PORT: '6432'
+      # 0 turns off PgBouncer's prepared-statement tracking, so a named statement run on a
+      # server other than the one that prepared it fails here (the pooler test forces that).
+      MAX_PREPARED_STATEMENTS: '0'
+      # Idle server connections end after 10 s, so an interrupted run does not keep the lane database in use.
+      SERVER_IDLE_TIMEOUT: '10'
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-h', '127.0.0.1', '-p', '6432', '-U', 'hatchet', '-d', 'hatchet']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
 volumes:
   hatchet_postgres_data:

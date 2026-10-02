@@ -112,12 +112,12 @@ A package reaches another only through its package name and exports map. No rela
 ```bash
 pnpm check:changed          # normal loop (silent on success)
 pnpm check                  # exhaustive backstop
-pnpm hatchet:up             # local engine (Docker): http://localhost:8888, gRPC :7077
+pnpm hatchet:up             # local engine (Docker): http://localhost:8888, gRPC :7077, PgBouncer :16432
 bash infra/hatchet/token.sh # worker token for the local engine
-pnpm --filter @kyuworks/sdk test:integration   # needs the engine, HATCHET_CLIENT_TOKEN and KYU_TEST_DATABASE_URL
+pnpm --filter @kyuworks/sdk test:integration   # needs the engine, HATCHET_CLIENT_TOKEN, KYU_TEST_DATABASE_URL and KYU_TEST_POOLER_DATABASE_URL
 ```
 
-Integration tests read `HATCHET_CLIENT_TOKEN`, `HATCHET_CLIENT_TLS_STRATEGY=none`, and `KYU_TEST_DATABASE_URL` (e.g. `postgresql://hatchet:hatchet@localhost:15432/kyu_test`). They fail loudly when the engine or database is missing. They never skip.
+Integration tests read `HATCHET_CLIENT_TOKEN`, `HATCHET_CLIENT_TLS_STRATEGY=none`, `KYU_TEST_DATABASE_URL` (e.g. `postgresql://hatchet:hatchet@localhost:15432/kyu_test`) and `KYU_TEST_POOLER_DATABASE_URL`, the same database through the stack's transaction-mode PgBouncer (e.g. `postgresql://hatchet:hatchet@127.0.0.1:16432/kyu_test`). They fail loudly when the engine, the database or the pooler is missing. They never skip.
 
 ## Who runs which tests
 

@@ -74,6 +74,7 @@ jobs:
     timeout-minutes: 20
     env:
       KYU_TEST_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/kyu_test
+      KYU_TEST_POOLER_DATABASE_URL: postgresql://hatchet:hatchet@127.0.0.1:6432/kyu_test
       KYU_INTEGRATION_SHARD: '1'
     services: &engine-services
       postgres:
@@ -105,6 +106,25 @@ jobs:
         ports:
           - 8888:8888
           - 7077:7077
+      # Same tag and settings as infra/hatchet/compose.yaml; only shard 2 runs the pooler file.
+      pgbouncer:
+        image: edoburu/pgbouncer:v1.25.2-p0
+        env:
+          DB_HOST: postgres
+          DB_USER: hatchet
+          DB_PASSWORD: hatchet
+          AUTH_TYPE: scram-sha-256
+          POOL_MODE: transaction
+          LISTEN_PORT: '6432'
+          MAX_PREPARED_STATEMENTS: '0'
+          SERVER_IDLE_TIMEOUT: '10'
+        ports:
+          - 6432:6432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -p 6432 -U hatchet -d hatchet"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps: &sdk-integration-steps
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
@@ -133,6 +153,7 @@ jobs:
     timeout-minutes: 20
     env:
       KYU_TEST_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/kyu_test
+      KYU_TEST_POOLER_DATABASE_URL: postgresql://hatchet:hatchet@127.0.0.1:6432/kyu_test
       KYU_INTEGRATION_SHARD: '2'
     services: *engine-services
     steps: *sdk-integration-steps

@@ -22,6 +22,7 @@ pnpm hatchet:up
 export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/token.sh)"
 export HATCHET_CLIENT_TLS_STRATEGY=none
 export KYU_TEST_DATABASE_URL=postgresql://hatchet:hatchet@localhost:15432/kyu_test
+export KYU_TEST_POOLER_DATABASE_URL=postgresql://hatchet:hatchet@127.0.0.1:16432/kyu_test
 pnpm check
 ```
 
@@ -53,7 +54,7 @@ registers the workflow and `runs.forEnvelope()` would then report a name the cal
 
 A subscription's `concurrency` key groups runs; `maxRuns` caps each group and `strategy` says what happens when a group is full. `'fifo'` and `'round-robin'` are the same engine strategy — runs queue in publish order inside a group, and groups take turns — so the name only records which one you are buying: `'fifo'` for a per-entity key such as `input.data.orderId`, `'round-robin'` for a key that groups a whole business tenant. `concurrency: { key: TENANT_CONCURRENCY_KEY, maxRuns: 1, strategy: 'round-robin' }` gives every business tenant one run at a time on that subscription. A tenant publishing five thousand messages cannot push a tenant publishing five to the back of the queue. `TENANT_CONCURRENCY_KEY` is `'input.tenantId'`, the tenant id on the envelope the relay pushes. This key requires every message on the subscription to carry a tenant id: an envelope with `tenantId: null` fails its run at the engine (`failed to parse step expression (input.tenantId)`), and a replay fails the same way, so use a different key or a constant for subscriptions that carry tenant-less messages. `'cancel_in_progress'` and `'cancel_newest'` still coalesce instead of queueing.
 
-Run the relay on a small dedicated `pg.Pool` (the shop uses `max: 1`), not the application's pool and not a bare `pg.Client` (`kyu.startRelay({ db: pool, workerId })`). The relay never opens a transaction — a claim is held by the row's `claimed_by` stamp, not by the connection — so a pool is safe, and pg replaces a dropped connection on the next tick. `publish()` and `onceById()` still refuse a pool: their statements must land in the caller's transaction. Attach `pool.on('error', …)`, or a connection dropped while idle takes the process down.
+Run the relay on a small dedicated `pg.Pool` (the shop uses `max: 1`), not the application's pool and not a bare `pg.Client` (`kyu.startRelay({ db: pool, workerId })`). The relay never opens a transaction — a claim is held by the row's `claimed_by` stamp, not by the connection — so a pool is safe, and pg replaces a dropped connection on the next tick. `publish()` and `onceById()` still refuse a pool: their statements must land in the caller's transaction. Attach `pool.on('error', …)`, or a connection dropped while idle takes the process down. The relay, `publish()`, `onceById()` and tenant pause are tested through a transaction-mode PgBouncer ([`pooler.integration.test.ts`](packages/sdk/src/db/pooler.integration.test.ts)).
 
 A relay handed a single `pg.Client` cannot recover: pg marks a client that lost its connection permanently unusable. The relay notices, stops polling, calls `onError` with a `RelayConnectionLostError` and rejects `relay.closed`. Exit non-zero on that rejection and let a supervisor restart the process. Rows the relay had claimed stay claimed until `staleClaimMs` passes, then another relay takes them over.
 

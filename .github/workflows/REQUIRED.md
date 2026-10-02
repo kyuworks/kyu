@@ -14,7 +14,7 @@ PR if `required-checks.txt` drifts from `ci.yml`.
 | `lint` | Lint | `pnpm format:check`, `scripts/verify-gates.sh --range <base>...HEAD`, `pnpm lint` |
 | `typecheck` | Type Check | `pnpm typecheck`, `pnpm typecheck:tests` |
 | `test-unit` | Unit Tests | `pnpm test` (every package's vitest unit suite) |
-| `test-integration-sdk-1`, `test-integration-sdk-2` | Integration Tests (1/2), Integration Tests (2/2) | Each: its own Hatchet Lite + Postgres service containers, a worker token minted in the job, then `pnpm --filter @kyuworks/sdk test:integration` with `KYU_INTEGRATION_SHARD` 1 or 2 |
+| `test-integration-sdk-1`, `test-integration-sdk-2` | Integration Tests (1/2), Integration Tests (2/2) | Each: its own Hatchet Lite, Postgres and PgBouncer service containers, a worker token minted in the job, then `pnpm --filter @kyuworks/sdk test:integration` with `KYU_INTEGRATION_SHARD` 1 or 2 |
 | `self-tests` | Gate Self Tests | `scripts/verify-self-tests.sh` — every `*.test.sh` under `scripts/` and `.agents/skills/` |
 
 Every one of these runs on every pull request. None is path-filtered: a
