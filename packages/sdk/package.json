@@ -36,15 +36,15 @@
     "lint": "NODE_OPTIONS='--import tsx' oxlint"
   },
   "dependencies": {
-    "@hatchet-dev/typescript-sdk": "^1.33.1",
+    "@hatchet-dev/typescript-sdk": "^1.33.2",
     "@kyuworks/schemas": "workspace:*",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/node": "^24.13.5",
+    "@types/node": "^24.19.0",
     "@types/pg": "^8.23.1",
-    "oxlint": "^1.83.0",
-    "oxlint-tsgolint": "7.0.2001",
+    "oxlint": "^1.85.0",
+    "oxlint-tsgolint": "7.0.2003",
     "pg": "^8.23.0",
     "typescript": "^6.0.0",
     "vitest": "^4.1.0"
