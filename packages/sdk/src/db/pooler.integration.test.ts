@@ -8,9 +8,11 @@ import { createHatchetClient } from '../hatchet.js'
 import { MIGRATIONS_DIRECTORY } from '../migrations.js'
 import { onceById } from '../outbox/onceById.js'
 import { claimPendingRows, markPublished } from '../outbox/outboxRepository.js'
+import { pruneOutbox } from '../outbox/pruneOutbox.js'
 import { createPublisher } from '../outbox/publish.js'
 import { startRelay } from '../relay/relay.js'
 import { applyMigrations } from './applyMigrations.js'
+import type { QueryParam, QueryRows } from './queryable.js'
 
 // The SDK's database paths through a transaction-mode PgBouncer (the `pgbouncer`
 // service in infra/hatchet/compose.yaml). The direct URL only checks, empties and drops.
@@ -297,6 +299,27 @@ describe('SDK database paths through a transaction-mode pooler', () => {
       [envelopeId],
     )
     expect(after.rows[0]?.published_at).toEqual(publishedAt)
+  })
+
+  it('pruneOutbox runs on a pooler pool, one bounded statement per slice', async () => {
+    const old = [await publishCommitted(1, null), await publishCommitted(2, null), await publishCommitted(3, null)]
+    const young = await publishCommitted(4, null)
+    await direct.query(`UPDATE kyu_outbox SET published_at = now() - interval '46 days' WHERE id = ANY($1::uuid[])`, [
+      `{${old.join(',')}}`,
+    ])
+    await direct.query('UPDATE kyu_outbox SET published_at = now() WHERE id = $1', [young])
+    const statements: string[] = []
+    const countingPool = {
+      query(text: string, params: readonly QueryParam[]): Promise<QueryRows> {
+        statements.push(text)
+        return pool.query(text, [...params])
+      },
+    }
+
+    expect(await pruneOutbox(countingPool, { batchSize: 2 })).toEqual({ published: 3, retired: 0, cancelled: 0 })
+    expect(statements.filter((text) => text.includes('published_at') && text.includes('LIMIT $2'))).toHaveLength(2)
+    const left = await direct.query<{ id: string }>('SELECT id FROM kyu_outbox')
+    expect(left.rows.map((row) => row.id)).toEqual([young])
   })
 
   it('onceById() through the pooler runs the body once for one envelope id', async () => {

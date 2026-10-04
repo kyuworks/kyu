@@ -178,26 +178,56 @@ export async function releaseClaims(db: RelayQueryable, workerId: string, ids: r
   )
 }
 
-export interface PrunePublishedOptions {
-  publishedBefore: Date
+type SettledOutboxColumn = 'published_at' | 'dead_at' | 'cancelled_at'
+
+// One autocommit statement either way, so it runs through a transaction pooler. With a limit, the uuid v7
+// primary key walks oldest-first and the slice stops after `limit` matches. The outer predicate rechecks the
+// age: a row revived while the DELETE waits on its lock must be kept.
+async function deleteOutboxRowsBefore(
+  db: RelayQueryable,
+  column: SettledOutboxColumn,
+  before: Date,
+  limit: number | undefined,
+): Promise<number> {
+  if (limit === undefined) {
+    const deleted = await db.query(`DELETE FROM kyu_outbox WHERE ${column} < $1`, [before])
+    return deleted.rowCount ?? 0
+  }
+  assertValidLimit(limit)
+  const deleted = await db.query(
+    `DELETE FROM kyu_outbox WHERE id = ANY(ARRAY(SELECT id FROM kyu_outbox WHERE ${column} < $1 ORDER BY id LIMIT $2)) AND ${column} < $1`,
+    [before, limit],
+  )
+  return deleted.rowCount ?? 0
 }
 
-export async function prunePublished(db: Queryable, options: PrunePublishedOptions): Promise<number> {
-  const deleted = await db.query('DELETE FROM kyu_outbox WHERE published_at IS NOT NULL AND published_at < $1', [
-    options.publishedBefore,
-  ])
-  return deleted.rowCount ?? 0
+export interface PrunePublishedOptions {
+  publishedBefore: Date
+  // At most this many rows per call; omit to delete every match at once.
+  limit?: number
+}
+
+export async function prunePublished(db: RelayQueryable, options: PrunePublishedOptions): Promise<number> {
+  return deleteOutboxRowsBefore(db, 'published_at', options.publishedBefore, options.limit)
 }
 
 export interface PruneRetiredOptions {
   retiredBefore: Date
+  limit?: number
 }
 
 // Retired rows are the relay's own dead letter: an envelope that never
 // parsed, kept with its `attempts` and `last_error` for inspection.
-export async function pruneRetired(db: Queryable, options: PruneRetiredOptions): Promise<number> {
-  const deleted = await db.query('DELETE FROM kyu_outbox WHERE dead_at IS NOT NULL AND dead_at < $1', [
-    options.retiredBefore,
-  ])
-  return deleted.rowCount ?? 0
+export async function pruneRetired(db: RelayQueryable, options: PruneRetiredOptions): Promise<number> {
+  return deleteOutboxRowsBefore(db, 'dead_at', options.retiredBefore, options.limit)
+}
+
+export interface PruneCancelledOptions {
+  cancelledBefore: Date
+  limit?: number
+}
+
+// Cancelled rows were stopped by a runs cancel before the relay claimed them; they never ship.
+export async function pruneCancelled(db: RelayQueryable, options: PruneCancelledOptions): Promise<number> {
+  return deleteOutboxRowsBefore(db, 'cancelled_at', options.cancelledBefore, options.limit)
 }

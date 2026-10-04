@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type { Queryable, QueryParam, QueryRows } from '../db/queryable.js'
-import { claimPendingRows, markPublished, recordPublishFailure, releaseClaims } from './outboxRepository.js'
+import type { Queryable, QueryParam, QueryRows, RelayQueryable } from '../db/queryable.js'
+import {
+  claimPendingRows,
+  markPublished,
+  pruneCancelled,
+  prunePublished,
+  pruneRetired,
+  recordPublishFailure,
+  releaseClaims,
+} from './outboxRepository.js'
 
 interface RecordingQueryable extends Queryable {
   readonly calls: number
@@ -182,5 +190,58 @@ describe('ownership functions reject an empty workerId before querying', () => {
     const db = recordingQueryable()
     await expect(releaseClaims(db, '', ['018f0000-0000-7000-8000-000000000001'])).rejects.toThrow(RangeError)
     expect(db.calls).toBe(0)
+  })
+})
+
+interface CapturingQueryable extends RelayQueryable {
+  readonly captured: ReadonlyArray<{ text: string; params: readonly QueryParam[] }>
+}
+
+function capturingQueryable(): CapturingQueryable {
+  const captured: Array<{ text: string; params: readonly QueryParam[] }> = []
+  return {
+    captured,
+    query(text: string, params: readonly QueryParam[]): Promise<QueryRows> {
+      captured.push({ text, params })
+      return Promise.resolve({ rows: [], rowCount: 0 })
+    },
+  }
+}
+
+describe('prune functions', () => {
+  const before = new Date('2026-08-01T00:00:00Z')
+
+  it('without a limit, each is one unbounded DELETE on its own column', async () => {
+    const db = capturingQueryable()
+    await prunePublished(db, { publishedBefore: before })
+    await pruneRetired(db, { retiredBefore: before })
+    await pruneCancelled(db, { cancelledBefore: before })
+    expect(db.captured).toEqual([
+      { text: 'DELETE FROM kyu_outbox WHERE published_at < $1', params: [before] },
+      { text: 'DELETE FROM kyu_outbox WHERE dead_at < $1', params: [before] },
+      { text: 'DELETE FROM kyu_outbox WHERE cancelled_at < $1', params: [before] },
+    ])
+  })
+
+  it('with a limit, each deletes one slice of at most limit rows, lowest id first', async () => {
+    const db = capturingQueryable()
+    await prunePublished(db, { publishedBefore: before, limit: 500 })
+    await pruneRetired(db, { retiredBefore: before, limit: 500 })
+    await pruneCancelled(db, { cancelledBefore: before, limit: 500 })
+    const slice = (column: string): string =>
+      `DELETE FROM kyu_outbox WHERE id = ANY(ARRAY(SELECT id FROM kyu_outbox WHERE ${column} < $1 ORDER BY id LIMIT $2)) AND ${column} < $1`
+    expect(db.captured).toEqual([
+      { text: slice('published_at'), params: [before, 500] },
+      { text: slice('dead_at'), params: [before, 500] },
+      { text: slice('cancelled_at'), params: [before, 500] },
+    ])
+  })
+
+  it('each rejects a limit below 1 or fractional before querying', async () => {
+    const db = capturingQueryable()
+    await expect(prunePublished(db, { publishedBefore: before, limit: 0 })).rejects.toThrow(RangeError)
+    await expect(pruneRetired(db, { retiredBefore: before, limit: 1.5 })).rejects.toThrow(RangeError)
+    await expect(pruneCancelled(db, { cancelledBefore: before, limit: -1 })).rejects.toThrow(RangeError)
+    expect(db.captured).toEqual([])
   })
 })
