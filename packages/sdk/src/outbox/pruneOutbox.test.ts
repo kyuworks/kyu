@@ -38,6 +38,12 @@ describe('pruneOutbox validation', () => {
     expect(db.texts).toEqual([])
   })
 
+  it('refuses a retention that reaches back past the earliest valid date before querying', async () => {
+    const db = scriptedQueryable([])
+    await expect(pruneOutbox(db, { olderThanMs: Number.MAX_SAFE_INTEGER * 2 })).rejects.toThrow(KyuError)
+    expect(db.texts).toEqual([])
+  })
+
   it('refuses a batchSize that is not a whole number above zero before querying', async () => {
     const db = scriptedQueryable([])
     for (const batchSize of [0, 1.5, Number.NaN]) {

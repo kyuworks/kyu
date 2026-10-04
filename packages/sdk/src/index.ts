@@ -50,7 +50,7 @@ export type {
   PrunePublishedOptions,
   PruneRetiredOptions,
 } from './outbox/outboxRepository.js'
-export { pruneOutbox } from './outbox/pruneOutbox.js'
+export { OUTBOX_PRUNE_FLOOR_MS, pruneOutbox } from './outbox/pruneOutbox.js'
 export type { OutboxPruneCounts, PruneOutboxOptions } from './outbox/pruneOutbox.js'
 
 export { createPublisher, publishEnvelope } from './outbox/publish.js'

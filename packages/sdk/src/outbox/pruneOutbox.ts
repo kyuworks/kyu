@@ -48,6 +48,11 @@ export async function pruneOutbox(db: RelayQueryable, options: PruneOutboxOption
     throw new KyuError(`pruneOutbox: batchSize must be an integer >= 1, got ${batchSize}`)
   }
   const before = new Date(Date.now() - olderThanMs)
+  if (Number.isNaN(before.getTime())) {
+    throw new KyuError(
+      `pruneOutbox: olderThanMs ${olderThanMs} reaches back past the earliest date a timestamp can hold`,
+    )
+  }
   const published = await pruneInSlices((limit) => prunePublished(db, { publishedBefore: before, limit }), batchSize)
   const retired = await pruneInSlices((limit) => pruneRetired(db, { retiredBefore: before, limit }), batchSize)
   const cancelled = await pruneInSlices((limit) => pruneCancelled(db, { cancelledBefore: before, limit }), batchSize)

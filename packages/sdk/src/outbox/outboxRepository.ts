@@ -181,7 +181,8 @@ export async function releaseClaims(db: RelayQueryable, workerId: string, ids: r
 type SettledOutboxColumn = 'published_at' | 'dead_at' | 'cancelled_at'
 
 // One autocommit statement either way, so it runs through a transaction pooler. With a limit, the uuid v7
-// primary key walks oldest-first and the slice stops after `limit` matches.
+// primary key walks oldest-first and the slice stops after `limit` matches. The outer predicate rechecks the
+// age: a row revived while the DELETE waits on its lock must be kept.
 async function deleteOutboxRowsBefore(
   db: RelayQueryable,
   column: SettledOutboxColumn,
@@ -194,7 +195,7 @@ async function deleteOutboxRowsBefore(
   }
   assertValidLimit(limit)
   const deleted = await db.query(
-    `DELETE FROM kyu_outbox WHERE id = ANY(ARRAY(SELECT id FROM kyu_outbox WHERE ${column} < $1 ORDER BY id LIMIT $2))`,
+    `DELETE FROM kyu_outbox WHERE id = ANY(ARRAY(SELECT id FROM kyu_outbox WHERE ${column} < $1 ORDER BY id LIMIT $2)) AND ${column} < $1`,
     [before, limit],
   )
   return deleted.rowCount ?? 0

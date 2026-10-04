@@ -12,16 +12,20 @@ const publisher = createPublisher({ source: 'prune-test' })
 const idRows = z.array(z.object({ id: z.uuid() }))
 const DAY_MS = 86_400_000
 let client: Client
+let operator: Client
 
 beforeAll(async () => {
   client = new Client({ connectionString: process.env['KYU_TEST_DATABASE_URL'] })
   await client.connect()
+  operator = new Client({ connectionString: process.env['KYU_TEST_DATABASE_URL'] })
+  await operator.connect()
 })
 afterEach(async () => {
   await client.query('TRUNCATE kyu_outbox')
 })
 afterAll(async () => {
   await client.end()
+  await operator.end()
 })
 
 async function publishRow(n: number): Promise<string> {
@@ -126,6 +130,30 @@ describe('outbox prune deletes old rows at most limit per call', () => {
     for (let n = 0; n < 5; n += 1) await settledRow('published_at', 50)
     expect(await pruneOutbox(client, { batchSize: 2 })).toEqual({ published: 5, retired: 0, cancelled: 0 })
     expect(await remainingIds()).toEqual([])
+  })
+})
+
+describe('outbox prune and an operator who revives a retired row', () => {
+  it('a row revived while the prune waits on its lock is kept', async () => {
+    const id = await settledRow('dead_at', 2)
+    await operator.query('BEGIN')
+    try {
+      await operator.query('UPDATE kyu_outbox SET dead_at = NULL, attempts = 0, last_error = NULL WHERE id = $1', [id])
+      const prune = pruneRetired(client, { retiredBefore: new Date(Date.now() - DAY_MS), limit: 10 })
+      // The DELETE has picked its ids once it is waiting on the revived row's lock.
+      for (let waited = 0; waited < 50; waited += 1) {
+        const blocked = await operator.query(
+          `SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE 'DELETE FROM kyu_outbox%'`,
+        )
+        if (blocked.rowCount === 1) break
+        await new Promise<void>((resolve) => setTimeout(resolve, 20))
+      }
+      await operator.query('COMMIT')
+      expect(await prune).toBe(0)
+    } finally {
+      await operator.query('ROLLBACK')
+    }
+    expect(await remainingIds()).toEqual([id])
   })
 })
 

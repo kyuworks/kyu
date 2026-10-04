@@ -229,7 +229,7 @@ describe('prune functions', () => {
     await pruneRetired(db, { retiredBefore: before, limit: 500 })
     await pruneCancelled(db, { cancelledBefore: before, limit: 500 })
     const slice = (column: string): string =>
-      `DELETE FROM kyu_outbox WHERE id = ANY(ARRAY(SELECT id FROM kyu_outbox WHERE ${column} < $1 ORDER BY id LIMIT $2))`
+      `DELETE FROM kyu_outbox WHERE id = ANY(ARRAY(SELECT id FROM kyu_outbox WHERE ${column} < $1 ORDER BY id LIMIT $2)) AND ${column} < $1`
     expect(db.captured).toEqual([
       { text: slice('published_at'), params: [before, 500] },
       { text: slice('dead_at'), params: [before, 500] },
