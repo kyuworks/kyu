@@ -43,7 +43,7 @@ done
 FILES=()
 if [ "${#DIRS[@]}" -gt 0 ]; then
   rc=0
-  LISTED="$(grep -rlE --include='*.ts' --include='*.tsx' --include='*.mts' --exclude='*.test.ts' --exclude='*.test.tsx' \
+  LISTED="$(grep -rlE --include='*.ts' --include='*.tsx' --include='*.mts' --include='*.cts' --exclude='*.test.ts' --exclude='*.test.tsx' \
     --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=__tests__ "${DURABLE}" "${DIRS[@]}")" || rc=$?
   # grep exits 1 when no file matches; 2 means it could not read or run.
   if [ "${rc}" -gt 1 ]; then

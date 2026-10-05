@@ -73,4 +73,10 @@ mkdir -p "${WORK}/template-slashes/examples/shop/src/handlers"
 printf 'export const s = kyu.durable(d, {\n  handler: () => ({\n    x: `see //${Date.now()}`,\n  }),\n})\n' > "${WORK}/template-slashes/examples/shop/src/handlers/run.ts"
 assert_exit "a wall-clock read after // inside a template string fails" 1 env ROOT_DIR="${WORK}/template-slashes" bash "${CHECK}"
 
+mkdir -p "${WORK}/cts-date-now/examples/shop/src/handlers"
+printf 'type T = DurableHandlerContext<X>\nexport const at = Date.now()\n' > "${WORK}/cts-date-now/examples/shop/src/handlers/run.cts"
+assert_exit "Date.now() in a .cts durable handler file fails" 1 env ROOT_DIR="${WORK}/cts-date-now" bash "${CHECK}"
+assert_output_contains "failure names the .cts file" "examples/shop/src/handlers/run.cts:2:" \
+  env ROOT_DIR="${WORK}/cts-date-now" bash "${CHECK}"
+
 gate_test_finish
