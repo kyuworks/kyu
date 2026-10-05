@@ -328,6 +328,397 @@ assert_exit "a column-zero comment that mentions minimumReleaseAge is not a chan
 publish_workflow "${NONE}" $'          cache: ${{ false }}\n'
 assert_exit "cache: \${{ false }} is rejected (only the literal 'false' counts)" 1 run_check
 
+# YAML anchors and aliases: the gate does not resolve them, so it fails closed.
+ALIASED="puts a YAML anchor, alias or tag on permissions, id-token or cache-mode"
+SHARED="can publish and uses a YAML alias or merge key"
+
+rm -rf "${WF_DIR}"
+mkdir -p "${WF_DIR}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+x-w: &w write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: *w
+    steps:
+      - uses: actions/cache@v4
+YAML
+assert_exit "an id-token value written as an alias is rejected" 1 run_check
+assert_last_output_contains "the aliased id-token is named" "line 9 ${ALIASED}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+x-a: &a write-all
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions: *a
+    steps:
+      - uses: actions/cache@v4
+YAML
+assert_exit "a permissions value written as an alias is rejected" 1 run_check
+assert_last_output_contains "the aliased permissions is named" "line 7 ${ALIASED}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: CI
+on: push
+x-m: &m write
+cache-mode: *m
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+YAML
+assert_exit "a cache-mode value written as an alias is rejected" 1 run_check
+assert_last_output_contains "the aliased cache-mode is named" "line 4 ${ALIASED}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: CI
+on: push
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    permissions: &p
+      contents: read
+    steps:
+      - run: echo hi
+  b:
+    runs-on: ubuntu-latest
+    permissions:
+      <<: *p
+    steps:
+      - run: echo hi
+YAML
+assert_exit "an anchored permissions block, and a merge key inside one, are rejected" 1 run_check
+assert_last_output_contains "the anchored permissions is named" "line 6 ${ALIASED}"
+assert_last_output_contains "the merge key inside permissions is named" "line 13 ${ALIASED}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      *p
+    steps:
+      - run: echo hi
+YAML
+assert_exit "a permissions alias on the line below the key is rejected" 1 run_check
+assert_last_output_contains "the next-line alias is named" "line 7 ${ALIASED}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: CI
+on: push
+x-p: &p
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions: *p
+    steps:
+      - run: echo hi
+YAML
+assert_exit "a permissions alias is rejected even in a workflow with no publishing job" 1 run_check
+assert_last_output_contains "the alias is named without a publishing job" "line 8 ${ALIASED}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: !!str write
+    steps:
+      - uses: actions/cache@v4
+YAML
+assert_exit "an id-token value with a YAML tag is rejected" 1 run_check
+assert_last_output_contains "the tagged id-token is named" "line 7 ${ALIASED}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+jobs:
+  publish: {runs-on: ubuntu-latest, permissions: *a, steps: [{uses: actions/cache@v4}]}
+YAML
+assert_exit "a permissions alias inside a flow-map job is rejected" 1 run_check
+assert_last_output_contains "the flow-map alias is named" "line 4 ${ALIASED}"
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  other:
+    runs-on: ubuntu-latest
+    steps: *shared
+YAML
+assert_exit "a publishing workflow with steps: *shared is rejected" 1 run_check
+assert_last_output_contains "the shared steps are named" "${SHARED} at line 25"
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  other:
+    <<: *base
+    runs-on: ubuntu-latest
+YAML
+assert_exit "a publishing workflow with a <<: *base job is rejected" 1 run_check
+assert_last_output_contains "the merge key is named" "${SHARED} at line 24"
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  other:
+    runs-on: ubuntu-latest
+    steps: [*s]
+YAML
+assert_exit "a publishing workflow with an alias inside a flow sequence is rejected" 1 run_check
+assert_last_output_contains "the flow-sequence alias is named" "${SHARED} at line 25"
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  other:
+    runs-on: ubuntu-latest
+    steps:
+      - *step
+YAML
+assert_exit "a publishing workflow with an alias as a sequence item is rejected" 1 run_check
+assert_last_output_contains "the sequence alias is named" "${SHARED} at line 26"
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  other:
+    <<: {runs-on: ubuntu-latest}
+YAML
+assert_exit "a publishing workflow with a merge key and no alias is rejected" 1 run_check
+assert_last_output_contains "the bare merge key is named" "${SHARED} at line 24"
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  other:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo hi
+    env: *e
+YAML
+assert_exit "an alias after a block scalar ends is still seen" 1 run_check
+assert_last_output_contains "the alias after the block scalar is named" "${SHARED} at line 28"
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  other:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo hi
+  third:
+    steps: *shared
+YAML
+assert_exit "shared steps in a job after a block scalar are still seen" 1 run_check
+assert_last_output_contains "the shared steps after the block scalar are named" "${SHARED} at line 29"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      [*p]
+    steps:
+      - run: echo hi
+YAML
+assert_exit "a permissions alias inside a flow value on the line below the key is rejected" 1 run_check
+assert_last_output_contains "the flow value alias is named" "line 7 ${ALIASED}"
+
+# A quote opens only where a value starts, so an apostrophe or an escaped quote hides nothing.
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  other:
+    runs-on: ubuntu-latest
+    steps: [{name: Don't skip, run: echo}, *s, {name: 'x', run: echo}]
+YAML
+assert_exit "an apostrophe in a plain value does not hide a later alias" 1 run_check
+assert_last_output_contains "the alias after the apostrophe is named" "${SHARED} at line 25"
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  other:
+    runs-on: ubuntu-latest
+    steps: ["a \" b", *s, "c"]
+YAML
+assert_exit "an escaped quote in a double-quoted value does not hide a later alias" 1 run_check
+assert_last_output_contains "the alias after the escaped quote is named" "${SHARED} at line 25"
+
+# Grants the gate cannot read fail closed, with no alias involved.
+UNREAD="cannot read the value of permissions, id-token or cache-mode"
+EXPLICIT="uses a YAML explicit key"
+
+# grant_workflow <job lines after runs-on>: a job that calls actions/cache directly.
+grant_workflow() {
+  rm -rf "${WF_DIR}"
+  mkdir -p "${WF_DIR}"
+  {
+    printf 'name: Release\non: push\njobs:\n  publish:\n    runs-on: ubuntu-latest\n'
+    printf '%s' "$1"
+    printf '    steps:\n      - uses: actions/cache@v4\n'
+  } > "${WF_DIR}/release.yml"
+}
+
+grant_workflow $'    permissions:\n      ? id-token\n      : write\n'
+assert_exit "an explicit-key id-token grant is rejected" 1 run_check
+assert_last_output_contains "the explicit key is named" "line 7 ${EXPLICIT}"
+
+grant_workflow $'    permissions:\n      id-token:\n        write\n'
+assert_exit "an id-token value on the next line is rejected" 1 run_check
+assert_last_output_contains "the empty id-token is named" "line 7 ${UNREAD}"
+
+grant_workflow $'    permissions:\n      id-token: >-\n        write\n'
+assert_exit "an id-token folded block scalar is rejected" 1 run_check
+assert_last_output_contains "the folded id-token is named" "line 7 ${UNREAD}"
+
+grant_workflow $'    permissions:\n      id-token: |\n        write\n'
+assert_exit "an id-token literal block scalar is rejected" 1 run_check
+assert_last_output_contains "the literal id-token is named" "line 7 ${UNREAD}"
+
+grant_workflow $'    permissions:\n      write-all\n'
+assert_exit "a permissions value on the next line is rejected" 1 run_check
+assert_last_output_contains "the next-line permissions value is named" "line 7 ${UNREAD}"
+
+grant_workflow $'    permissions: >\n      write-all\n'
+assert_exit "a permissions block scalar is rejected" 1 run_check
+assert_last_output_contains "the permissions block scalar is named" "line 6 ${UNREAD}"
+
+grant_workflow $'    cache-mode:\n      none\n'
+assert_exit "a cache-mode value on the next line is rejected" 1 run_check
+assert_last_output_contains "the empty cache-mode is named" "line 6 ${UNREAD}"
+
+grant_workflow $'    permissions:\n    env:\n      A: b\n'
+assert_exit "an empty permissions value followed by a sibling key is accepted" 0 run_check
+
+# A flow collection that spans lines is not read, so it fails where it could hide a grant or an alias.
+FLOWSPAN="has a flow collection that spans lines"
+ESCAPED="has an escaped value the gate cannot read on permissions, id-token or cache-mode"
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  other:
+    runs-on: ubuntu-latest
+    steps: [{run: echo,
+      name: x}, *s]
+YAML
+assert_exit "a publishing workflow with a flow sequence that spans lines is rejected" 1 run_check
+assert_last_output_contains "the spanning flow sequence is named" "${FLOWSPAN} at line 25"
+
+grant_workflow $'    permissions: {contents: read, id-token:\n      write}\n'
+assert_exit "a permissions flow map that spans lines is rejected" 1 run_check
+assert_last_output_contains "the spanning permissions map is named" "line 6 ${FLOWSPAN}"
+
+grant_workflow $'    permissions:\n      {contents: read,\n       id-token: write}\n'
+assert_exit "a flow map below the permissions key that spans lines is rejected" 1 run_check
+assert_last_output_contains "the spanning map below the key is named" "line 7 ${FLOWSPAN}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: CI
+on:
+  push:
+    branches: [
+      main,
+      'release/*'
+    ]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+YAML
+rm -f "${WF_DIR}/release.yml"
+assert_exit "a flow sequence that spans lines on an unguarded key, with no publishing job, is accepted" 0 run_check
+
+# An escaped double-quoted value on a guarded key is not read.
+grant_workflow $'    permissions:\n      id-token: "\\x77rite"\n'
+assert_exit "an escaped id-token value is rejected" 1 run_check
+assert_last_output_contains "the escaped id-token is named" "line 7 ${ESCAPED}"
+
+grant_workflow $'    cache-mode: "n\\x6fne"\n'
+assert_exit "an escaped cache-mode value is rejected" 1 run_check
+assert_last_output_contains "the escaped cache-mode is named" "line 6 ${ESCAPED}"
+
+grant_workflow $'    permissions:\n      contents: "re\\x61d"\n'
+assert_exit "an escaped value inside a permissions block is rejected" 1 run_check
+assert_last_output_contains "the escaped permissions value is named" "line 7 ${ESCAPED}"
+
+rm -rf "${WF_DIR}"
+mkdir -p "${WF_DIR}"
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: CI
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  one:
+    runs-on: ubuntu-latest
+    services: &engine
+      postgres:
+        image: postgres:15.6
+        options: >-
+          --health-cmd "pg_isready"
+          --health-retries 10
+    steps: &shared
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      - run: |
+          for i in $(seq 1 3); do curl -fsS x && break; done
+  two:
+    runs-on: ubuntu-latest
+    services: *engine
+    steps: *shared
+YAML
+assert_exit "a workflow with no publishing job may share services and steps through anchors" 0 run_check
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  lookalikes:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' && true }}
+    env:
+      CRON: '41 6 * * 1'
+      GLOB: "*.ts"
+    # sets key: *name
+    steps:
+      - run: pnpm lint && pnpm test
+      - run: ls *.ts
+      - run: 'echo flow: [a,*b]'
+      - run: "echo \"key: *value\""
+      - uses: some/action@v1
+        with: {a: b}
+        env:
+          BRANCHES: [main, 'release/*']
+          EXPR: ${{ matrix.x }}
+      - run: |
+          [[ -f x ]] && echo '{"a": [1,'
+          { echo hi
+      - name: Don't skip this
+        run: echo done # see key: *name
+      - run: |
+          make a \
+            && make b
+          *unusual line in a script
+          &another
+      - name: Branches
+        run: echo done
+        env:
+          B: ['*', 'a,*b']
+YAML
+assert_exit "text that only looks like an alias does not trip a publishing workflow" 0 run_check
+
 assert_exit "the repository's workflows pass" 0 run_real
 assert_last_output_contains "the release job is checked" "release.yml publish"
 
