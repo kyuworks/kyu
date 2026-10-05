@@ -81,7 +81,7 @@ assert_exit "all four on latest fail" 1 run_check
 assert_last_output_contains "compose.yaml must pin a release" "infra/hatchet/compose.yaml pins hatchet-lite:latest, not a vMAJOR.MINOR.PATCH release"
 
 every_tag v0.107.0
-printf '      other:\n        image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.106.0\n' >> "${CI}"
+printf '  other:\n    container: ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.106.0\n' >> "${CI}"
 assert_exit "a workflow with two different hatchet-lite images fails" 1 run_check
 assert_last_output_contains "both tags are named" ".github/workflows/ci.yml pins more than one hatchet-lite tag: v0.106.0 (line 10), v0.107.0 (line 6)"
 
@@ -125,7 +125,7 @@ assert_exit "a container: short form on latest in ci.yml fails" 1 run_check
 assert_last_output_contains "ci.yml names both tags" ".github/workflows/ci.yml pins more than one hatchet-lite tag: latest (line 9), v0.107.0 (line 6)"
 
 every_tag v0.107.0
-printf '      e: { image: %s:latest }\n' "${IMG}" >> "${NEWEST}"
+printf '  e: { container: { image: %s:latest } }\n' "${IMG}" >> "${NEWEST}"
 assert_exit "a flow mapping image on latest fails" 1 run_check
 assert_last_output_contains "newest-client.yml is named for the flow mapping" ".github/workflows/newest-client.yml pins more than one hatchet-lite tag: latest (line 9), v0.107.0 (line 6)"
 
@@ -185,11 +185,111 @@ for bad in v0.107.0-rc1 v0.107.01; do
   assert_last_output_contains "the ${bad} tag is named" ".github/workflows/ci.yml pins hatchet-lite:${bad}"
 done
 
+every_tag v0.107.0-rc1
+assert_exit "a compose default that is not a vX.Y.Z release fails even when every file agrees" 1 run_check
+assert_last_output_contains "the compose release rule is named" "infra/hatchet/compose.yaml pins hatchet-lite:v0.107.0-rc1, not a vMAJOR.MINOR.PATCH release"
+
+every_tag v0.107.0
+printf 'services:\n  hatchet-lite:\n    image: x\n    environment:\n      ENGINE: %s:${KYU_HATCHET_IMAGE_TAG:-v0.107.0}\n' "${IMG}" > "${COMPOSE}"
+assert_exit "a compose reference outside an image: value is not the engine image" 1 run_check
+assert_last_output_contains "the compose environment line is named" "infra/hatchet/compose.yaml:5 names hatchet-lite in a layout this gate cannot read"
+
 for good in "\"${IMG}:v0.107.0\"" "'${IMG}:v0.107.0'" "[${IMG}:v0.107.0]" "{ image: ${IMG}:v0.107.0 }" "{image: ${IMG}:v0.107.0}" "${IMG}:v0.107.0 # note"; do
   every_tag v0.107.0
   printf 'x: %s\n' "${good}" >> "${CI}"
   assert_exit "a reference written ${good} passes" 0 run_check
 done
+
+# --- Layouts a line scanner misread: the gate reads the parsed values ---
+every_tag v0.107.0
+cat > "${TREE}/.github/workflows/escaped.yml" <<'YAML'
+jobs:
+  t:
+    services:
+      e:
+        image: "ghcr.io/hatchet-dev/hatchet/hatchet\x2dlite:latest"
+YAML
+assert_exit "a reference written with a YAML escape is read" 1 run_check
+assert_last_output_contains "the escaped reference is named" ".github/workflows/escaped.yml pins hatchet-lite:latest"
+
+every_tag v0.107.0
+cat > "${TREE}/.github/workflows/joined.yml" <<'YAML'
+jobs:
+  t:
+    steps:
+      - run: "docker pull ghcr.io/hatchet-dev/hatchet/hatchet-\
+          lite:latest"
+YAML
+assert_exit "a reference split by an escaped line break is read" 1 run_check
+assert_last_output_contains "the joined reference is named" ".github/workflows/joined.yml pins hatchet-lite:latest"
+
+every_tag v0.107.0
+cat > "${TREE}/.github/workflows/block.yml" <<YAML
+jobs:
+  t:
+    steps:
+      - run: |
+          echo pull
+          # docker pull ${IMG}:latest
+YAML
+assert_exit "a run: block line that starts with # is still read" 1 run_check
+assert_last_output_contains "the run: block line is named" ".github/workflows/block.yml pins hatchet-lite:latest, infra/hatchet/compose.yaml pins hatchet-lite:v0.107.0 (line 6)"
+
+every_tag v0.107.0
+printf 'x: ok # was %s:latest\n' "${IMG}" >> "${CI}"
+assert_exit "a YAML comment after a value is ignored" 0 run_check
+
+every_tag v0.107.0
+sed -i.bak 's|:-v0.107.0}|:-v0.107.0}-rc1|' "${COMPOSE}" && rm "${COMPOSE}.bak"
+assert_exit "text after the compose default fails" 1 run_check
+assert_last_output_contains "the compose line is named" "infra/hatchet/compose.yaml:4 names hatchet-lite in a layout this gate cannot read"
+
+every_tag v0.107.0
+printf '  second:\n    image: "ghcr.io/hatchet-dev/hatchet/hatchet\\x2dlite:latest"\n' >> "${COMPOSE}"
+assert_exit "an escaped second compose image fails" 1 run_check
+assert_last_output_contains "the escaped compose line is named" "infra/hatchet/compose.yaml:6 names hatchet-lite in a layout this gate cannot read"
+
+# --- A file the gate cannot read fails, with or without an engine in it ---
+every_tag v0.107.0
+printf 'jobs: [\n' > "${TREE}/.github/workflows/broken.yml"
+assert_exit "a workflow that does not parse fails" 1 run_check
+assert_last_output_contains "the broken workflow is named" ".github/workflows/broken.yml line 2 does not parse"
+
+every_tag v0.107.0
+printf -- '---\njobs: {}\n' >> "${CI}"
+assert_exit "a workflow with two YAML documents fails" 1 run_check
+assert_last_output_contains "the two documents are named" ".github/workflows/ci.yml holds 2 YAML documents"
+
+every_tag v0.107.0
+printf 'x-base: &base\n  runs-on: ubuntu-latest\nx-job:\n  <<: *base\n' >> "${CI}"
+assert_exit "a workflow with a merge key fails" 1 run_check
+assert_last_output_contains "the merge key is named" ".github/workflows/ci.yml line 12 uses a YAML merge key"
+
+every_tag v0.107.0
+printf 'services:\n  hatchet-lite:\n    image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:${KYU_HATCHET_IMAGE_TAG:-v0.107.0}\n    image: x\n' > "${COMPOSE}"
+assert_exit "a compose.yaml that does not parse fails" 1 run_check
+assert_last_output_contains "the compose shape is restated" 'infra/hatchet/compose.yaml must name the engine only as hatchet-lite:${KYU_HATCHET_IMAGE_TAG:-<tag>}.'
+
+every_tag v0.107.0
+printf '%%TAG !e! tag:example.com,2000:\n---\njobs: {}\n' > "${TREE}/.github/workflows/tagged.yml"
+assert_exit "a workflow with a %TAG directive fails" 1 run_check
+assert_last_output_contains "the directive is named" ".github/workflows/tagged.yml uses a %YAML or %TAG directive"
+
+every_tag v0.107.0
+printf 'jobs: {}\n' > "${TREE}/.github/workflows/Upper.YML"
+assert_exit "a workflow with an upper-case extension fails" 1 run_check
+assert_last_output_contains "the upper-case file is named" "Upper.YML has a workflow extension in another letter case"
+
+BARE="${TMP}/bare"
+mkdir -p "${BARE}/scripts/gates" "${BARE}/scripts/lib"
+cp "${SCRIPT_DIR}"/check-engine-image-tag.sh "${SCRIPT_DIR}"/check-engine-image-tag.mjs "${SCRIPT_DIR}"/workflow-yaml.mjs "${BARE}/scripts/gates/"
+cp "${SCRIPT_DIR}"/../lib/require-yaml.sh "${BARE}/scripts/lib/"
+every_tag v0.107.0
+run_without_yaml() {
+  ROOT_DIR="${TREE}" bash "${BARE}/scripts/gates/check-engine-image-tag.sh"
+}
+assert_exit "a gate that cannot resolve the yaml package fails" 1 run_without_yaml
+assert_last_output_contains "the missing package is named with the fix" "the workflow reader stopped before it checked every file; the yaml package is missing, run pnpm install"
 
 assert_exit "an unknown argument fails" 1 bash "${CHECK}" --nope
 

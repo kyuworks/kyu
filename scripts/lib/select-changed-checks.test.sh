@@ -134,6 +134,23 @@ assert_output_contains "changed .mjs selects its colocated .test.sh" \
   "selftest:scripts/lib/select-changed-checks.test.sh" \
   run_select "${REPO}" "HEAD~1...HEAD"
 
+# --- A gate module with no suite of its own selects the suite of each gate that imports it ---
+mkdir -p "${REPO}/scripts/gates"
+printf 'export const shared = 1\n' > "${REPO}/scripts/gates/shared-reader.mjs"
+printf "import { shared } from './shared-reader.mjs'\n" > "${REPO}/scripts/gates/check-user.mjs"
+printf '#!/usr/bin/env bash\necho user-selftest\n' > "${REPO}/scripts/gates/check-user.test.sh"
+printf '// imports nothing\n' > "${REPO}/scripts/gates/check-other.mjs"
+printf '#!/usr/bin/env bash\necho other-selftest\n' > "${REPO}/scripts/gates/check-other.test.sh"
+git -C "${REPO}" add scripts/gates
+git -C "${REPO}" commit -qm "add gate modules"
+printf '// touched\n' >> "${REPO}/scripts/gates/shared-reader.mjs"
+git -C "${REPO}" add scripts/gates/shared-reader.mjs
+git -C "${REPO}" commit -qm "touch shared reader"
+assert_output_contains "a shared gate module selects the suite of the gate that imports it" \
+  "selftest:scripts/gates/check-user.test.sh" run_select "${REPO}" "HEAD~1...HEAD"
+assert_output_lacks "a shared gate module does not select a gate that does not import it" \
+  "selftest:scripts/gates/check-other.test.sh" run_select "${REPO}" "HEAD~1...HEAD"
+
 # --- A change to the engine image tag in compose or Fly selects the gates ---
 for engine_file in infra/hatchet/compose.yaml infra/hatchet/fly/fly.toml; do
   mkdir -p "${REPO}/$(dirname "${engine_file}")"
