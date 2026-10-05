@@ -71,7 +71,7 @@ jobs:
       KYU_TEST_POOLER_DATABASE_URL: postgresql://hatchet:hatchet@127.0.0.1:6432/kyu_test
       KYU_INTEGRATION_SHARD: ${{ matrix.shard }}
       CLIENT_VERSION: ${{ needs.resolve.outputs.newest }}
-    # Same services as ci.yml's engine-services; change both together.
+    # Same services as ci.yml's engine-services; change all three workflows together (ci.yml, this file, newest-engine.yml).
     services:
       postgres:
         image: postgres:15.6

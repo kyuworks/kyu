@@ -340,7 +340,7 @@ for spelled in '${{needs.pick.outputs.tag}}' '${{ inputs.tag }}' '${{ needs.pick
   assert_last_output_contains "the ${spelled} line is named" ".github/workflows/newest-engine.yml:5 names hatchet-lite in a layout this gate cannot read"
 done
 
-for other in .github/workflows/engine-weekly.yml .github/workflows/old/newest-engine.yml .github/actions/newest-engine.yml; do
+for other in .github/workflows/engine-weekly.yml .github/workflows/old/newest-engine.yml .github/actions/newest-engine.yml .github/workflows/Newest-Engine.yml; do
   every_tag v0.107.0
   mkdir -p "$(dirname "${TREE}/${other}")"
   printf 'jobs:\n  t:\n    services:\n      e:\n        image: %s:%s\n' "${IMG}" "${RT}" > "${TREE}/${other}"
