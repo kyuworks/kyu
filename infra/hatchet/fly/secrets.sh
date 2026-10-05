@@ -5,7 +5,7 @@
 #
 #   bash infra/hatchet/fly/secrets.sh
 #
-# Store every real value in 1Password. Never paste one into a pull request,
+# Store every real value in your password manager. Never paste one into a pull request,
 # an issue, a commit, or a chat message.
 set -euo pipefail
 
@@ -72,6 +72,6 @@ Then apply everything staged in one deploy:
 
 fly deploy -c infra/hatchet/fly/fly.toml -a '${APP}'
 
-Store every value in 1Password. Never paste one into a pull request or a
+Store every value in your password manager. Never paste one into a pull request or a
 chat message.
 EOF

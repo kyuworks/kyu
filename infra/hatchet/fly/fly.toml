@@ -41,7 +41,7 @@ primary_region = 'syd'
 [[vm]]
   # hatchet-lite runs the API, dashboard, gRPC server and queue workers in
   # one process; shared-cpu-2x's 512 MB does not fit that comfortably under
-  # harness load, and shared CPU throttling would corrupt latency numbers.
+  # load, and shared CPU throttling would distort latency.
   size = 'performance-2x'
 
 [[services]]

@@ -49,7 +49,7 @@ Kyu tests the SDK without a deployed engine: the local stack (`infra/hatchet/com
 
 - Nothing runs on the Kyu side and nobody is on call for it. Kyu's work is the SDK, the template and the guide.
 - Each producer chooses its own database plan, retention, alert routing and upgrade timing, and no other project's load reaches its engine.
-- The operator who creates a bus tenant also holds the project's secret store, so a token goes straight there.
+- A tenant on a producer's engine is for its own application. Another project that must receive its messages gets its own tenant, and that token goes to that project's operator through that project's secret store, never through the producer's.
 
 **Negative**
 

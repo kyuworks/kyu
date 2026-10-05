@@ -24,7 +24,7 @@ primary_region = 'syd'
   policy = 'always'
 
 [[vm]]
-  # Dedicated CPU, as for the engine: throttling would corrupt the numbers.
+  # Dedicated CPU, as for the engine: shared CPU throttling would distort latency.
   size = 'performance-1x'
 
 [checks]
