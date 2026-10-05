@@ -45,7 +45,8 @@
 | Word | Meaning |
 | --- | --- |
 | bus tenant | A Hatchet tenant. One per company project per environment. Holds worker tokens. |
-| boot tenant | The bus tenant the engine's seed creates on first boot. The shop example uses it; a consuming project gets its own bus tenant instead (runbook, First deploy step 12). |
+| boot tenant | The bus tenant the engine's seed creates on first boot. Its id is the same on every hatchet-lite engine, so the local stack and CI use it and no project is given it; each project gets its own bus tenant instead (engine guide, A bus tenant for each project). |
+| engine operator | The person in a producer application's team who runs that application's engine: holds its Fly organisation and password manager, sets its secrets, creates bus tenants, mints tokens. Kyu runs no engine, so it has none. |
 | business tenant | `tenantId` on the envelope: a customer organisation in the producer's own model. Never a Hatchet concept. |
 | paused tenant | A business tenant whose new messages the relay holds in the outbox (`kyu.tenants.pause`). Runs already in the engine carry on. |
 | ids-only | Payloads carry identifiers and small discriminators. Consumers load state from their own database. |

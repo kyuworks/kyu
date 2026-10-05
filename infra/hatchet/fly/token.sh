@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Print a worker API token for the deployed dev Hatchet engine.
+# Print a worker API token for a producer application's engine on Fly.
 #
 #   export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/fly/token.sh -a '<engine-app>')"
 #
 # The token is written only to stdout — never logged, never echoed anywhere
-# else. Needs the Fly CLI and an SSH certificate for the org; the CTO runs
-# `fly ssh issue` once before this script can reach the machine.
+# else. Needs the Fly CLI and an SSH certificate for the org; the producer's
+# operator runs `fly ssh issue` once before this script can reach the machine.
 set -euo pipefail
 
 APP="${KYU_FLY_APP:-}"

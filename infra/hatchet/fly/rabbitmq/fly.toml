@@ -1,7 +1,7 @@
-# Fly config for the dev engine's RabbitMQ queue (issue #176). Private
+# Template: Fly config for the RabbitMQ queue of a producer application's engine. Private
 # network only: no services block, so no public address; the engine reaches
-# AMQP at <rabbitmq-app>.internal:5672. Credentials are secrets the CTO
-# sets: bash infra/hatchet/fly/rabbitmq/secrets.sh. Runbook:
+# AMQP at <rabbitmq-app>.internal:5672. Credentials are secrets the producer's
+# operator sets: bash infra/hatchet/fly/rabbitmq/secrets.sh. Guide:
 # docs/operations/kyu-engine-on-fly.md, "Queue on RabbitMQ".
 primary_region = 'syd'
 

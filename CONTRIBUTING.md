@@ -49,7 +49,7 @@ Agents follow the fuller pipeline in [`.agents/skills/`](.agents/skills/): `/shi
 | --- | --- |
 | `packages/schemas` | `@kyuworks/schemas`: envelope, naming rules, schema adapters. Zod only. |
 | `packages/sdk` | `@kyuworks/sdk`: publish + outbox, relay, subscribe, durable handlers, worker. Ships `migrations/` for consumers. |
-| `infra/hatchet` | Local engine stack (Docker Compose) and, later, the Fly deployment. |
+| `infra/hatchet` | Local engine stack (Docker Compose), test infrastructure only, and `fly/`, the template a producer application copies to run its own engine on Fly. Kyu runs no deployed engine. |
 | `scripts/` | `check.sh`, `check-changed.sh`, `verify-gates.sh`, `gates/*` with their `*.test.sh`, `hooks/` (agent guard). |
 | `oxlint-rules/` | Shared lint presets, including the anti-slop plugin. |
 | `.agents/skills/` | Agent pipeline skills. `.claude/skills` is a symlink here. |

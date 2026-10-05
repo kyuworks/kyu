@@ -8,6 +8,7 @@ The worked example is the shop example, [`kyuworks/shop-example`](https://github
 
 What you build:
 
+- your project's own engine and bus tenant, which your operator runs from Kyu's template (section 8);
 - the outbox tables in your database;
 - a relay process that ships outbox rows to the engine;
 - one `publish()` call at one service seam, behind a flag;
@@ -95,7 +96,7 @@ try {
 }
 ```
 
-It deletes published, retired and cancelled rows older than 45 days, 1000 rows per statement, and never a pending, scheduled or claimed row. 45 days is the floor: your longest durable wait plus the engine's 30-day retention. If your longest wait is longer than 15 days, pass a larger `olderThanMs`. A smaller one throws unless you pass `allowBelowFloor: true` ([`pruneOutbox.ts`](../../packages/sdk/src/outbox/pruneOutbox.ts)). The SDK has no prune for `kyu_processed`. If you delete old rows there, keep at least as many days as the engine keeps runs (dev 7, production 30; [design § 12](../design/kyu-requirements-and-design.md#12-deployment-and-operations)), so a replayed run still finds its row.
+It deletes published, retired and cancelled rows older than 45 days, 1000 rows per statement, and never a pending, scheduled or claimed row. 45 days is the floor: your longest durable wait plus the engine's 30-day retention. If your longest wait is longer than 15 days, pass a larger `olderThanMs`. A smaller one throws unless you pass `allowBelowFloor: true` ([`pruneOutbox.ts`](../../packages/sdk/src/outbox/pruneOutbox.ts)). The SDK has no prune for `kyu_processed`. If you delete old rows there, keep at least as many days as your engine keeps runs (7 in the engine template, 30 in production; [engine guide, Retention](kyu-engine-on-fly.md#retention)), so a replayed run still finds its row.
 
 ## 4. Message definitions
 
@@ -327,22 +328,23 @@ The shop's version is [`src/worker.ts`](https://github.com/kyuworks/shop-example
 
 ## 8. Engine access
 
-In dev you use the deployed dev engine. Its addresses and tokens are held by the CTO in the operator password manager; this page names none ([runbook](kyu-engine-on-fly.md)).
+Your project runs its own engine. Kyu runs none ([ADR](../architecture/adr/20261006-each-producer-application-runs-its-own-engine.md)). Your project's operator, the person who holds its Fly organisation and its password manager, runs the engine and its bus tenants from the [engine guide](kyu-engine-on-fly.md). The engine's addresses and tokens live in that password manager; this page names none.
 
-1. **Bus tenant.** Each project gets its own bus tenant (a Hatchet tenant) per environment. Your project never shares one with another project ([design § 6.2](../design/kyu-requirements-and-design.md#62-bus-tenants-and-tokens)). Ask the CTO for yours before your first slice in dev. The CTO creates it with [runbook, First deploy step 12](kyu-engine-on-fly.md#first-deploy), names it `<project>-dev`, gives you its id, and puts its worker token in your project's secret store (item 2). Do not use the tenant the engine created at boot: the shop example uses it. Set your own namespace as well (item 4).
-2. **Worker token.** An operator mints it: the CTO, or an engineer the CTO has given an SSH certificate for the engine's Fly organisation. From a Kyu checkout: `bash infra/hatchet/fly/token.sh -a <engine-app> --tenant-id <your-bus-tenant-id>` ([`token.sh`](../../infra/hatchet/fly/token.sh); [runbook, Who does what](kyu-engine-on-fly.md#who-does-what)). The token goes straight into your project's secret store. It expires 90 days after it is minted; ask the operator for a new one before then ([runbook, First deploy step 12](kyu-engine-on-fly.md#first-deploy)). An agent never mints, reads or prints a token. Never commit it or log it.
-3. **The three variables** every process that talks to the engine needs (the relay, the worker, anything that reads run outcomes):
+1. **Engine.** One per environment. If your project has none in dev yet, your operator stands one up with [the guide's First deploy](kyu-engine-on-fly.md#first-deploy). Until then, use a local engine (end of this section).
+2. **Bus tenant.** Each project gets its own bus tenant (a Hatchet tenant) per environment. Your project never shares one with another project ([design § 6.2](../design/kyu-requirements-and-design.md#62-bus-tenants-and-tokens)). Your operator creates yours with [the guide, A bus tenant for each project](kyu-engine-on-fly.md#a-bus-tenant-for-each-project), names it `<project>-dev`, records its id, and puts its worker token in your project's secret store (item 3). Do not use the tenant the engine created at boot: its id is the same on every engine. Set your own namespace as well (item 5).
+3. **Worker token.** Your operator mints it, or an engineer the operator has given an SSH certificate for the engine's Fly organisation: `bash infra/hatchet/fly/token.sh -a <engine-app> --tenant-id <your-bus-tenant-id>`, from your copy of the template ([`token.sh`](../../infra/hatchet/fly/token.sh); [guide, Who does what](kyu-engine-on-fly.md#who-does-what)). The token goes straight into your project's secret store. It expires 90 days after it is minted; mint a new one before then ([guide, A bus tenant for each project](kyu-engine-on-fly.md#a-bus-tenant-for-each-project), sub-step 5). An agent never mints, reads or prints a token. Never commit it or log it.
+4. **The three variables** every process that talks to the engine needs (the relay, the worker, anything that reads run outcomes):
 
    | Variable | Value |
    |---|---|
    | `HATCHET_CLIENT_TOKEN` | the worker token |
-   | `HATCHET_CLIENT_API_URL` | the dev engine's HTTPS address, from the operator |
-   | `HATCHET_CLIENT_HOST_PORT` | the dev engine's gRPC address and port, from the operator |
+   | `HATCHET_CLIENT_API_URL` | your engine's HTTPS address, `https://<engine-app>.fly.dev` |
+   | `HATCHET_CLIENT_HOST_PORT` | your engine's gRPC address and port, `<engine-app>.fly.dev:7077` |
 
-   Leave `HATCHET_CLIENT_TLS_STRATEGY` unset against the deployed engine; it defaults to `tls`. Set it to `none` only for a local engine ([shop README, Against the deployed dev engine](https://github.com/kyuworks/shop-example/blob/main/README.md#against-the-deployed-dev-engine)). A process that only publishes needs none of these.
-4. **Namespace.** Set `HATCHET_CLIENT_NAMESPACE` (or pass `namespace` to `createHatchetClient`) to the same value in the relay and every worker. The engine prefixes every message name and subscription with it, lower-cased, with a trailing `_`, so a relay and a worker with different namespaces never meet.
+   Leave `HATCHET_CLIENT_TLS_STRATEGY` unset against a deployed engine; it defaults to `tls`. Set it to `none` only for a local engine. A process that only publishes needs none of these.
+5. **Namespace.** Set `HATCHET_CLIENT_NAMESPACE` (or pass `namespace` to `createHatchetClient`) to the same value in the relay and every worker. The engine prefixes every message name and subscription with it, lower-cased, with a trailing `_`, so a relay and a worker with different namespaces never meet.
 
-For a first try without an operator, run the engine on your machine from a Kyu checkout: `pnpm hatchet:up`, then `export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/token.sh)"` and `export HATCHET_CLIENT_TLS_STRATEGY=none` ([`README.md`](../../README.md#quick-start)).
+For a first try without an engine of your own, run the engine on your machine from a Kyu checkout: `pnpm hatchet:up`, then `export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/token.sh)"` and `export HATCHET_CLIENT_TLS_STRATEGY=none` ([`README.md`](../../README.md#quick-start)).
 
 ## 9. Flag and rollout
 
@@ -354,10 +356,11 @@ Put the slice behind your project's own flag, read at the seam. Kyu has no flag 
 
 Roll out in this order:
 
-1. Apply the migrations (section 3).
-2. Deploy the relay (section 6).
-3. Deploy the worker and check that it appears in the engine dashboard (section 7).
-4. Turn the flag on for one business tenant in dev, then for all of dev.
+1. Have your engine and bus tenant in dev (section 8).
+2. Apply the migrations (section 3).
+3. Deploy the relay (section 6).
+4. Deploy the worker and check that it appears in the engine dashboard (section 7).
+5. Turn the flag on for one business tenant in dev, then for all of dev.
 
 Before you turn it on, write down how the old path behaves at that seam: the fixed delay, and the in-process code that calls the dispatcher. The slice is done when both are gone from that seam ([design Phase 3](../design/kyu-requirements-and-design.md#phase-3-first-consumer-one-to-two-weeks)). Measure, before and after:
 
@@ -389,7 +392,8 @@ See each delivery rule hold in dev before you widen the flag. Each one also has 
 | Durable handlers (`kyu.durable`, `sleepFor`, `waitFor`) | available; [`README.md`](../../README.md) and [design § 9.5](../design/kyu-requirements-and-design.md#95-timers-and-correlation) |
 | Integration pools and `ctx.emit()` | proposed, not in the SDK yet: [ADR](../architecture/adr/20260925-handlers-may-emit-straight-to-the-engine.md) |
 | The writer pool | proposed, same ADR; [design § 12](../design/kyu-requirements-and-design.md#12-deployment-and-operations), Pool layout |
-| Alerts on failed runs and on outbox lag | not built yet; [design § 12](../design/kyu-requirements-and-design.md#12-deployment-and-operations), Monitoring. Until then, run the section 6 queries yourself |
+| Alerts on failed runs | optional, on your engine: your operator turns on the engine's own Slack alerts ([guide, Turning on failure alerts](kyu-engine-on-fly.md#turning-on-failure-alerts)). Kyu runs no alerting |
+| Alerts on outbox lag | not in the SDK; run the section 6 queries from your own monitoring |
 | Crons, tenant pause, run cancel | available; [`README.md`](../../README.md) |
 | Inbound webhooks | [design § 6.1](../design/kyu-requirements-and-design.md#61-components) |
 

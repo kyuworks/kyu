@@ -38,6 +38,7 @@ Because every queue is private to its project, no project can subscribe to anoth
 - 15 Sep 2026: build the bus as a standalone company system, not as a library extracted from any one project. Consumers use it for events, outbound integration commands and workflow orchestration.
 - 16 Sep 2026: engine is Hatchet, self-hosted, MIT-licensed. BullMQ was rejected because it has no topics, no correlation waits, and per-key ordering is a paid feature. Postgres-only alternatives (pg-boss) cover less.
 - 25 Sep 2026: the engine's internal queue runs on RabbitMQ in every deployed environment; the local stack keeps the Postgres queue. Requirement N1 is amended for it ([ADR](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md)).
+- 6 Oct 2026: Kyu runs no deployed engine of its own. Each producer application runs its own engine, per environment, from the template in `infra/hatchet/fly/`; the local stack and the CI engine are test infrastructure ([ADR](../architecture/adr/20261006-each-producer-application-runs-its-own-engine.md)).
 
 ### 2.3 Terminology
 
@@ -139,7 +140,7 @@ flowchart LR
     RELAY[Outbox relay] -->|reads, marks published| OUTBOX
   end
   RELAY -->|"events.bulkPush over gRPC"| ENGINE
-  subgraph Hatchet control plane on Fly
+  subgraph Hatchet engine run by the producer
     ENGINE[Engine + API + Dashboard] --> HPG[(Hatchet Postgres)]
   end
   EXT[External system] -->|HTTP webhook, HMAC| ENGINE
@@ -152,7 +153,7 @@ flowchart LR
 
 ### 6.1 Components
 
-- **Hatchet control plane.** One Fly app per environment (dev, staging, production) running the `hatchet-lite` image: engine, REST API and dashboard in one container, HTTP on 8888 and gRPC on 7077. Backed by a dedicated Postgres database that also serves as Hatchet's internal queue. Not shared with any project's database.
+- **Hatchet engine.** Run by each producer application, one Fly app per environment (dev, staging, production), from the template in `infra/hatchet/fly/`; Kyu runs none of its own ([ADR](../architecture/adr/20261006-each-producer-application-runs-its-own-engine.md)). The `hatchet-lite` image: engine, REST API and dashboard in one container, HTTP on 8888 and gRPC on 7077. Backed by a dedicated Postgres database, not shared with any project's database, and a RabbitMQ broker for its internal queue.
 - **Kyu SDK** (`@kyuworks/sdk`; npm scope registered, see open question 1). A TypeScript package wrapping the Hatchet SDK. It owns the envelope, schema validation, the outbox table and relay, and thin helpers for subscribing, sending and durable handlers. Non-TypeScript projects use the Hatchet SDK directly and follow the same conventions, documented in the package.
 - **Producer outbox and relay.** A table in each producer's database, and a relay process per project that ships from it. Section 8.
 - **Consumer workers.** Each consuming project runs a Hatchet worker process that registers its handlers. A consumer runs the worker inside its existing API process or as a separate worker entrypoint; both are one image.
@@ -455,18 +456,19 @@ Commands use the same `publish` and `subscribe` calls with `kind: 'command'`; th
 
 | Concern | Release one |
 |---|---|
-| Runtime | `hatchet-lite` as a Fly app per environment, region `syd`, one machine, no autostop; dev is `<engine-app>`, machine size `performance-2x` since 2026-09-23 (issue #173; was `performance-1x`); Fly org `<fly-org>`; deployed 2026-09-23 NZ time (the engine's own logged timestamps are UTC and read 2026-09-22), one machine, dedicated IPv4, health check on `/api/ready` |
-| Internal queue | RabbitMQ in every deployed environment, decided 2026-09-25 ([ADR](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md)); N1 is amended for it. dev: `<rabbitmq-app>` (`rabbitmq:3.13.7`, one `performance-1x` machine, private network only) since 2026-09-23 (issue #176). Only the local Docker stack uses the Postgres-backed queue: on Fly it never met `outbox-backlog`'s window on any database plan tried, and on RabbitMQ with both clusters on Launch, both load scenarios met theirs (`docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`) |
+| Who runs it | Each producer application, from the template in `infra/hatchet/fly/`, following `docs/operations/kyu-engine-on-fly.md`. Kyu runs no deployed engine ([ADR](../architecture/adr/20261006-each-producer-application-runs-its-own-engine.md)). The local stack (`infra/hatchet/compose.yaml`) and the `hatchet-lite` service in CI are Kyu's test infrastructure |
+| Runtime | `hatchet-lite` as a Fly app per environment, one machine, no autostop, `performance-2x` in the template, dedicated IPv4, health check on `/api/ready`; the template's region is `syd` |
+| Internal queue | RabbitMQ in every deployed environment, decided 2026-09-25 ([ADR](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md)); N1 is amended for it. The template's broker: `rabbitmq:3.13.7`, one `performance-1x` machine, private network only. Only the local stack and CI use the Postgres-backed queue: on Fly it never met `outbox-backlog`'s window on any database plan tried, and on RabbitMQ with both clusters on Launch, both load scenarios met theirs (`docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`) |
 | Relay | One sidecar process per project per environment, on a small dedicated pool; supervised, restarted on exit; in-process only for a single-process project |
-| Database | Fly Managed Postgres, one cluster per environment, session-mode connection; not a project's own database or its transaction pooler; dev deployed as `<engine-db>` (Basic since 2026-09-24 for issue #198, was Basic, Starter, then Launch on 2026-09-23; the shop harness's cluster, on Basic from the same day, was destroyed on 2026-09-25; on Launch the report-size `tenant-load` passed on both queues (issues #175 and #176) and `outbox-backlog` passed only on RabbitMQ (issue #176); on Basic with RabbitMQ both failed (issue #198); the plan it stays on is the CTO's decision; Postgres 17, 10 GB, `syd`), direct session-mode connection, no pooler |
+| Database | Fly Managed Postgres, one cluster per environment, Postgres 17, direct session-mode connection, no pooler; not a project's own database or its transaction pooler. Plan: Launch or larger for load at the harness's report size; Basic passed only at smoke size (measured September 2026, guide *Sizing*) |
 | Config | Every secret name and where its value comes from: `infra/hatchet/fly/secrets.sh`; deploy and operate steps: `docs/operations/kyu-engine-on-fly.md` |
-| Backups | Daily snapshot; restore rehearsed on dev 2026-09-23 NZ time into a throwaway cluster and recorded in `docs/operations/kyu-engine-on-fly.md` (the restore itself completed in about 3.5 minutes; the restored cluster was destroyed on 2026-09-23 without the data check) |
-| Upgrades | Pin the image tag (dev is on `v0.107.0`); runbook: snapshot, upgrade dev, soak, staging, production; Hatchet migrates its schema on start |
-| Retention | Run and event history is dropped by whole days after `SERVER_LIMITS_DEFAULT_TENANT_RETENTION_PERIOD`, one engine-wide env var in `fly.toml` (not per tenant: the per-tenant column in v0.107.0 only drives old-worker cleanup, which is off). dev `168h` (7 days) since issue #224; production `720h` (30 days). Runbook: *Retention* |
-| Monitoring | Failed-run alerts: the engine's own Slack alerting is proposed, not yet decided — it needs a company Slack app and two CTO secrets, deferred to a later PR (issue #224). Its message carries the workflow name, the time, and a link with the tenant and run ids only; no payloads, error text or logs (engine source v0.107.0, `internal/integrations/alerting/slack.go:59-69`). Engine metrics: `/api/v1/meta` reports `observabilityEnabled:false` (that flag gates only OTel trace collection) and `prometheusServerEnabled:false`, so there is nothing to scrape yet. Outbox-lag alert from each producer: still deferred |
-| Scaling path | Compose or Helm topology with separate engine replicas and RabbitMQ when N4 is exceeded; no code change; dev already runs hatchet-lite on RabbitMQ (issue #176) |
+| Backups | The platform's daily snapshot; restore rehearsal steps in the guide. A rehearsal on 2026-09-23 completed in about 3.5 minutes; its data was not checked |
+| Upgrades | Kyu pins the image tag (`v0.107.0`) in its test infrastructure and the template, and moves it in one PR (`scripts/gates/check-engine-image-tag.sh`); each producer's operator then moves its own copy: snapshot, upgrade dev, soak, staging, production; Hatchet migrates its schema on start |
+| Retention | Run and event history is dropped by whole days after `SERVER_LIMITS_DEFAULT_TENANT_RETENTION_PERIOD`, one engine-wide env var in `fly.toml` (not per tenant: the per-tenant column in v0.107.0 only drives old-worker cleanup, which is off). The template sets `168h` (7 days) for dev; production `720h` (30 days). Guide: *Retention* |
+| Monitoring | Failed-run alerts: each engine's operator may turn on the engine's own Slack alerting (guide, *Turning on failure alerts*); Kyu runs no alerting. Its message carries the workflow name, the time, and a link with the tenant and run ids only; no payloads, error text or logs (engine source v0.107.0, `internal/integrations/alerting/slack.go:59-69`). Engine metrics: `/api/v1/meta` reports `observabilityEnabled:false` (that flag gates only OTel trace collection) and `prometheusServerEnabled:false`, so there is nothing to scrape yet. Outbox-lag alert from each producer: still deferred |
+| Scaling path | Compose or Helm topology with separate engine replicas and RabbitMQ when N4 is exceeded; no code change; the template already runs hatchet-lite on RabbitMQ |
 
-Harness numbers against this deployment: `docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`
+Harness numbers from a deployment of this template, since decommissioned (September 2026): `docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`
 
 **Worker pools.** One bus tenant per project per environment, and separate worker pools by subscription name inside it. A consumer builds its whole subscription list once and starts one process per pool, each with `kyu.worker(name, { subscriptions, serves: [...] })` naming the subscriptions that pool serves. A pool whose subscriptions call a slow third party runs on its own machine with its own rate limit, so it cannot hold up the pool that runs durable workflow handlers. A subscription no running worker serves gets no run at all: the engine does not back-fill when a worker starts later and picks it up, so every subscription must be served by some pool that is actually running.
 
@@ -477,6 +479,8 @@ Harness numbers against this deployment: `docs/proofs/2026-09-23-shop-failure-ha
 ### Phase 0: stand up (about a week)
 
 Hatchet dev environment on Fly, tokens in 1Password, dashboard reachable, one hello-world worker from a scratch project.
+
+Note added 2026-10-06: this phase ran on an engine the Kyu side ran, since decommissioned. From that date each producer application stands up its own engine from the template ([ADR](../architecture/adr/20261006-each-producer-application-runs-its-own-engine.md)).
 
 ### Phase 1: SDK core (one to two weeks)
 
