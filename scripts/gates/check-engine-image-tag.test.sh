@@ -291,6 +291,68 @@ run_without_yaml() {
 assert_exit "a gate that cannot resolve the yaml package fails" 1 run_without_yaml
 assert_last_output_contains "the missing package is named with the fix" "the workflow reader stopped before it checked every file; the yaml package is missing, run pnpm install"
 
+# newest-engine.yml may name the engine by the tag its pick job chose at run time, and nothing else.
+WEEKLY="${TREE}/.github/workflows/newest-engine.yml"
+RT='${{ needs.pick.outputs.tag }}'
+# weekly_with <tag text>... — a newest-engine.yml with one service image per argument.
+weekly_with() {
+  printf 'jobs:\n  test:\n    services:\n' > "${WEEKLY}"
+  local i=0 tag
+  for tag in "$@"; do
+    i=$((i + 1))
+    printf '      e%s:\n        image: %s:%s\n' "${i}" "${IMG}" "${tag}" >> "${WEEKLY}"
+  done
+}
+
+every_tag v0.107.0
+weekly_with "${RT}"
+assert_exit "newest-engine.yml with the run-time tag passes" 0 run_check
+
+every_tag v0.107.0
+weekly_with "${RT}" v0.107.0
+assert_exit "newest-engine.yml with the run-time tag and the pinned tag passes" 0 run_check
+
+every_tag v0.107.0
+printf 'jobs:\n  test:\n    services:\n      e:\n        image: "%s:%s" # weekly\n' "${IMG}" "${RT}" > "${WEEKLY}"
+assert_exit "a quoted run-time tag with a comment in newest-engine.yml passes" 0 run_check
+
+for wrong in v0.106.0 v0.110.2 latest; do
+  every_tag v0.107.0
+  weekly_with "${RT}" "${wrong}"
+  assert_exit "newest-engine.yml hard-coding ${wrong} beside the run-time tag fails" 1 run_check
+  assert_last_output_contains "newest-engine.yml is named for ${wrong}" ".github/workflows/newest-engine.yml pins hatchet-lite:${wrong}, infra/hatchet/compose.yaml pins hatchet-lite:v0.107.0"
+done
+
+every_tag v0.107.0
+weekly_with v0.106.0
+assert_exit "newest-engine.yml hard-coding another tag alone fails" 1 run_check
+assert_last_output_contains "newest-engine.yml names the hard-coded tag" ".github/workflows/newest-engine.yml pins hatchet-lite:v0.106.0"
+
+every_tag v0.107.0
+printf 'jobs:\n  t:\n    services:\n      e:\n        image: %s\n' "${IMG}" > "${WEEKLY}"
+assert_exit "newest-engine.yml with an untagged image fails" 1 run_check
+assert_last_output_contains "the untagged image is named" ".github/workflows/newest-engine.yml pins hatchet-lite:(none)"
+
+for spelled in '${{needs.pick.outputs.tag}}' '${{ inputs.tag }}' '${{ needs.pick.outputs.newest }}' "${RT}-amd64" "${RT}"'${{ matrix.suffix }}' "${RT}@sha256:0123"; do
+  every_tag v0.107.0
+  weekly_with "${spelled}"
+  assert_exit "newest-engine.yml with the tag ${spelled} fails" 1 run_check
+  assert_last_output_contains "the ${spelled} line is named" ".github/workflows/newest-engine.yml:5 names hatchet-lite in a layout this gate cannot read"
+done
+
+for other in .github/workflows/engine-weekly.yml .github/workflows/old/newest-engine.yml .github/actions/newest-engine.yml .github/workflows/Newest-Engine.yml; do
+  every_tag v0.107.0
+  mkdir -p "$(dirname "${TREE}/${other}")"
+  printf 'jobs:\n  t:\n    services:\n      e:\n        image: %s:%s\n' "${IMG}" "${RT}" > "${TREE}/${other}"
+  assert_exit "the run-time tag in ${other} fails" 1 run_check
+  assert_last_output_contains "${other} is named" "${other}:5 names hatchet-lite in a layout this gate cannot read"
+done
+
+every_tag v0.107.0
+sed -i.bak "s|hatchet-lite:v0.107.0|hatchet-lite:${RT}|" "${CI}" && rm "${CI}.bak"
+assert_exit "ci.yml using the run-time tag fails" 1 run_check
+assert_last_output_contains "the ci.yml image line is named for the run-time tag" ".github/workflows/ci.yml:6 names hatchet-lite in a layout this gate cannot read"
+
 assert_exit "an unknown argument fails" 1 bash "${CHECK}" --nope
 
 assert_exit "the repository's four files agree" 0 env ROOT_DIR="${REPO_ROOT}" bash "${CHECK}"

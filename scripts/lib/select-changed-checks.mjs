@@ -85,10 +85,27 @@ function dependants(dir, acc = new Set()) {
 // A gate module with no suite of its own (workflow-yaml.mjs) is tested through each gate that imports it.
 function importerSuites(file) {
   const dir = path.join(root, 'scripts/gates')
+  const imported = new RegExp(`(['"])\\./${escapeRegExp(path.basename(file))}\\1`)
   return readdirSync(dir)
-    .filter((name) => name.endsWith('.mjs') && readFileSync(path.join(dir, name), 'utf8').includes(`'./${path.basename(file)}'`))
+    .filter((name) => name.endsWith('.mjs') && imported.test(readFileSync(path.join(dir, name), 'utf8')))
     .map((name) => `scripts/gates/${name.replace(/\.mjs$/, '.test.sh')}`)
     .filter((suite) => existsSync(path.join(root, suite)))
+}
+
+// A shell helper with no suite of its own (git-env.sh) is tested through the suite of each script
+// that sources it: a line that starts with `source` or `.` and names the helper's file.
+function sourcerSuites(file) {
+  const sourced = new RegExp(`^\\s*(source|\\.)\\s(.*[/"'\\s])?${escapeRegExp(path.basename(file))}["']?(\\s|;|$)`, 'm')
+  return ['scripts', '.agents/skills', 'infra']
+    .filter((dir) => existsSync(path.join(root, dir)))
+    .flatMap((dir) => readdirSync(path.join(root, dir), { recursive: true }).map((name) => path.posix.join(dir, name)))
+    .filter((name) => name.endsWith('.sh') && name !== file && sourced.test(readFileSync(path.join(root, name), 'utf8')))
+    .map((name) => (name.endsWith('.test.sh') ? name : name.replace(/\.sh$/, '.test.sh')))
+    .filter((suite) => existsSync(path.join(root, suite)))
+}
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 const steps = new Map()
@@ -132,6 +149,7 @@ for (const raw of changedFiles()) {
     // the GIT_* vars a hook invocation exports (scripts/lib/git-env.sh).
     if (existsSync(path.join(root, suite))) add(`selftest:${suite}`, `bash scripts/lib/run-isolated-selftest.sh ${suite}`)
     else if (f.startsWith('scripts/gates/') && f.endsWith('.mjs')) for (const s of importerSuites(f)) add(`selftest:${s}`, `bash scripts/lib/run-isolated-selftest.sh ${s}`)
+    else if (/^scripts\/lib\/[^/]+\.sh$/.test(f)) for (const s of sourcerSuites(f)) add(`selftest:${s}`, `bash scripts/lib/run-isolated-selftest.sh ${s}`)
   }
 }
 
