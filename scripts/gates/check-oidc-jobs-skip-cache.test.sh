@@ -213,6 +213,65 @@ YAML
 assert_exit "one readable id-token job does not excuse an unreadable one" 1 run_check
 assert_last_output_contains "the unreadable job is named" "${UNREADABLE}"
 
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token : write
+    steps:
+      - uses: actions/cache@v4
+YAML
+assert_exit "id-token with a space before the colon at job level is still an OIDC job" 1 run_check
+assert_last_output_contains "the spaced job-level grant is read" "ci.yml job publish has id-token: write"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+permissions :
+  id-token : write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache@v4
+YAML
+assert_exit "id-token with a space before the colon at workflow level is still an OIDC job" 1 run_check
+assert_last_output_contains "the spaced workflow-level grant is read" "ci.yml job publish has id-token: write"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+permissions:
+  id-token: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - run: echo hi
+YAML
+assert_exit "workflow-level id-token where every job overrides permissions without it passes" 0 run_check
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+permissions:
+  id-token: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - run: echo hi
+  publish: {runs-on: ubuntu-latest, steps: [{uses: actions/cache@v4}]}
+YAML
+assert_exit "workflow-level id-token with a job the gate cannot read is still rejected" 1 run_check
+
 # cache-mode inheritance: a top-level value applies unless the job overrides it.
 cat > "${WF_DIR}/ci.yml" <<'YAML'
 name: Release
