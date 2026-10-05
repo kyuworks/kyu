@@ -133,6 +133,43 @@ assert_last_output_contains "the cap is named" "the 20 newest release tags have 
 sed -i.bak '/^v1.1.0 /d' "${WORK}/capped/manifests.txt" && rm "${WORK}/capped/manifests.txt.bak"
 assert_output_contains "20 tags with no image and a 21st with one reaches the cap first" "the 20 newest release tags have no image" pick_m capped
 
+# --- stdout is $GITHUB_OUTPUT: exactly three key=value lines, whatever was skipped ---
+three_lines=$'pinned=v0.107.0\nnewest=%s\ntest=%s'
+# stdout_of dir — the picker's stdout alone
+stdout_of() { pick_m "$@" 2>/dev/null; }
+
+write_case purity v0.107.0 "${LIST[@]}"
+write_manifests purity
+assert_eq "stdout alone is three lines on plain success" "$(printf "${three_lines}" v0.110.2 yes)" "$(stdout_of purity)"
+write_manifests purity "v0.110.2 404"
+assert_eq "stdout alone is three lines when one tag is skipped" "$(printf "${three_lines}" v0.110.0 yes)" "$(stdout_of purity)"
+write_manifests purity "v0.110.2 404" "v0.110.0 404"
+assert_eq "stdout alone is three lines when two tags are skipped" "$(printf "${three_lines}" v0.108.0 yes)" "$(stdout_of purity)"
+write_manifests purity "v0.110.2 404" "v0.110.0 404" "v0.108.0 404"
+assert_eq "stdout alone is three lines when nothing newer has an image" "$(printf "${three_lines}" v0.107.0 no)" "$(stdout_of purity)"
+
+# --- The walk covers only tags newer than the pinned one, newest first, by number ---
+write_case older v0.107.0 v0.106.0 v0.107.0 v0.110.9 v0.110.10
+write_manifests older "v0.110.10 404" "v0.110.9 404" "v0.107.0 404"
+assert_eq "the walk stops at the pinned tag and never takes an older one" "$(printf "${three_lines}" v0.107.0 no)" "$(stdout_of older)"
+
+write_case numeric-newer v0.107.0 v0.107.0 v0.110.9 v0.110.10
+write_manifests numeric-newer
+assert_eq "newer tags are ordered by number, not text" "$(printf "${three_lines}" v0.110.10 yes)" "$(stdout_of numeric-newer)"
+
+# Only 200 is an image: any other answer, 2xx included, fails closed.
+for status in 204 206; do
+  write_manifests numeric-newer "v0.110.10 ${status}"
+  assert_exit "a manifest check that answers ${status} fails" 1 pick_m numeric-newer
+  assert_last_output_contains "the ${status} is named" "FAIL: ghcr.io manifest of v0.110.10: HTTP ${status}"
+done
+
+# A tag listed many times is one candidate: 21 copies must not reach the 20-candidate cap.
+write_case repeated v0.107.0 v0.107.0
+for _ in $(seq 1 21); do printf 'v0.110.2\n' >> "${WORK}/repeated/tags.txt"; done
+write_manifests repeated "v0.110.2 404"
+assert_eq "a repeated tag is checked once" "$(printf "${three_lines}" v0.107.0 no)" "$(stdout_of repeated)"
+
 # --- The registry calls, with fetch replaced by newest-hatchet-engine.test.mock.mjs ---
 MOCK_FILE="${SCRIPT_DIR}/newest-hatchet-engine.test.mock.mjs"
 write_case net v0.107.0
