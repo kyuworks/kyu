@@ -16,6 +16,7 @@ jobs:
     name: Ship loop
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    cache-mode: none
     steps:
       - uses: actions/checkout@v5
         with:

@@ -18,6 +18,8 @@ jobs:
     name: Publish packages
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Installs fresh: check-oidc-jobs-skip-cache.sh fails this job if it can reach the Actions cache.
+    cache-mode: none
     permissions:
       contents: read
       id-token: write
@@ -48,6 +50,7 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           build: 'true'
+          cache: 'false'
       - name: Tag matches the package versions
         env:
           RELEASE_TAG: ${{ github.ref_name }}
