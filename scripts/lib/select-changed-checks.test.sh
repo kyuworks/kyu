@@ -404,4 +404,24 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 chmod 644 "${ODD}/infra/locked.sh"
 
+# A read error that is not a skipped kind (a link that goes through a regular file gives ENOTDIR) fails in one line.
+NODIR="${WORK}/nodir"
+init_fixture "${NODIR}"
+mkdir -p "${NODIR}/infra"
+printf '# helper\n' > "${NODIR}/scripts/lib/nodir-helper.sh"
+git -C "${NODIR}" add -A
+git -C "${NODIR}" commit -qm "add helper"
+printf '# touched\n' >> "${NODIR}/scripts/lib/nodir-helper.sh"
+git -C "${NODIR}" add -A
+git -C "${NODIR}" commit -qm "touch helper"
+ln -s "${NODIR}/scripts/lib/nodir-helper.sh/x" "${NODIR}/infra/nd.sh"
+NODIR_OUT="$(run_select "${NODIR}" "HEAD~1...HEAD" 2>/dev/null)"
+assert_exit "an unexpected read error fails the selector" 1 run_select "${NODIR}" "HEAD~1...HEAD"
+assert_eq "an unexpected read error prints nothing on stdout" "" "${NODIR_OUT}"
+assert_last_output_contains "an unexpected read error fails in one plain line" \
+  "FAILED: select-changed-checks cannot read infra/nd.sh: ENOTDIR"
+assert_eq "an unexpected read error prints exactly one line" "1" "$(printf '%s\n' "${GATE_TEST_LAST_OUT}" | wc -l | tr -d ' ')"
+assert_output_lacks "an unexpected read error prints no stack trace" \
+  "    at " run_select "${NODIR}" "HEAD~1...HEAD"
+
 gate_test_finish

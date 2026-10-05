@@ -131,8 +131,9 @@ function listTree(dir) {
   }
 }
 
-// A path this user cannot read or open as a file (a dangling or looping link, a directory, a named pipe, a
-// locked file) cannot be sourced by this user either, so it is skipped in one line. Any other error fails.
+// The selector skips, in one line, what it cannot read as a regular file (a dangling or looping link, a
+// directory, a locked file, a named pipe or device; none is a real helper in this repository). Any other
+// error fails.
 const UNSOURCEABLE = new Set(['ENOENT', 'EISDIR', 'EACCES', 'ELOOP'])
 function readShellScript(name) {
   const file = path.join(root, name)
