@@ -20,6 +20,11 @@
 # consumer proof, unlike check-no-escape-hatches.sh, which exempts test
 # files everywhere.
 #
+# Blocked in packages/sdk/ (tests and package-root files included), in every
+# import form above: @hatchet-dev/... outside src/hatchet.ts, the one import
+# site for the engine. src/hatchet.test.ts is the one exception: it checks
+# the wrapper against the real package.
+#
 # Env (tests): ROOT_DIR
 set -euo pipefail
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
@@ -101,6 +106,17 @@ EOF
 )"
   if [ -n "${BANNED_DEPS}" ]; then
     printf '%s\n' "${BANNED_DEPS}" | sed 's/^/FAIL: examples consume @kyuworks\/sdk only: /' >&2
+    FAIL=1
+  fi
+fi
+
+if [ -d packages/sdk ]; then
+  # Allowed by full path, not basename; dist/ and node_modules/ are skipped.
+  ENGINE_SPEC="@hatchet-dev/[^'\"]*"
+  ENGINE_PATTERN="(from|import)[[:space:]]+['\"](${ENGINE_SPEC})['\"]|(import|require)[[:space:]]*\([[:space:]]*['\"](${ENGINE_SPEC})['\"]"
+  ENGINE_HITS="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --exclude-dir=node_modules --exclude-dir=dist "${ENGINE_PATTERN}" packages/sdk 2>/dev/null | sed -E '/^packages\/sdk\/src\/hatchet(\.test)?\.ts:/d' || true)"
+  if [ -n "${ENGINE_HITS}" ]; then
+    printf '%s\n' "${ENGINE_HITS}" | sed 's/^/FAIL: packages\/sdk imports @hatchet-dev\/ in src\/hatchet.ts only: /' >&2
     FAIL=1
   fi
 fi

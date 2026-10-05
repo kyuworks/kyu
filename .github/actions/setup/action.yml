@@ -7,6 +7,9 @@ inputs:
   build:
     description: Run pnpm build after install
     default: 'true'
+  cache:
+    description: Restore and save the node_modules Actions cache (release.yml passes 'false')
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -25,7 +28,7 @@ runs:
     # No pnpm store cache: setup-node keys it on the same lockfile hash, so
     # it can only hit when this key hits, and then nothing reads it.
     - name: Cache node_modules
-      if: inputs.install == 'true'
+      if: inputs.install == 'true' && inputs.cache == 'true'
       uses: actions/cache@v4
       with:
         path: |

@@ -11,11 +11,11 @@ Every file under `packages/sdk/migrations/` is applied by consumers to databases
 
 ## Status
 
-On 2026-09-18 the owner rewrote the one existing migration in place during a project rename, because no consumer had applied it to a real database, and disarmed `scripts/gates/check-migration-immutability.sh` (`ARMED=0`). Re-armed on 2026-09-18 with the rewritten file as the baseline (#59).
+On 2026-09-18 the owner rewrote the one existing migration in place to change the names of its tables and keys, because no consumer had applied it to a real database, and disarmed `scripts/gates/check-migration-immutability.sh` (`ARMED=0`). Re-armed on 2026-09-18 with the rewritten file as the baseline (#59).
 
-On 2026-09-19 the owner rewrote the same migration in place again for the rename to Kyu, for the same reason, and disarmed the gate a second time. Issue #89 tracks re-arming it. Once re-armed, every rule below applies again.
+On 2026-09-19 the owner rewrote the same migration in place a second time, again to change those names and for the same reason, and disarmed the gate a second time. Issue #89 tracks re-arming it. Once re-armed, every rule below applies again.
 
-2026-09-20: re-armed by #91 after the Kyu rename (#88, #89).
+2026-09-20: re-armed by #91 after the second rewrite (#88, #89).
 
 ---
 

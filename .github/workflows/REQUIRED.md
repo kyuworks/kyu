@@ -41,3 +41,9 @@ and a skipped required check passes. Require each name above instead.
 `main` needs a ruleset that requires the seven names above, requires a pull
 request, and blocks force pushes. Set it in the repository settings; this
 file and the gate keep the names honest, they do not create the ruleset.
+
+## Release job and the Actions cache
+
+`Publish packages` holds `id-token: write`, which npm trusts to publish. It never restores or saves the Actions cache: the job sets `cache-mode: none` and passes `cache: 'false'` to `.github/actions/setup`, so it installs fresh from the lockfile with the seven-day release-age check. Any job that runs on `main` from `push`, `schedule` or `workflow_dispatch` can write a cache entry that a tag run restores, and `pnpm install --frozen-lockfile` does not re-check files in a restored `node_modules`. A workflow that changes `minimumReleaseAge` sets a top-level `cache-mode: none`, so code younger than seven days never gets a token that can write the cache. The CI jobs above keep the cache; a bad entry there can cause a wrong green or red, not a publish.
+
+`scripts/gates/check-oidc-jobs-skip-cache.sh` (in the Lint job) fails a job with `id-token: write` that lacks `cache-mode: none`, uses the setup action without `cache: 'false'`, or uses `actions/cache` directly, and fails a workflow that changes `minimumReleaseAge` without a top-level `cache-mode: none`.

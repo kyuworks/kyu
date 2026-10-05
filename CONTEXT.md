@@ -6,7 +6,7 @@
 
 | Word | Meaning |
 | --- | --- |
-| Kyu | This system: the company message bus. Kyu sounds like queue, and the kanji 急 (kyū) means urgent or express, as in express delivery. The kanji is the logo. A message is express: it is delivered promptly to the consumers that subscribed, and nowhere else. Formerly Qtaxis (and before that Kinesin); renamed on 2026-09-19. |
+| Kyu | This system: the company message bus. Kyu sounds like queue, and the kanji 急 (kyū) means urgent or express, as in express delivery. The kanji is the logo. A message is express: it is delivered promptly to the consumers that subscribed, and nowhere else. |
 | engine | Hatchet, self-hosted. Kyu's control plane. Never exposed to consumer code directly; the SDK wraps it. |
 | message | One envelope on the bus. Either an event or a command. |
 | event | A fact that happened in a producer, fanned out to every subscriber. Named in past tense: `shop.order.placed`. |

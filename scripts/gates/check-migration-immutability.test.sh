@@ -66,8 +66,8 @@ assert_output_contains "armed edit names the file" "20260101000000_base.sql" \
 assert_exit "armed edit still fails with GIT_DIR exported" 1 \
   run_repo "${EDIT}" GIT_DIR=.git MIGRATION_IMMUTABILITY_ARMED=1 BASE_SHA="${EDIT_BASE}"
 
-# Pins the default: armed. Re-armed under #89 after the Kyu rename rewrote
-# the migration.
+# Pins the default: armed. Re-armed under #89 after the migration was
+# rewritten in place a second time.
 assert_exit "unset ARMED defaults to armed on an edited migration" 1 \
   run_repo "${EDIT}" BASE_SHA="${EDIT_BASE}"
 assert_output_contains "unset ARMED default prints FAIL" "FAIL" \

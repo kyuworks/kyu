@@ -4,8 +4,6 @@ The company message bus: events, commands and durable workflow orchestration for
 
 Kyu sounds like queue, and the kanji 急 (kyū) means urgent or express, as in express delivery. The kanji is the logo. A message is express: it is delivered promptly to the consumers that subscribed, and nowhere else.
 
-Formerly Qtaxis (and before that Kinesin); renamed on 2026-09-19.
-
 ## Start here
 
 - [Design](docs/design/kyu-requirements-and-design.md): requirements, architecture, the integration plan.
