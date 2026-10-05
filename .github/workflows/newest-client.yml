@@ -4,7 +4,7 @@ name: Newest Hatchet client
 # CI tests only the lockfile's. This tests the newest one. Not a pull-request check (REQUIRED.md).
 on:
   schedule:
-    - cron: '41 6 * * 1'
+    - cron: '41 6 * * 1' # Mondays, 06:41 UTC
   workflow_dispatch:
     inputs:
       force:

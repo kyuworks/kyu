@@ -36,7 +36,8 @@ node <<'EOF'
 const fs = require('node:fs')
 const { SDK_PACKAGE, LOCKFILE, VERSIONS_FILE, FORCE } = process.env
 const NAME = '@hatchet-dev/typescript-sdk'
-const STABLE = /^(\d+)\.(\d+)\.(\d+)$/
+// No leading zeros (strict semver); the anchors keep a hostile value out of $GITHUB_OUTPUT.
+const STABLE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 
 function fail(message) {
   console.error(`FAIL: ${message}`)
@@ -61,6 +62,7 @@ const locked = [...fs.readFileSync(LOCKFILE, 'utf8').matchAll(/^  '@hatchet-dev\
 if (locked.length !== 1) fail(`expected one ${NAME} version in ${LOCKFILE}, found ${locked.length}`)
 
 const listed = JSON.parse(fs.readFileSync(VERSIONS_FILE, 'utf8'))
+if (!Array.isArray(listed) && typeof listed !== 'string') fail('the registry answered with an error, not a version list')
 const inRange = [listed]
   .flat()
   .filter((v) => STABLE.test(v) && triple(v)[0] === triple(floor)[0] && compare(v, floor) >= 0)

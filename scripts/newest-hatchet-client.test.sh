@@ -68,6 +68,19 @@ assert_last_output_contains "a lockfile without the client names the count" "fou
 
 assert_exit "an unknown argument fails" 2 pick newer --bogus
 
+# A registry value is written to $GITHUB_OUTPUT: only a plain X.Y.Z (no leading zeros) may reach it.
+# Each entry is a JSON string literal.
+expected_stdout=$'range=^1.33.2\nlockfile=1.33.2\nnewest=1.34.0\ntest=yes'
+for hostile in '"1.99.0\nfoo=bar"' '"1.99.0$(id)"' '"1.99.0;id"' '"1.99.0 x"' '"1.99.0\""' '"-1.99.0"' '"01.99.00"'; do
+  write_case hostile '^1.33.2' 1.33.2 "[\"1.33.2\",\"1.34.0\",${hostile}]"
+  actual_stdout="$(pick hostile 2>/dev/null)"
+  assert_eq "ignores the registry value ${hostile}" "${expected_stdout}" "${actual_stdout}"
+done
+
+write_case registry-error '^1.33.2' 1.33.2 '{"error":{"code":"E404","summary":"Not found"}}'
+assert_exit "a registry error object fails" 1 pick registry-error
+assert_last_output_contains "a registry error object names the cause" "the registry answered with an error"
+
 # The default paths read this repository's own package.json and lockfile.
 printf '%s\n' "${LIST}" > "${WORK}/repo-versions.json"
 expected_range="$(node -p "require('${SCRIPT_DIR}/../packages/sdk/package.json').dependencies['@hatchet-dev/typescript-sdk']")"
