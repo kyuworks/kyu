@@ -18,6 +18,9 @@ done
 echo "[verify:gates] check-required-ci-jobs"
 bash scripts/gates/check-required-ci-jobs.sh
 
+echo "[verify:gates] check-oidc-jobs-skip-cache"
+bash scripts/gates/check-oidc-jobs-skip-cache.sh
+
 echo "[verify:gates] check-integration-shards"
 bash scripts/gates/check-integration-shards.sh
 

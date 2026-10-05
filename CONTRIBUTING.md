@@ -70,6 +70,7 @@ A gate is a script under `scripts/gates/` that fails the commit or the PR. Each 
 | `check-package-versions.sh` | the published packages' versions or `SDK_VERSION` differ, the SDK's range on schemas is not `workspace:*`, or (release only) the tag is not `v<version>` |
 | `check-package-exports.sh` | a package tarball lacks a file its `main`, `types` or `exports` names, or a file from its `migrations/` |
 | `check-required-ci-jobs.sh` | `required-checks.txt` names a job that is not in any workflow that runs on `pull_request` |
+| `check-oidc-jobs-skip-cache.sh` | a job with `id-token: write` lacks `cache-mode: none`, uses the setup action without `cache: 'false'`, or uses `actions/cache` directly; a workflow that relaxes the release-age rule lacks a top-level `cache-mode: none`; or it finds `id-token: write` in a layout it cannot read |
 | `check-agent-ship-loop.sh` | an agent PR body has an incomplete ship-loop section (the Ship loop workflow; `verify-gates.sh` when `PR_BODY_FILE` is set) |
 
 ## Releases
