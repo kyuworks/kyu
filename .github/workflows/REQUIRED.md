@@ -14,7 +14,7 @@ one it cannot read. A matrix job, a job that calls a reusable workflow, or a job
 `name:` holds `${{` does not count: GitHub builds its check names at run time. `release.yml` runs on tags
 and does not count.
 
-The same gate fails when a required name is the check name of more than one job in any workflow; when the job that supplies it has `if:`, `needs:` or `continue-on-error:`; or when its workflow's `pull_request` trigger holds `branches`, `branches-ignore`, `paths`, `paths-ignore` or any key but `types`, or a `types` without `opened`, `synchronize` and `reopened`. GitHub reports a job skipped by a condition, or by a failed job it needs, as passing; a workflow its trigger leaves out keeps the check pending and blocks every merge.
+The same gate fails when a required name is the check name of more than one job in any workflow; when the job that supplies it has `if:`, `needs:` or `continue-on-error:`, or one of its steps has `continue-on-error:` (a step with it lets the job pass when the step fails); or when its workflow's `pull_request` trigger holds `branches`, `branches-ignore`, `paths`, `paths-ignore` or any key but `types`, or a `types` without `opened`, `synchronize` and `reopened`. The one-job rule covers literal names: a job whose `name:` is an expression, or that has a matrix, is not counted, so a second job that builds the same name at run time is not caught. GitHub reports a job skipped by a condition, or by a failed job it needs, as passing; a workflow its trigger leaves out keeps the check pending and blocks every merge.
 
 | Job id | Check name | What it runs |
 | --- | --- | --- |

@@ -433,7 +433,7 @@ done
 
 required_job "$(printf 'on:\n  pull_request: opened')"
 assert_exit "a pull_request trigger written as a word fails" 1 run_check
-assert_last_output_contains "the unreadable trigger is named" "its pull_request trigger has a pull_request trigger it cannot read (line 3)"
+assert_last_output_contains "the unreadable trigger is named" "its pull_request trigger has a value it cannot read (line 3)"
 
 required_job "${PR_ON}"
 printf "on:\n  pull_request:\n    paths: ['docs/**']\njobs:\n  docs:\n    name: Docs\n" > "${WF_DIR}/docs.yml"
@@ -444,16 +444,50 @@ for second in "on: pull_request" "on: push" "on: workflow_dispatch"; do
   required_job "${PR_ON}"
   printf '%s\njobs:\n  second:\n    name: Gated\n    runs-on: ubuntu-latest\n' "${second}" > "${WF_DIR}/second.yml"
   assert_exit "a second job named Gated in a workflow with ${second} fails" 1 run_check
-  assert_last_output_contains "both jobs are named for ${second}" "required check Gated is the name of 2 jobs (ci.yml job gated, second.yml job second); keep one"
+  assert_last_output_contains "both jobs are named for ${second}" "required check Gated is the name of 2 jobs (ci.yml line 8 job gated, second.yml line 3 job second); keep one"
 done
 
 required_job "${PR_ON}" '  gated-again:\n    name: Gated\n'
 assert_exit "two jobs named Gated in one workflow fail" 1 run_check
-assert_last_output_contains "both jobs in one workflow are named" "required check Gated is the name of 2 jobs (ci.yml job gated, ci.yml job gated-again); keep one"
+assert_last_output_contains "both jobs in one workflow are named" "required check Gated is the name of 2 jobs (ci.yml line 8 job gated, ci.yml line 11 job gated-again); keep one"
 
 required_job "${PR_ON}"
 printf 'on: pull_request\njobs:\n  Gated:\n    strategy:\n      matrix:\n        os: [a]\n    if: false\n' > "${WF_DIR}/matrix.yml"
 assert_exit "a matrix job whose id is the required name is not a second supplier" 0 run_check
+
+required_job "${PR_ON}" '  second:\n    name: ${{ '"'Gated'"' }}\n'
+assert_exit "known limit: a second job whose name is an expression is not counted as a supplier" 0 run_check
+
+# --- A step with continue-on-error: lets a required job pass when the step fails ---
+for step_key in 'continue-on-error: true' 'continue-on-error: false' 'continue-on-error: ${{ github.event_name == '"'push'"' }}' 'Continue-On-Error: true'; do
+  required_job "${PR_ON}" "    steps:\n      - run: exit 1\n        ${step_key}\n"
+  assert_exit "a required job with a step that has ${step_key} fails" 1 run_check
+  assert_last_output_contains "the step ${step_key} is named" "ci.yml line 13 job gated supplies required check Gated and its step 1 has ${step_key%%:*}:"
+done
+
+required_job "${PR_ON}" "    steps:\n      - run: echo ok\n      - name: Flaky\n        run: exit 1\n        continue-on-error: true\n"
+assert_exit "a named second step with continue-on-error: fails" 1 run_check
+assert_last_output_contains "the second step is named" "ci.yml line 15 job gated supplies required check Gated and its step 2 (Flaky) has continue-on-error:"
+
+required_job "$(printf 'x-step: &flaky {run: exit 1, continue-on-error: true}\non:\n  pull_request:')" '    steps:\n      - *flaky\n'
+assert_exit "a required job whose step comes from an alias with continue-on-error: fails" 1 run_check
+assert_last_output_contains "the aliased step is named" "job gated supplies required check Gated and its step 1 has continue-on-error:"
+
+required_job "${PR_ON}" '    steps:\n      - run: echo ok\n      - uses: actions/checkout@v5\n'
+assert_exit "a required job whose steps have no continue-on-error: passes" 0 run_check
+
+required_job "${PR_ON}" '  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: exit 1\n        continue-on-error: true\n'
+assert_exit "a step with continue-on-error: in a job that is not required passes" 0 run_check
+
+for steps in '    steps: not-a-list\n' '    steps: ${{ fromJSON(x) }}\n'; do
+  required_job "${PR_ON}" "${steps}"
+  assert_exit "a required job whose steps it cannot read fails: ${steps}" 1 run_check
+  assert_last_output_contains "the unreadable steps are named: ${steps}" "ci.yml line 11 job gated supplies required check Gated and its steps cannot be read"
+done
+
+required_job "${PR_ON}" '    steps:\n      - just-a-word\n'
+assert_exit "a required job with a step that is not a map fails" 1 run_check
+assert_last_output_contains "the unreadable step is named" "ci.yml line 12 job gated supplies required check Gated and its step 1 cannot be read"
 
 # --- The gate stops with an install hint when the yaml package cannot be resolved ---
 BARE="${TMP}/bare"

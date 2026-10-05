@@ -6,10 +6,12 @@
 // counts for no name: GitHub builds its check names at run time. Every workflow file is read with
 // workflow-yaml.mjs, so a file it cannot read fails, pull-request workflow or not.
 //
-// A required name must be the check name of exactly one job across every workflow. That job may
-// not have if:, needs: or continue-on-error: (GitHub reports a skipped job as passing), and its
-// workflow's pull_request trigger may hold only types:, which must include opened, synchronize and
-// reopened (a workflow that does not run leaves the check pending).
+// A required name must be the check name of exactly one job across every workflow; that count
+// covers literal names only, so a job whose name: is an expression or that has a matrix is not
+// counted. That job may not have if: or needs: (GitHub reports a skipped job as passing), nor
+// continue-on-error: on the job (the run passes when the job fails) or on any step (the job passes
+// when the step fails). Its workflow's pull_request trigger may hold only types:, which must
+// include opened, synchronize and reopened (a workflow that does not run leaves the check pending).
 //
 // Usage: node check-required-ci-jobs.mjs <workflows dir> <required-checks file>
 import { readFileSync } from 'node:fs'
@@ -30,7 +32,7 @@ function runsOnPullRequest(on, read) {
   return isMap(on) && on.items.some((pair) => pair.key.value === PULL_REQUEST)
 }
 
-// [{ name, id, job }] for each job that has a check name GitHub reports as written.
+// [{ name, id, job, line }] for each job that has a check name GitHub reports as written.
 function namedJobs(label, jobs, read) {
   const named = []
   for (const pair of jobs.items) {
@@ -45,8 +47,9 @@ function namedJobs(label, jobs, read) {
     if (read.field(job, 'uses') !== undefined || !isNull(matrix)) continue
     const name = read.field(job, 'name')
     if (textOf(name)?.includes('${{')) continue
-    if (isNull(name)) named.push({ name: id, id, job })
-    else if (textOf(name) !== undefined) named.push({ name: textOf(name), id, job })
+    const line = read.lineOf(pair.key)
+    if (isNull(name)) named.push({ name: id, id, job, line })
+    else if (textOf(name) !== undefined) named.push({ name: textOf(name), id, job, line })
     else fail(`${label} line ${read.lineOf(name)} cannot read the name of job ${id}; write it as plain text`)
   }
   return named
@@ -56,7 +59,7 @@ function namedJobs(label, jobs, read) {
 function triggerFilters(on, read) {
   const trigger = isMap(on) ? read.field(on, PULL_REQUEST) : undefined
   if (isNull(trigger)) return []
-  if (!isMap(trigger)) return [`a pull_request trigger it cannot read (line ${read.lineOf(trigger)})`]
+  if (!isMap(trigger)) return [`a value it cannot read (line ${read.lineOf(trigger)})`]
   const found = []
   for (const pair of trigger.items) {
     const key = pair.key.value
@@ -108,11 +111,20 @@ const before = failures.length
 const reported = new Set()
 for (const name of required) {
   const jobs = suppliers.filter((job) => job.name === name)
-  if (jobs.length > 1) fail(`required check ${name} is the name of ${jobs.length} jobs (${jobs.map((job) => `${job.label} job ${job.id}`).join(', ')}); keep one`)
+  if (jobs.length > 1) fail(`required check ${name} is the name of ${jobs.length} jobs (${jobs.map((job) => `${job.label} line ${job.line} job ${job.id}`).join(', ')}); keep one`)
   for (const { label, id, job, read, on, pr } of jobs) {
     for (const { key } of job.items) {
       if (SKIPPING_KEYS.includes(key.value.toLowerCase())) fail(`${label} line ${read.lineOf(key)} job ${id} supplies required check ${name} and has ${key.value}:`)
     }
+    const steps = read.field(job, 'steps')
+    if (isSeq(steps)) {
+      steps.items.forEach((item, index) => {
+        const step = read.deref(item)
+        const which = isMap(step) && textOf(read.field(step, 'name')) ? `${index + 1} (${textOf(read.field(step, 'name'))})` : `${index + 1}`
+        if (!isMap(step)) fail(`${label} line ${read.lineOf(step)} job ${id} supplies required check ${name} and its step ${which} cannot be read`)
+        else for (const { key } of step.items) if (key.value.toLowerCase() === 'continue-on-error') fail(`${label} line ${read.lineOf(key)} job ${id} supplies required check ${name} and its step ${which} has ${key.value}:`)
+      })
+    } else if (steps !== undefined && !isNull(steps)) fail(`${label} line ${read.lineOf(steps)} job ${id} supplies required check ${name} and its steps cannot be read`)
     if (!pr || reported.has(label)) continue
     reported.add(label)
     for (const filter of triggerFilters(on, read)) fail(`${label} supplies required check ${name} and its pull_request trigger has ${filter}`)
@@ -120,7 +132,7 @@ for (const name of required) {
 }
 if (failures.length > before) {
   failures.push('A skipped required job reports success, and a workflow that does not run leaves its check pending.')
-  failures.push('A required job has no if:, needs: or continue-on-error:; its pull_request trigger holds only types:, with opened, synchronize and reopened. See .github/workflows/REQUIRED.md.')
+  failures.push('A required job has no if:, needs: or continue-on-error: (on the job or on a step); its pull_request trigger holds only types:, with opened, synchronize and reopened. See .github/workflows/REQUIRED.md.')
 }
 if (failures.length) {
   process.stderr.write(`\n${failures.join('\n')}\n`)
