@@ -2,9 +2,13 @@
 //
 // compose.yaml, and every *.yml and *.yaml under .github/, is read with workflow-yaml.mjs, so
 // a file it cannot read fails. Every string value or key that names /hatchet-lite, in any
-// layout and after YAML escapes and line folding, is a reference; fly.toml is not YAML, so
-// each of its non-comment lines is read as text. A reference's tag (a digest after it is
-// ignored) must equal the compose default, and a file may not name two tags. In compose.yaml
+// layout and after YAML escapes and line folding, is a reference. A reference's tag must equal
+// the compose default, and a file may not name two tags. A digest after a tag, hatchet-lite with
+// no / before it, or in upper case, fails in any YAML string; hatchet-lite:<digits> with no
+// registry path (a host and port, also after ://) and names that merely end in hatchet-lite are not
+// references. fly.toml is not YAML: outside whole-line comments it names the engine, image or
+// build only in [build] and the one line after it, image = '<registry>/hatchet-lite:<tag>', and
+// holds no escape, multi-line string or trailing comment. In compose.yaml
 // every reference must be an image: value written hatchet-lite:${KYU_HATCHET_IMAGE_TAG:-<tag>}.
 // One exemption: newest-engine.yml may name the tag its pick job chose at run time, written
 // exactly hatchet-lite:${{ needs.pick.outputs.tag }}; that reference is not compared.
@@ -27,6 +31,13 @@ const RUNTIME_FILE = '.github/workflows/newest-engine.yml'
 const RUNTIME_TAG = '${{ needs.pick.outputs.tag }}'
 const AFTER_TAG = ' \t\r\n"\'@,]}#'
 const AFTER_RUNTIME = ' \t\r\n"\',]}#'
+const SPELLED = /hatchet-lite(?=:\S|@)/gi
+const HOST_PORT = /^:\d+(?![A-Za-z0-9._@-])/
+const NAME_CHAR = /[A-Za-z0-9_.-]/
+const DIGEST = /^(:[^\s"'@,\]}#]*)?@/
+const FLY_BUILD = /^\s*\[build\]\s*$/
+const FLY_IMAGE = /^\s*image\s*=\s*(['"])[^\s'"\\@]*\/hatchet-lite:[^\s'"\\@]+\1\s*$/
+const FLY_WATCHED = /\bbuild\b|\bimage\b|hatchet-lite|'''|"""|\\/i
 
 const root = process.argv[2]
 const failures = []
@@ -40,6 +51,7 @@ function referenceTags(text, runtime = false) {
   const tags = []
   for (let at = text.indexOf(ENGINE); at >= 0; at = text.indexOf(ENGINE, at + 1)) {
     const rest = text.slice(at + ENGINE.length)
+    if (text.slice(at - 2, at + 1) === '://' && HOST_PORT.test(rest)) continue
     const after = rest[1 + RUNTIME_TAG.length]
     if (runtime && rest.startsWith(`:${RUNTIME_TAG}`) && (after === undefined || AFTER_RUNTIME.includes(after))) {
       tags.push(RUNTIME)
@@ -52,6 +64,20 @@ function referenceTags(text, runtime = false) {
   return tags
 }
 
+// Why each image-like hatchet-lite in one string cannot be compared: Docker pulls by a digest,
+// and a bare or upper-case name is not the engine reference the other rules read.
+function engineSpelling(text) {
+  const found = []
+  for (const { 0: name, index } of text.matchAll(SPELLED)) {
+    const before = text[index - 1] ?? ''
+    if (NAME_CHAR.test(before) || (before !== '/' && HOST_PORT.test(text.slice(index + name.length)))) continue
+    if (name !== 'hatchet-lite') found.push('names hatchet-lite in upper case')
+    else if (before !== '/') found.push('names hatchet-lite with no / before it; write the registry path')
+    else if (DIGEST.test(text.slice(index + name.length))) found.push('names hatchet-lite with a digest; pin the tag alone')
+  }
+  return found
+}
+
 // [{ tag, line }] for one YAML file, or null when the reader failed it.
 function yamlReferences(file) {
   const read = readWorkflowYaml(path.join(root, file), file, fail)
@@ -60,6 +86,7 @@ function yamlReferences(file) {
   visit(read.doc, {
     Scalar(key, node, ancestors) {
       if (textOf(node) === undefined) return
+      for (const problem of engineSpelling(node.value)) fail(`${file}:${read.lineAt(node.range[0])} ${problem}`)
       const raw = read.source.slice(node.range[0], node.range[1])
       let from = 0
       for (let tag of referenceTags(node.value, file === RUNTIME_FILE)) {
@@ -78,10 +105,24 @@ function yamlReferences(file) {
   return refs
 }
 
+// The [build] image line's reference, or null after failing each line outside that layout.
 function flyReferences(file) {
-  return readFileSync(path.join(root, file), 'utf8')
+  const code = readFileSync(path.join(root, file), 'utf8')
     .split('\n')
-    .flatMap((text, i) => (/^\s*#/.test(text) ? [] : referenceTags(text).map((tag) => ({ tag, line: i + 1 }))))
+    .map((text, i) => ({ text, line: i + 1 }))
+    .filter(({ text }) => !/^\s*(#|$)/.test(text))
+  const build = code.findIndex(({ text }) => FLY_BUILD.test(text))
+  const image = build < 0 || !FLY_IMAGE.test(code[build + 1]?.text ?? '') ? undefined : code[build + 1]
+  const laidOut = image !== undefined && (code[build + 2]?.text.trim().startsWith('[') ?? true)
+  const stray = code.filter(({ text }, i) => i !== build && code[i] !== image && FLY_WATCHED.test(text))
+  for (const { text, line } of stray) {
+    fail(`${file}:${line} ${text.includes('#') ? 'holds # after other text; a comment must be on its own line' : 'names build, image or hatchet-lite, or holds an escape or multi-line string'}`)
+  }
+  const end = code.findIndex(({ text }, i) => i > build && text.trim().startsWith('['))
+  const body = build < 0 ? [] : code.slice(build + 1, end < 0 ? undefined : end)
+  for (const { line } of body.filter((l) => l !== image && !stray.includes(l))) fail(`${file}:${line} [build] may hold only the image line`)
+  if (laidOut && stray.length === 0) return referenceTags(image.text).map((tag) => ({ tag, line: image.line }))
+  return fail(`${file} must set the engine on the line after [build], as image = '<registry>/hatchet-lite:<tag>', and nowhere else`), null
 }
 
 // { tag, line of the first reference } when every reference reads to one tag; else null after failing.

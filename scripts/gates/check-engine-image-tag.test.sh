@@ -157,7 +157,8 @@ assert_last_output_contains "the unreadable line is named" ".github/workflows/dy
 
 every_tag v0.107.0
 sed -i.bak "s|hatchet-lite:v0.107.0|hatchet-lite:v0.107.0@sha256:0123456789abcdef|" "${CI}" && rm "${CI}.bak"
-assert_exit "a workflow tag followed by a digest compares by its tag" 0 run_check
+assert_exit "a workflow tag followed by a digest fails" 1 run_check
+assert_last_output_contains "the digest line is named" ".github/workflows/ci.yml:6 names hatchet-lite with a digest; pin the tag alone"
 
 every_tag v0.107.0
 printf '# was %s:latest\n' "${IMG}" >> "${CI}"
@@ -352,6 +353,119 @@ every_tag v0.107.0
 sed -i.bak "s|hatchet-lite:v0.107.0|hatchet-lite:${RT}|" "${CI}" && rm "${CI}.bak"
 assert_exit "ci.yml using the run-time tag fails" 1 run_check
 assert_last_output_contains "the ci.yml image line is named for the run-time tag" ".github/workflows/ci.yml:6 names hatchet-lite in a layout this gate cannot read"
+
+# --- fly.toml names the engine once, as the image line after [build] (#55) ---
+FLY_DECOY="[env]\n  ENGINE = '${IMG}:v0.107.0'\n"
+# fly_body <text> — fly.toml from printf %b text.
+fly_body() {
+  printf '%b' "$1" > "${FLY}"
+}
+
+every_tag v0.107.0
+fly_body "# ${IMG}:latest in a comment\nprimary_region = 'syd'\n\n[build]\n  # the engine\n  image = \"${IMG}:v0.107.0\"\n\n[env]\n  # hatchet-lite falls back to postgres\n  KIND = 'rabbitmq'\n"
+assert_exit "fly.toml with comments around the [build] image line passes" 0 run_check
+
+for build in "[build]\n  image = 'ghcr.io/other/engine:latest'\n${FLY_DECOY}" \
+  "build = { image = 'docker.io/other/engine:latest' }\n${FLY_DECOY}" \
+  "[build]\n  image = \"\"\"ghcr.io/hatchet-dev/hatchet/hatchet-\\\\\nlite:latest\"\"\"\n${FLY_DECOY}" \
+  "[build]\n  image = \"ghcr.io/hatchet-dev/hatchet/hatchet\\\\u002dlite:latest\"\n${FLY_DECOY}" \
+  "[build]\n  image = 'hatchet-lite:latest'\n${FLY_DECOY}" \
+  "[build]\n  image = 'ghcr.io/hatchet-dev/hatchet/HATCHET-LITE:latest'\n${FLY_DECOY}" \
+  "[build]\n  image = '${IMG}:v0.107.0@sha256:0123456789abcdef'\n" \
+  "[build]\n  image = '${IMG}:v0.107.0'\n  dockerfile = 'Dockerfile'\n" \
+  "[build]\n  image = '${IMG}:v0.107.0' # was hatchet-lite:latest\n" \
+  "[env]\n  X = '1'\n[build]\n  image = '${IMG}:v0.107.0'\n[build.args]\n  A = 'b'\n" \
+  "[build]\n\n[env]\n  image = '${IMG}:v0.107.0'\n"; do
+  every_tag v0.107.0
+  fly_body "${build}"
+  assert_exit "fly.toml that sets the engine any other way fails: ${build}" 1 run_check
+  assert_last_output_contains "the fly.toml layout is restated for: ${build}" "infra/hatchet/fly/fly.toml must set the engine on the line after [build], as image = '<registry>/hatchet-lite:<tag>', and nowhere else"
+done
+
+every_tag v0.107.0
+fly_body "[build]\n  image = 'ghcr.io/other/engine:latest'\n${FLY_DECOY}"
+assert_last_output_contains "the decoy line is named" "infra/hatchet/fly/fly.toml:4 names build, image or hatchet-lite, or holds an escape or multi-line string"
+
+# Each tripwire alone: a correct [build] block, then a [env] table whose one line trips one rule.
+FLY_TEXT_GOOD="[build]\n  image = '${IMG}:v0.107.0'\n"
+for stray in "WHICH = 'build'" "image = 'x'" "QUEUE = 'hatchet-lite'" "Build = 'x'" "IMAGE = 'x'" "QUEUE = 'HATCHET-LITE'" \
+  "X = \"\"\"" "X = '''" "\"im\\\\u0061ge\" = 'x'" "X = \"a\\\\tb\"" "X = 'a\\\\b'"; do
+  every_tag v0.107.0
+  fly_body "${FLY_TEXT_GOOD}[env]\n  ${stray}\n"
+  assert_exit "fly.toml with one stray tripwire fails: ${stray}" 1 run_check
+  assert_last_output_contains "the stray line is named for: ${stray}" "infra/hatchet/fly/fly.toml:4 names build, image or hatchet-lite, or holds an escape or multi-line string"
+done
+
+# A correct [build] block inside a multi-line string, with no escape anywhere.
+for quotes in '"""' "'''"; do
+  every_tag v0.107.0
+  fly_body "[env]\n  X = ${quotes}\n[build]\n  image = '${IMG}:v0.107.0'\n[x]\n${quotes}\n"
+  assert_exit "a [build] block inside a ${quotes} string fails" 1 run_check
+  assert_last_output_contains "the string's first line is named for ${quotes}" "infra/hatchet/fly/fly.toml:2 names build, image or hatchet-lite, or holds an escape or multi-line string"
+done
+
+every_tag v0.107.0
+fly_body "X = \"\"\"\n[build]\n  image = '${IMG}:v0.107.0'\n[x]\n\"\"\"\n\"build\".\"image\" = 'docker.io/evil/engine:latest'\n"
+assert_exit "a hidden [build] block and a quoted-key decoy fail" 1 run_check
+
+# The [build] line is read exactly: no trailing text, no inner space, one bracket, one case.
+for header in "[build] # engine" "[ build ]" "[BUILD]" "[[build]]"; do
+  every_tag v0.107.0
+  fly_body "${header}\n  image = '${IMG}:v0.107.0'\n"
+  assert_exit "fly.toml with the header ${header} fails" 1 run_check
+  assert_last_output_contains "the layout is restated for the header ${header}" "must set the engine on the line after [build]"
+done
+
+# Only a whole-line # is a comment.
+for tail in "WHICH = 'build' # x" "X = \"\"\"  # x"; do
+  every_tag v0.107.0
+  fly_body "${FLY_TEXT_GOOD}[env]\n  ${tail}\n"
+  assert_exit "fly.toml with a tripwire before a trailing comment fails: ${tail}" 1 run_check
+  assert_last_output_contains "the trailing comment is explained for: ${tail}" "infra/hatchet/fly/fly.toml:4 holds # after other text; a comment must be on its own line"
+done
+
+every_tag v0.107.0
+fly_body "[build]\n  image = '${IMG}:v0.107.0' # keep with compose\n"
+assert_exit "an image line with a trailing comment fails" 1 run_check
+assert_last_output_contains "the trailing comment on the image line is explained" "infra/hatchet/fly/fly.toml:2 holds # after other text; a comment must be on its own line"
+
+every_tag v0.107.0
+fly_body "[build]\n  image = '${IMG}:v0.107.0'\n  dockerfile = 'Dockerfile'\n"
+assert_exit "a second [build] key fails" 1 run_check
+assert_last_output_contains "the second key is explained" "infra/hatchet/fly/fly.toml:3 [build] may hold only the image line"
+
+every_tag v0.107.0
+fly_body "[build]\n  dockerfile = 'Dockerfile'\n  image = '${IMG}:v0.107.0'\n"
+assert_exit "a key before the image line fails" 1 run_check
+assert_last_output_contains "a key before the image line is explained" "infra/hatchet/fly/fly.toml:2 [build] may hold only the image line"
+
+# --- A digest, a bare name or upper case in a YAML string fails (#55) ---
+for spelled in "${IMG}:v0.107.0@sha256:0123" "${IMG}@sha256:0123" 'hatchet-lite:latest' 'hatchet-lite:v0.107.0' 'hatchet-lite:7077-rc' 'hatchet-lite:7077@sha256:0123' 'ghcr.io/hatchet-dev/hatchet/HATCHET-LITE:latest' 'ghcr.io/hatchet-dev/hatchet/Hatchet-Lite:v0.107.0'; do
+  every_tag v0.107.0
+  printf 'jobs:\n  t:\n    steps:\n      - run: docker pull %s\n' "${spelled}" > "${TREE}/.github/workflows/pull.yml"
+  assert_exit "a run: line that pulls ${spelled} fails" 1 run_check
+  assert_last_output_contains "the ${spelled} line is named" ".github/workflows/pull.yml:4 names hatchet-lite"
+done
+
+every_tag v0.107.0
+printf 'jobs:\n  t:\n    services:\n      e:\n        image: "ghcr.io/hatchet-dev/hatchet/hatchet\\x2dLITE:latest"\n' > "${TREE}/.github/workflows/escaped-upper.yml"
+assert_exit "an escaped upper-case reference fails" 1 run_check
+assert_last_output_contains "the escaped upper-case line is named" ".github/workflows/escaped-upper.yml:5 names hatchet-lite in upper case"
+
+every_tag v0.107.0
+printf 'jobs:\n  t:\n    steps:\n      - run: |\n          echo "Hatchet-Lite: not ready"\n          echo "hatchet-lite never became ready"\n          echo "${{ job.services.hatchet-lite.id }}"\n' > "${TREE}/.github/workflows/prose.yml"
+assert_exit "hatchet-lite in prose, or as a service name, passes" 0 run_check
+
+for hostport in 'hatchet-lite:7077' 'http://hatchet-lite:8888' 'http://hatchet-lite:8888/api/ready' 'postgres://u@hatchet-lite:5432' 'u@hatchet-lite:5432' 'docker.io/x/my-hatchet-lite:v0.107.0' 'my-hatchet-lite:latest'; do
+  every_tag v0.107.0
+  printf 'jobs:\n  t:\n    env:\n      TARGET: %s\n' "${hostport}" > "${TREE}/.github/workflows/hostport.yml"
+  assert_exit "${hostport} is a host or another image and passes" 0 run_check
+done
+
+every_tag v0.107.0
+printf 'jobs:\n  t:\n    steps:\n      - run: docker pull %s:8888\n' "${IMG}" > "${TREE}/.github/workflows/portlike.yml"
+assert_exit "a numeric tag behind a registry path still fails" 1 run_check
+assert_last_output_contains "the numeric tag is compared" ".github/workflows/portlike.yml pins hatchet-lite:8888, infra/hatchet/compose.yaml pins hatchet-lite:v0.107.0"
 
 assert_exit "an unknown argument fails" 1 bash "${CHECK}" --nope
 
