@@ -5,7 +5,10 @@
 // layout and after YAML escapes and line folding, is a reference. A reference's tag must equal
 // the compose default, and a file may not name two tags. Its registry path must equal ENGINE_PATH
 // exactly, so moving the engine to another registry is an edit here; under .github/ the path is
-// the text after the last space or line break, less one opening quote and one docker://. A
+// the text after the last space, tab or line break (a backslash, its line break and the spaces
+// after it are removed first, as a shell joins them), less one opening quote and one docker://.
+// A reference inside a ${{ }} expression, which can build the path, fails as unreadable. The gate
+// reads text, not what a shell computes, so indirection such as $(printf ...) is not caught. A
 // digest after a tag, hatchet-lite with no / before it, or in upper case, fails in any YAML
 // string; hatchet-lite:<digits> with no registry path (a host and port, also after ://) and names
 // that merely end in hatchet-lite are not references. fly.toml is not YAML: outside whole-line
@@ -43,6 +46,7 @@ const DIGEST = /^(:[^\s"'@,\]}#]*)?@/
 const FLY_BUILD = /^\s*\[build\]\s*$/
 const FLY_IMAGE = /^\s*image\s*=\s*(['"])([^\s'"\\@]*)\/hatchet-lite:[^\s'"\\@]+\1\s*$/
 const WORD_BREAK = /[ \t\r\n]/
+const CONTINUATION = /\\\r?\n[ \t]*/g
 const WORD_PREFIX = /^["']?(?:docker:\/\/)?/
 const FLY_WATCHED = /\bbuild\b|\bimage\b|hatchet-lite|'''|"""|\\/i
 
@@ -67,8 +71,11 @@ function engineReferences(text, runtime = false) {
   for (let at = text.indexOf(ENGINE); at >= 0; at = text.indexOf(ENGINE, at + 1)) {
     const rest = text.slice(at + ENGINE.length)
     if (text.slice(at - 2, at + 1) === '://' && HOST_PORT.test(rest)) continue
-    const registryPath = text.slice(0, at).split(WORD_BREAK).at(-1).replace(WORD_PREFIX, '')
-    refs.push({ tag: tagAfter(rest, runtime), registryPath })
+    const registryPath = text.slice(0, at).replace(CONTINUATION, '').split(WORD_BREAK).at(-1).replace(WORD_PREFIX, '')
+    const open = text.lastIndexOf('${{', at)
+    const close = text.indexOf('}}', open)
+    const inExpression = open >= 0 && (close < 0 || close > at)
+    refs.push({ tag: inExpression ? UNREAD : tagAfter(rest, runtime), registryPath })
   }
   return refs
 }
@@ -157,7 +164,9 @@ function oneEngineTag(file, refs) {
 
 function checkRegistryPaths(file, refs) {
   for (const { registryPath, line } of refs ?? []) {
-    if (registryPath !== ENGINE_PATH) fail(`${file}:${line} names the engine as ${registryPath}${ENGINE}, expected ${ENGINE_PATH}${ENGINE}`)
+    if (registryPath === ENGINE_PATH) continue
+    const where = file.startsWith('.github/') ? '; under .github/ the registry path must start after a space or an opening quote' : ''
+    fail(`${file}:${line} names the engine as ${registryPath}${ENGINE}, expected ${ENGINE_PATH}${ENGINE}${where}`)
   }
 }
 

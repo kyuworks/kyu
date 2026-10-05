@@ -47,7 +47,11 @@ reference, compose.yaml's included, must also sit at the registry path
 `ghcr.io/hatchet-dev/hatchet` exactly (`ENGINE_PATH` in
 `check-engine-image-tag.mjs`), so moving the engine to another registry is a
 deliberate edit to the gate; under `.github/` the path is the text after the last
-space or line break, less one opening quote and one `docker://`. Its only
+space, tab or line break (a backslash, its line break and the spaces after it are
+removed first, as a shell joins them), less one opening quote and one `docker://`.
+A reference inside a `${{ }}` expression, which can build the path, fails as
+unreadable; the gate reads text, not what a shell computes, so indirection such as
+`$(printf ...)` is not caught. Its only
 exemption is the tag `${{ needs.pick.outputs.tag }}` in `newest-engine.yml`, whose
 registry path is still checked; that expression anywhere else, any other expression
 there, or a literal tag there that differs from compose.yaml still fails. It also fails a digest after a tag (Docker pulls by the
