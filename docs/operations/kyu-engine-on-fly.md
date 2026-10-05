@@ -348,6 +348,10 @@ the setup steps are deferred to a later PR.
 
 ## Upgrade
 
+Before choosing a new tag, read the latest run of `.github/workflows/newest-engine.yml`: it runs the
+test suites against the newest `hatchet-lite` release every week, and a red run there is a signal
+to read before upgrading. It picks its tag at run time, so an upgrade does not change that file.
+
 1. Take a snapshot: `fly mpg backup list <engine-cluster-id>` and, if the platform does not do
    this automatically, trigger one first with `fly mpg backup create <engine-cluster-id>`.
 2. In one pull request, change the tag in all four places that name it: the default in

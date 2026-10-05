@@ -6,6 +6,8 @@
 // each of its non-comment lines is read as text. A reference's tag (a digest after it is
 // ignored) must equal the compose default, and a file may not name two tags. In compose.yaml
 // every reference must be an image: value written hatchet-lite:${KYU_HATCHET_IMAGE_TAG:-<tag>}.
+// One exemption: newest-engine.yml may name the tag its pick job chose at run time, written
+// exactly hatchet-lite:${{ needs.pick.outputs.tag }}; that reference is not compared.
 //
 // Usage: node check-engine-image-tag.mjs <repo root>
 import { existsSync, readFileSync, statSync } from 'node:fs'
@@ -20,7 +22,11 @@ const ENGINE = '/hatchet-lite'
 const COMPOSE_IMAGE = /^\S*\/hatchet-lite:\$\{KYU_HATCHET_IMAGE_TAG:-([^}]*)\}$/
 const RELEASE = /^v\d+\.\d+\.\d+$/
 const UNREAD = '(unreadable)'
+const RUNTIME = '(run-time)'
+const RUNTIME_FILE = '.github/workflows/newest-engine.yml'
+const RUNTIME_TAG = '${{ needs.pick.outputs.tag }}'
 const AFTER_TAG = ' \t\r\n"\'@,]}#'
+const AFTER_RUNTIME = ' \t\r\n"\',]}#'
 
 const root = process.argv[2]
 const failures = []
@@ -28,11 +34,17 @@ const fail = (msg) => failures.push(`FAIL: ${msg}`)
 const isFile = (file) => existsSync(path.join(root, file)) && statSync(path.join(root, file)).isFile()
 
 // The tag of each engine reference in one string: (none) when untagged, (unreadable) when
-// anything but a delimiter follows the tag.
-function referenceTags(text) {
+// anything but a delimiter follows the tag. (run-time) only when runtime is set and the text is
+// exactly RUNTIME_TAG.
+function referenceTags(text, runtime = false) {
   const tags = []
   for (let at = text.indexOf(ENGINE); at >= 0; at = text.indexOf(ENGINE, at + 1)) {
     const rest = text.slice(at + ENGINE.length)
+    const after = rest[1 + RUNTIME_TAG.length]
+    if (runtime && rest.startsWith(`:${RUNTIME_TAG}`) && (after === undefined || AFTER_RUNTIME.includes(after))) {
+      tags.push(RUNTIME)
+      continue
+    }
     const tag = /^:([A-Za-z0-9._-]+)/.exec(rest)
     if (tag) tags.push(rest.length === tag[0].length || AFTER_TAG.includes(rest[tag[0].length]) ? tag[1] : UNREAD)
     else tags.push(/^[:A-Za-z0-9_.-]/.test(rest) ? UNREAD : '(none)')
@@ -50,7 +62,7 @@ function yamlReferences(file) {
       if (textOf(node) === undefined) return
       const raw = read.source.slice(node.range[0], node.range[1])
       let from = 0
-      for (let tag of referenceTags(node.value)) {
+      for (let tag of referenceTags(node.value, file === RUNTIME_FILE)) {
         // An escaped reference is not in the raw text; it is reported on the value's first line.
         const at = raw.indexOf(ENGINE, from)
         from = at < 0 ? from : at + 1
@@ -79,13 +91,14 @@ function oneEngineTag(file, refs) {
   const unread = refs.filter((ref) => ref.tag === UNREAD)
   for (const { line } of unread) fail(`${file}:${line} names hatchet-lite in a layout this gate cannot read`)
   if (unread.length) return null
+  const named = refs.filter((ref) => ref.tag !== RUNTIME)
   const firstLine = new Map()
-  for (const { tag, line } of refs) if (!firstLine.has(tag)) firstLine.set(tag, line)
+  for (const { tag, line } of named) if (!firstLine.has(tag)) firstLine.set(tag, line)
   if (firstLine.size > 1) {
     const each = [...firstLine].sort(([a], [b]) => (a < b ? -1 : 1)).map(([tag, line]) => `${tag} (line ${line})`)
     return fail(`${file} pins more than one hatchet-lite tag: ${each.join(', ')}`), null
   }
-  return refs[0]
+  return named[0] ?? refs[0]
 }
 
 function finish(note) {
@@ -115,7 +128,7 @@ if (existsSync(path.join(root, '.github'))) {
 
 for (const [file, refs] of [...references].slice(1)) {
   const one = oneEngineTag(file, refs)
-  if (one && one.tag !== compose.tag) {
+  if (one && one.tag !== RUNTIME && one.tag !== compose.tag) {
     fail(`${file} pins hatchet-lite:${one.tag}, ${COMPOSE} pins hatchet-lite:${compose.tag} (line ${one.line})`)
   }
 }
