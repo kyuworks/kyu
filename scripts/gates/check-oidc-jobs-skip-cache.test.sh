@@ -328,6 +328,209 @@ assert_exit "a column-zero comment that mentions minimumReleaseAge is not a chan
 publish_workflow "${NONE}" $'          cache: ${{ false }}\n'
 assert_exit "cache: \${{ false }} is rejected (only the literal 'false' counts)" 1 run_check
 
+# YAML anchors and aliases: the gate does not resolve them, so it fails closed.
+ALIASED="puts a YAML anchor, alias or tag on permissions, id-token or cache-mode"
+SHARED="can publish and uses a YAML alias or merge key"
+
+rm -rf "${WF_DIR}"
+mkdir -p "${WF_DIR}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+x-w: &w write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: *w
+    steps:
+      - uses: actions/cache@v4
+YAML
+assert_exit "an id-token value written as an alias is rejected" 1 run_check
+assert_last_output_contains "the aliased id-token is named" "line 9 ${ALIASED}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+x-a: &a write-all
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions: *a
+    steps:
+      - uses: actions/cache@v4
+YAML
+assert_exit "a permissions value written as an alias is rejected" 1 run_check
+assert_last_output_contains "the aliased permissions is named" "line 7 ${ALIASED}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: CI
+on: push
+x-m: &m write
+cache-mode: *m
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+YAML
+assert_exit "a cache-mode value written as an alias is rejected" 1 run_check
+assert_last_output_contains "the aliased cache-mode is named" "line 4 ${ALIASED}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: CI
+on: push
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    permissions: &p
+      contents: read
+    steps:
+      - run: echo hi
+  b:
+    runs-on: ubuntu-latest
+    permissions:
+      <<: *p
+    steps:
+      - run: echo hi
+YAML
+assert_exit "an anchored permissions block, and a merge key inside one, are rejected" 1 run_check
+assert_last_output_contains "the anchored permissions is named" "line 6 ${ALIASED}"
+assert_last_output_contains "the merge key inside permissions is named" "line 13 ${ALIASED}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      *p
+    steps:
+      - run: echo hi
+YAML
+assert_exit "a permissions alias on the line below the key is rejected" 1 run_check
+assert_last_output_contains "the next-line alias is named" "line 7 ${ALIASED}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: CI
+on: push
+x-p: &p
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions: *p
+    steps:
+      - run: echo hi
+YAML
+assert_exit "a permissions alias is rejected even in a workflow with no publishing job" 1 run_check
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: !!str write
+    steps:
+      - uses: actions/cache@v4
+YAML
+assert_exit "an id-token value with a YAML tag is rejected" 1 run_check
+assert_last_output_contains "the tagged id-token is named" "line 7 ${ALIASED}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+jobs:
+  publish: {runs-on: ubuntu-latest, permissions: *a, steps: [{uses: actions/cache@v4}]}
+YAML
+assert_exit "a permissions alias inside a flow-map job is rejected" 1 run_check
+assert_last_output_contains "the flow-map alias is named" "line 4 ${ALIASED}"
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  other:
+    runs-on: ubuntu-latest
+    steps: *shared
+YAML
+assert_exit "a publishing workflow with steps: *shared is rejected" 1 run_check
+assert_last_output_contains "the shared steps are named" "${SHARED} at line 25"
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  other:
+    <<: *base
+    runs-on: ubuntu-latest
+YAML
+assert_exit "a publishing workflow with a <<: *base job is rejected" 1 run_check
+assert_last_output_contains "the merge key is named" "${SHARED} at line 24"
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  other:
+    runs-on: ubuntu-latest
+    steps: [*s]
+YAML
+assert_exit "a publishing workflow with an alias inside a flow sequence is rejected" 1 run_check
+
+rm -rf "${WF_DIR}"
+mkdir -p "${WF_DIR}"
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: CI
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  one:
+    runs-on: ubuntu-latest
+    services: &engine
+      postgres:
+        image: postgres:15.6
+        options: >-
+          --health-cmd "pg_isready"
+          --health-retries 10
+    steps: &shared
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      - run: |
+          for i in $(seq 1 3); do curl -fsS x && break; done
+  two:
+    runs-on: ubuntu-latest
+    services: *engine
+    steps: *shared
+YAML
+assert_exit "a workflow with no publishing job may share services and steps through anchors" 0 run_check
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  lookalikes:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' && true }}
+    env:
+      CRON: '41 6 * * 1'
+      GLOB: "*.ts"
+    steps:
+      - run: pnpm lint && pnpm test
+      - run: ls *.ts
+      - run: echo "key: *value" 'flow: [a,*b]'
+      - run: |
+          make a \
+            && make b
+          *unusual line in a script
+          &another
+      - name: Branches
+        run: echo done
+        env:
+          B: ['*', 'a,*b']
+YAML
+assert_exit "text that only looks like an alias does not trip a publishing workflow" 0 run_check
+
 assert_exit "the repository's workflows pass" 0 run_real
 assert_last_output_contains "the release job is checked" "release.yml publish"
 

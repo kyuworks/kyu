@@ -20,6 +20,9 @@
 # keys, four-space job keys, six-space `- ` steps. It fails closed: a file with
 # an id-token: write (or write-all) the scanner did not read as an OIDC job
 # fails, so a layout it cannot parse never passes silently.
+# It does not resolve YAML anchors, aliases or tags either, so it fails on one in a
+# permissions, id-token or cache-mode value, and on any alias or merge key in a
+# workflow that grants id-token: write. Block scalars and quoted text are skipped.
 #
 # Env overrides (for tests):
 #   CI_WORKFLOWS_DIR — directory of workflow yaml files
@@ -53,11 +56,36 @@ check_workflow() {
       if (in_step && step_setup && !step_nocache) setup_bad[n] = 1
       in_step = 0; step_setup = 0; step_nocache = 0
     }
+    # A node starts after "key: ", after "- ", at the start of a line, or inside a
+    # flow collection; there a leading & * or ! is an anchor, alias or tag.
+    function scan_node(q, bare,    m, flow) {
+      m = q
+      sub(/^[[:space:]]*(-[[:space:]]+)*/, "", m)
+      flow = m ~ /^[[{]/ || m ~ /^[^[:space:]][^:]*:[[:space:]]+[[{]/
+      if (m ~ /^(\*|<<[[:space:]]*:)/ || m ~ /:[[:space:]]+\*/ || (flow && m ~ /[[{,:][[:space:]]*\*/)) {
+        if (!alias_nr) alias_nr = NR
+      }
+      if ((m ~ /^[!&*]/ || m ~ /:[[:space:]]+[!&*]/ || (flow && m ~ /[[{,:][[:space:]]*[!&*]/)) && (in_guard || bare ~ /(^|[^-[:alnum:]_])(permissions|id-token|cache-mode)[[:space:]]*:[[:space:]]*[!&*]/)) {
+        print "FAIL: " file " line " NR " puts a YAML anchor, alias or tag on permissions, id-token or cache-mode; write the value out"
+      }
+      if (m ~ /(^|:[[:space:]]+)([!&][^[:space:]]*[[:space:]]+)*[|>][-+0-9]*[[:space:]]*$/) { in_bs = 1; bs_ind = length(q) - length(m) }
+      if (bare ~ /^[[:space:]]*(-[[:space:]]+)*(permissions|id-token|cache-mode)[[:space:]]*:[[:space:]]*$/) { in_guard = 1; guard_ind = length(q) - length(m) }
+    }
     {
       line = $0
       sub(/(^|[[:space:]]+)#.*$/, "", line)
       gsub(sq, "", line)
       gsub(/"/, "", line)
+      q = $0
+      gsub(sq "[^" sq "]*" sq, sq sq, q)
+      gsub(/"[^"]*"/, "\"\"", q)
+      sub(/(^|[[:space:]]+)#.*$/, "", q)
+      if (q !~ /^[[:space:]]*$/) {
+        match(q, /^ */)
+        if (in_bs && RLENGTH <= bs_ind) in_bs = 0
+        if (in_guard && RLENGTH <= guard_ind) in_guard = 0
+        if (!in_bs) scan_node(q, line)
+      }
     }
     line ~ /^[^[:space:]]/ {
       end_step()
@@ -102,6 +130,7 @@ check_workflow() {
         if (setup_bad[i]) print "FAIL: " file " job " job[i] " uses ./.github/actions/setup without cache: " sq "false" sq
         if (direct[i]) print "FAIL: " file " job " job[i] " uses actions/cache directly"
       }
+      if (raw > 0 && alias_nr) print "FAIL: " file " can publish and uses a YAML alias or merge key at line " alias_nr "; the gate cannot see what it brings into a job, so write it out"
       if (raw > read_oidc || (raw > 0 && (n == 0 || jobs_seen != n))) print "FAIL: " file " has id-token: write but the gate could not find the job that holds it; write permissions as a block map with 2-space job indentation"
     }
   ' "$1"
