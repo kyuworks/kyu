@@ -2,8 +2,8 @@
 //
 // A workflow runs on pull_request when on: is pull_request, a list that holds it, or a map
 // with that key; pull_request_target does not count. A job's check name is its name:, else
-// its job id. A job with a matrix, or one that calls a reusable workflow, counts for no name:
-// GitHub builds its check names at run time. Every workflow file is read with
+// its job id. A job with a matrix, one that calls a reusable workflow, or a name: that holds ${{
+// counts for no name: GitHub builds its check names at run time. Every workflow file is read with
 // workflow-yaml.mjs, so a file it cannot read fails, pull-request workflow or not.
 //
 // Usage: node check-required-ci-jobs.mjs <workflows dir> <required-checks file>
@@ -36,6 +36,7 @@ function checkNames(label, jobs, read) {
     const matrix = isMap(strategy) ? read.field(strategy, 'matrix') : strategy
     if (read.field(job, 'uses') !== undefined || !isNull(matrix)) continue
     const name = read.field(job, 'name')
+    if (textOf(name)?.includes('${{')) continue
     if (isNull(name)) names.push(id)
     else if (textOf(name) !== undefined) names.push(textOf(name))
     else fail(`${label} line ${read.lineOf(name)} cannot read the name of job ${id}; write it as plain text`)

@@ -10,8 +10,8 @@ list. `scripts/gates/check-required-ci-jobs.sh` (in the Lint job) fails the
 PR if `required-checks.txt` names a check that is not the `name:` (else the job
 id) of a job in a workflow that runs on `pull_request` (`ci.yml` and
 `ship-loop.yml` today). It reads each workflow with the `yaml` package and fails
-one it cannot read. A matrix job or a job that calls a reusable workflow does
-not count: GitHub builds its check names at run time. `release.yml` runs on tags
+one it cannot read. A matrix job, a job that calls a reusable workflow, or a job whose
+`name:` holds `${{` does not count: GitHub builds its check names at run time. `release.yml` runs on tags
 and does not count.
 
 | Job id | Check name | What it runs |

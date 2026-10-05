@@ -185,6 +185,15 @@ for bad in v0.107.0-rc1 v0.107.01; do
   assert_last_output_contains "the ${bad} tag is named" ".github/workflows/ci.yml pins hatchet-lite:${bad}"
 done
 
+every_tag v0.107.0-rc1
+assert_exit "a compose default that is not a vX.Y.Z release fails even when every file agrees" 1 run_check
+assert_last_output_contains "the compose release rule is named" "infra/hatchet/compose.yaml pins hatchet-lite:v0.107.0-rc1, not a vMAJOR.MINOR.PATCH release"
+
+every_tag v0.107.0
+printf 'services:\n  hatchet-lite:\n    image: x\n    environment:\n      ENGINE: %s:${KYU_HATCHET_IMAGE_TAG:-v0.107.0}\n' "${IMG}" > "${COMPOSE}"
+assert_exit "a compose reference outside an image: value is not the engine image" 1 run_check
+assert_last_output_contains "the compose environment line is named" "infra/hatchet/compose.yaml:5 names hatchet-lite in a layout this gate cannot read"
+
 for good in "\"${IMG}:v0.107.0\"" "'${IMG}:v0.107.0'" "[${IMG}:v0.107.0]" "{ image: ${IMG}:v0.107.0 }" "{image: ${IMG}:v0.107.0}" "${IMG}:v0.107.0 # note"; do
   every_tag v0.107.0
   printf 'x: %s\n' "${good}" >> "${CI}"
@@ -270,6 +279,17 @@ every_tag v0.107.0
 printf 'jobs: {}\n' > "${TREE}/.github/workflows/Upper.YML"
 assert_exit "a workflow with an upper-case extension fails" 1 run_check
 assert_last_output_contains "the upper-case file is named" "Upper.YML has a workflow extension in another letter case"
+
+BARE="${TMP}/bare"
+mkdir -p "${BARE}/scripts/gates" "${BARE}/scripts/lib"
+cp "${SCRIPT_DIR}"/check-engine-image-tag.sh "${SCRIPT_DIR}"/check-engine-image-tag.mjs "${SCRIPT_DIR}"/workflow-yaml.mjs "${BARE}/scripts/gates/"
+cp "${SCRIPT_DIR}"/../lib/require-yaml.sh "${BARE}/scripts/lib/"
+every_tag v0.107.0
+run_without_yaml() {
+  ROOT_DIR="${TREE}" bash "${BARE}/scripts/gates/check-engine-image-tag.sh"
+}
+assert_exit "a gate that cannot resolve the yaml package fails" 1 run_without_yaml
+assert_last_output_contains "the missing package is named with the fix" "the workflow reader stopped before it checked every file; the yaml package is missing, run pnpm install"
 
 assert_exit "an unknown argument fails" 1 bash "${CHECK}" --nope
 

@@ -17,9 +17,11 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${ROOT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+source "${SCRIPT_DIR}/../lib/require-yaml.sh"
 for arg in "$@"; do
   echo "FAIL: unknown argument: ${arg}" >&2
   exit 1
 done
 echo "=== Engine image tag ==="
+require_yaml_package "${SCRIPT_DIR}"
 exec node "${SCRIPT_DIR}/check-engine-image-tag.mjs" "${ROOT_DIR}"

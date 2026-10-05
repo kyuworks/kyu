@@ -23,6 +23,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "${SCRIPT_DIR}/../lib/require-yaml.sh"
 CI_WORKFLOWS_DIR="${CI_WORKFLOWS_DIR:-${ROOT_DIR}/.github/workflows}"
 REQUIRED_CHECKS="${REQUIRED_CHECKS:-${ROOT_DIR}/.github/workflows/required-checks.txt}"
 for arg in "$@"; do
@@ -45,4 +46,5 @@ if [ ! -f "${REQUIRED_CHECKS}" ]; then
   exit 1
 fi
 
+require_yaml_package "${SCRIPT_DIR}"
 exec node "${SCRIPT_DIR}/check-required-ci-jobs.mjs" "${CI_WORKFLOWS_DIR}" "${REQUIRED_CHECKS}"

@@ -277,6 +277,38 @@ printf 'Called Name\n' > "${REQ}"
 assert_exit "a job that calls a reusable workflow does not count" 1 run_check
 assert_last_output_contains "the run-time names are explained" "A job with a matrix, or one that calls a reusable workflow, counts for no name."
 
+write_workflow
+write_extra_workflow scalar.yml <<'YAML'
+on: pull_request
+jobs:
+  fanned:
+    strategy: ${{ fromJSON(needs.plan.outputs.matrix) }}
+YAML
+printf 'fanned\n' > "${REQ}"
+assert_exit "a job whose strategy is one expression is a matrix and its id does not count" 1 run_check
+
+write_workflow
+write_extra_workflow expr.yml <<'YAML'
+on: pull_request
+jobs:
+  named:
+    name: Build ${{ inputs.target }}
+YAML
+printf 'Build ${{ inputs.target }}\n' > "${REQ}"
+assert_exit "a name: written as an expression is not the name GitHub reports" 1 run_check
+printf 'named\n' > "${REQ}"
+assert_exit "an expression name does not fall back to the job id" 1 run_check
+
+write_workflow
+write_extra_workflow flowtarget.yml <<'YAML'
+on: { pull_request_target: {} }
+jobs:
+  target:
+    name: Flow Target
+YAML
+printf 'Flow Target\n' > "${REQ}"
+assert_exit "a flow-map on: with only pull_request_target does not count" 1 run_check
+
 # --- A file the gate cannot read fails, pull-request workflow or not ---
 write_workflow
 write_extra_workflow twodocs.yml <<'YAML'
@@ -349,6 +381,19 @@ YAML
 printf 'Upper Name\n' > "${REQ}"
 assert_exit "a workflow with an upper-case extension fails" 1 run_check
 assert_last_output_contains "the upper-case file is named" "Upper.YML has a workflow extension in another letter case"
+
+# --- The gate stops with an install hint when the yaml package cannot be resolved ---
+BARE="${TMP}/bare"
+mkdir -p "${BARE}/scripts/gates" "${BARE}/scripts/lib"
+cp "${SCRIPT_DIR}"/check-required-ci-jobs.sh "${SCRIPT_DIR}"/check-required-ci-jobs.mjs "${SCRIPT_DIR}"/workflow-yaml.mjs "${BARE}/scripts/gates/"
+cp "${SCRIPT_DIR}"/../lib/require-yaml.sh "${BARE}/scripts/lib/"
+write_workflow
+write_required
+run_without_yaml() {
+  CI_WORKFLOWS_DIR="${WF_DIR}" REQUIRED_CHECKS="${REQ}" bash "${BARE}/scripts/gates/check-required-ci-jobs.sh"
+}
+assert_exit "a gate that cannot resolve the yaml package fails" 1 run_without_yaml
+assert_last_output_contains "the missing package is named with the fix" "the workflow reader stopped before it checked every file; the yaml package is missing, run pnpm install"
 
 # --- Real repo files (no env override) ---
 REAL_REQ="${ROOT_DIR}/.github/workflows/required-checks.txt"
