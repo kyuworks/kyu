@@ -24,7 +24,8 @@
 # permissions, id-token or cache-mode value, and on any alias or merge key in a
 # workflow that grants id-token: write. It also fails on a `?` explicit key and on a
 # permissions, id-token or cache-mode value that is not key: value on one line.
-# Block scalars and quoted text are skipped; a quote opens only where a value starts.
+# A flow collection that spans lines, and a double-quoted escape on those keys, fail
+# too. Block scalars and quoted text are skipped; a quote opens only where a value starts.
 #
 # Env overrides (for tests):
 #   CI_WORKFLOWS_DIR — directory of workflow yaml files
@@ -93,10 +94,27 @@ check_workflow() {
     }
     # A node starts after "key: ", after "- ", at the start of a line, or inside a
     # flow collection; there a leading & * or ! is an anchor, alias or tag.
-    function scan_node(q, bare,    m, flow) {
+    function scan_node(q, bare, raw,    m, flow, t, o, c, opening, key) {
       m = q
       sub(/^[[:space:]]*(-[[:space:]]+)*/, "", m)
       flow = is_flow(q)
+      key = "(^|[^-[:alnum:]_])(permissions|id-token|cache-mode)\"?[[:space:]]*:"
+      if (fdepth > 0 || flow) {
+        t = q; o = gsub(/[[{]/, "", t); c = gsub(/[]}]/, "", t)
+        opening = (fdepth == 0)
+        fdepth += o - c
+        if (fdepth <= 0) { fdepth = 0; fg_done = 0 }
+        else {
+          if (opening && !flow_nr) flow_nr = NR
+          if (!fg_done && (in_guard || bare ~ key)) {
+            fg_done = 1
+            print "FAIL: " file " line " NR " has a flow collection that spans lines; the gate cannot read it, so write it on one line"
+          }
+        }
+      }
+      if (raw ~ (key "[[:space:]]*\"[^\"]*\\\\") || (in_guard && raw ~ /:[[:space:]]*"[^"]*\\/)) {
+        print "FAIL: " file " line " NR " has an escaped value the gate cannot read on permissions, id-token or cache-mode; write the value without escapes"
+      }
       if (m ~ /^(\*|<<[[:space:]]*:)/ || m ~ /:[[:space:]]+\*/ || (flow && m ~ /[[{,:][[:space:]]*\*/)) {
         if (!alias_nr) alias_nr = NR
       }
@@ -129,7 +147,7 @@ check_workflow() {
         match(q, /^ */)
         if (in_bs && RLENGTH <= bs_ind) in_bs = 0
         if (in_guard && RLENGTH <= guard_ind) { in_guard = 0; guard_first = 0 }
-        if (!in_bs) scan_node(q, line)
+        if (!in_bs) scan_node(q, line, $0)
       }
     }
     line ~ /^[^[:space:]]/ {
@@ -175,6 +193,7 @@ check_workflow() {
         if (setup_bad[i]) print "FAIL: " file " job " job[i] " uses ./.github/actions/setup without cache: " sq "false" sq
         if (direct[i]) print "FAIL: " file " job " job[i] " uses actions/cache directly"
       }
+      if (raw > 0 && flow_nr) print "FAIL: " file " can publish and has a flow collection that spans lines at line " flow_nr "; the gate cannot read it, so write it on one line"
       if (raw > 0 && alias_nr) print "FAIL: " file " can publish and uses a YAML alias or merge key at line " alias_nr "; the gate cannot see what it brings into a job, so write it out"
       if (raw > read_oidc || (raw > 0 && (n == 0 || jobs_seen != n))) print "FAIL: " file " has id-token: write but the gate could not find the job that holds it; write permissions as a block map with 2-space job indentation"
     }

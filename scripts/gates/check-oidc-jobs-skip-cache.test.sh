@@ -601,6 +601,58 @@ assert_last_output_contains "the empty cache-mode is named" "line 6 ${UNREAD}"
 grant_workflow $'    permissions:\n    env:\n      A: b\n'
 assert_exit "an empty permissions value followed by a sibling key is accepted" 0 run_check
 
+# A flow collection that spans lines is not read, so it fails where it could hide a grant or an alias.
+FLOWSPAN="has a flow collection that spans lines"
+ESCAPED="has an escaped value the gate cannot read on permissions, id-token or cache-mode"
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+cat >> "${WF_DIR}/release.yml" <<'YAML'
+  other:
+    runs-on: ubuntu-latest
+    steps: [{run: echo,
+      name: x}, *s]
+YAML
+assert_exit "a publishing workflow with a flow sequence that spans lines is rejected" 1 run_check
+assert_last_output_contains "the spanning flow sequence is named" "${FLOWSPAN} at line 25"
+
+grant_workflow $'    permissions: {contents: read, id-token:\n      write}\n'
+assert_exit "a permissions flow map that spans lines is rejected" 1 run_check
+assert_last_output_contains "the spanning permissions map is named" "line 6 ${FLOWSPAN}"
+
+grant_workflow $'    permissions:\n      {contents: read,\n       id-token: write}\n'
+assert_exit "a flow map below the permissions key that spans lines is rejected" 1 run_check
+assert_last_output_contains "the spanning map below the key is named" "line 7 ${FLOWSPAN}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: CI
+on:
+  push:
+    branches: [
+      main,
+      'release/*'
+    ]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+YAML
+rm -f "${WF_DIR}/release.yml"
+assert_exit "a flow sequence that spans lines on an unguarded key, with no publishing job, is accepted" 0 run_check
+
+# An escaped double-quoted value on a guarded key is not read.
+grant_workflow $'    permissions:\n      id-token: "\\x77rite"\n'
+assert_exit "an escaped id-token value is rejected" 1 run_check
+assert_last_output_contains "the escaped id-token is named" "line 7 ${ESCAPED}"
+
+grant_workflow $'    cache-mode: "n\\x6fne"\n'
+assert_exit "an escaped cache-mode value is rejected" 1 run_check
+assert_last_output_contains "the escaped cache-mode is named" "line 6 ${ESCAPED}"
+
+grant_workflow $'    permissions:\n      contents: "re\\x61d"\n'
+assert_exit "an escaped value inside a permissions block is rejected" 1 run_check
+assert_last_output_contains "the escaped permissions value is named" "line 7 ${ESCAPED}"
+
 rm -rf "${WF_DIR}"
 mkdir -p "${WF_DIR}"
 cat > "${WF_DIR}/ci.yml" <<'YAML'
@@ -645,6 +697,14 @@ cat >> "${WF_DIR}/release.yml" <<'YAML'
       - run: ls *.ts
       - run: 'echo flow: [a,*b]'
       - run: "echo \"key: *value\""
+      - uses: some/action@v1
+        with: {a: b}
+        env:
+          BRANCHES: [main, 'release/*']
+          EXPR: ${{ matrix.x }}
+      - run: |
+          [[ -f x ]] && echo '{"a": [1,'
+          { echo hi
       - name: Don't skip this
         run: echo done # see key: *name
       - run: |
