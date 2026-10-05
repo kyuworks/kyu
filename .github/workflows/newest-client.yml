@@ -3,8 +3,6 @@ name: Newest Hatchet client
 # A consumer's fresh install takes the newest client inside @kyuworks/sdk's caret range;
 # CI tests only the lockfile's. This tests the newest one. Not a pull-request check (REQUIRED.md).
 on:
-  push:
-    branches: [ci/newest-client-weekly]
   schedule:
     - cron: '41 6 * * 1'
   workflow_dispatch:
