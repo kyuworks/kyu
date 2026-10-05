@@ -12,7 +12,7 @@
 // ROOT_DIR name from its own environment before invoking this script, so
 // neither leaks in from a caller and silently selects nothing.
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 const root = process.env.SELECT_CHANGED_ROOT
@@ -92,16 +92,69 @@ function importerSuites(file) {
     .filter((suite) => existsSync(path.join(root, suite)))
 }
 
-// A shell helper with no suite of its own (git-env.sh) is tested through the suite of each script
-// that sources it: a line that starts with `source` or `.` and names the helper's file.
-function sourcerSuites(file) {
-  const sourced = new RegExp(`^\\s*(source|\\.)\\s(.*[/"'\\s])?${escapeRegExp(path.basename(file))}["']?(\\s|;|$)`, 'm')
-  return ['scripts', '.agents/skills', 'infra']
-    .filter((dir) => existsSync(path.join(root, dir)))
-    .flatMap((dir) => readdirSync(path.join(root, dir), { recursive: true }).map((name) => path.posix.join(dir, name)))
-    .filter((name) => name.endsWith('.sh') && name !== file && sourced.test(readFileSync(path.join(root, name), 'utf8')))
-    .map((name) => (name.endsWith('.test.sh') ? name : name.replace(/\.sh$/, '.test.sh')))
-    .filter((suite) => existsSync(path.join(root, suite)))
+// A shell file with no suite of its own (git-env.sh) is tested through the suite of each script that
+// sources it, directly or through another sourced file. The set is cycle-safe: a name is added once.
+function sourcers(file) {
+  const found = new Set([file])
+  for (const current of found) {
+    const sourced = sourcePattern(path.basename(current))
+    for (const [name, text] of shellScripts()) if (sourced.test(text)) found.add(name)
+  }
+  return [...found]
+}
+
+// `source` or `.` where a command starts (also after a case arm's `)`), then the file name up to a quote,
+// space, ; & | ) < > or the line end. It also matches inside comments and heredocs; that only selects more.
+function sourcePattern(name) {
+  return new RegExp(`(^|[;&|(){]|\\b(if|then|do|else|elif)\\s)\\s*(source|\\.)\\s(.*[/"'\\s])?${escapeRegExp(name)}["']?($|[\\s;&|)<>])`, 'm')
+}
+
+let shellScriptCache
+function shellScripts() {
+  shellScriptCache ??= new Map(
+    ['scripts', '.agents/skills', 'infra']
+      .filter((dir) => existsSync(path.join(root, dir)))
+      .flatMap((dir) => listTree(dir).map((name) => path.posix.join(dir, name)))
+      .filter((name) => name.endsWith('.sh'))
+      .flatMap((name) => readShellScript(name)),
+  )
+  return shellScriptCache
+}
+
+// A listing gap could hide a sourcer, so it fails in one line instead of a stack trace.
+function listTree(dir) {
+  try {
+    return readdirSync(path.join(root, dir), { recursive: true })
+  } catch (error) {
+    process.stderr.write(`FAILED: select-changed-checks cannot list ${dir}: ${error.message}\n`)
+    process.exit(1)
+  }
+}
+
+// The selector skips, in one line, what it cannot read as a regular file (a dangling or looping link, a
+// directory, a locked file, a named pipe or device; none is a real helper in this repository). Any other
+// error fails.
+const UNSOURCEABLE = new Set(['ENOENT', 'EISDIR', 'EACCES', 'ELOOP'])
+function readShellScript(name) {
+  const file = path.join(root, name)
+  try {
+    const kind = statSync(file)
+    if (!kind.isFile()) return skipShellScript(name, kind.isDirectory() ? 'EISDIR' : 'ENOTREG')
+    return [[name, readFileSync(file, 'utf8')]]
+  } catch (error) {
+    if (UNSOURCEABLE.has(error.code)) return skipShellScript(name, error.code)
+    process.stderr.write(`FAILED: select-changed-checks cannot read ${name}: ${error.message}\n`)
+    process.exit(1)
+  }
+}
+
+function skipShellScript(name, code) {
+  process.stderr.write(`select-changed-checks: skipped ${name} (${code})\n`)
+  return []
+}
+
+function isGateFile(f) {
+  return f.startsWith('scripts/gates/') || f === 'scripts/verify-gates.sh' || f.startsWith('.github/workflows/') || f === 'infra/hatchet/compose.yaml' || f === 'infra/hatchet/fly/fly.toml'
 }
 
 function escapeRegExp(text) {
@@ -141,7 +194,7 @@ for (const raw of changedFiles()) {
     continue
   }
   if (f.startsWith('oxlint-rules/')) lintAll = true
-  if (f.startsWith('scripts/gates/') || f === 'scripts/verify-gates.sh' || f.startsWith('.github/workflows/') || f === 'infra/hatchet/compose.yaml' || f === 'infra/hatchet/fly/fly.toml') allGates = true
+  if (isGateFile(f)) allGates = true
   if (f.endsWith('.sh') || f.endsWith('.mjs')) {
     const suite = f.endsWith('.test.sh') ? f : f.replace(/\.(sh|mjs)$/, '.test.sh')
     // Routed through run-isolated-selftest.sh, not a bare `bash <suite>`: this
@@ -149,7 +202,13 @@ for (const raw of changedFiles()) {
     // the GIT_* vars a hook invocation exports (scripts/lib/git-env.sh).
     if (existsSync(path.join(root, suite))) add(`selftest:${suite}`, `bash scripts/lib/run-isolated-selftest.sh ${suite}`)
     else if (f.startsWith('scripts/gates/') && f.endsWith('.mjs')) for (const s of importerSuites(f)) add(`selftest:${s}`, `bash scripts/lib/run-isolated-selftest.sh ${s}`)
-    else if (/^scripts\/lib\/[^/]+\.sh$/.test(f)) for (const s of sourcerSuites(f)) add(`selftest:${s}`, `bash scripts/lib/run-isolated-selftest.sh ${s}`)
+    else if (f.endsWith('.sh')) {
+      for (const sourcer of sourcers(f)) {
+        if (isGateFile(sourcer)) allGates = true
+        const s = sourcer.endsWith('.test.sh') ? sourcer : sourcer.replace(/\.sh$/, '.test.sh')
+        if (existsSync(path.join(root, s))) add(`selftest:${s}`, `bash scripts/lib/run-isolated-selftest.sh ${s}`)
+      }
+    }
   }
 }
 

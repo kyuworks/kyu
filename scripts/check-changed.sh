@@ -12,9 +12,17 @@
 #                            workspace package that depends on <p>, and the
 #                            package boundaries gate
 #   packages/sdk/migrations  migration immutability gate
-#   scripts/gates/*, scripts/verify-gates.sh, .github/workflows/*
+#   <p>/package.json, packages/sdk/src/version.ts
+#                            package versions and package exports gates
+#   scripts/gates/*, scripts/verify-gates.sh, .github/workflows/*,
+#   infra/hatchet/compose.yaml, infra/hatchet/fly/fly.toml
 #                            every gate (they are cheap)
 #   any *.sh or *.mjs        its colocated *.test.sh
+#   scripts/gates/*.mjs with no *.test.sh
+#                            the suite of each gate that imports it
+#   *.sh with no *.test.sh   the suite of each script that sources it, directly
+#                            or through another sourced file, and every gate
+#                            when one of those scripts is a gate file
 #   oxlint-rules/**          lint for every package
 #   *.ts *.json *.css        format check on those files
 #

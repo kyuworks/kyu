@@ -80,6 +80,122 @@ NOTS="${WORK}/nots"
 write_workspace "${NOTS}"
 assert_exit "missing root tsconfig.json fails" 1 env ROOT_DIR="${NOTS}" bash "${CHECK}"
 
+
+# --- pnpm-workspace.yaml is read with the yaml package, not line by line ---
+# write_case <dir> <all|schemas> <workspace text as a printf format>: packages/schemas and
+# packages/sdk both hold a tsconfig.json; "schemas" leaves packages/sdk out of the references.
+write_case() {
+  CASE="${WORK}/$1"
+  mkdir -p "${CASE}/packages/schemas" "${CASE}/packages/sdk"
+  printf '{}\n' > "${CASE}/packages/schemas/tsconfig.json"
+  printf '{}\n' > "${CASE}/packages/sdk/tsconfig.json"
+  local refs='{ "path": "packages/schemas" }'
+  [ "$2" = all ] && refs="${refs}, { \"path\": \"packages/sdk\" }"
+  printf '{ "files": [], "references": [%s] }\n' "${refs}" > "${CASE}/tsconfig.json"
+  printf -- "$3" > "${CASE}/pnpm-workspace.yaml"
+}
+run_case() { ROOT_DIR="${CASE}" bash "${CHECK}"; }
+
+# reads_list <dir> <layout> <text>: the list is read, so the package left out fails.
+reads_list() {
+  write_case "$1" schemas "$3"
+  assert_exit "$2: the unreferenced package fails" 1 run_case
+  assert_last_output_contains "$2: the unreferenced package is named" "  - packages/sdk"
+}
+reads_list flow "a flow sequence" "packages: ['packages/*']\n"
+reads_list keycomment "a comment after packages:" "packages: # the libraries\n  - 'packages/*'\n"
+reads_list entrycomment "a comment after an entry" "packages:\n  - 'packages/*' # the libraries\n"
+reads_list escaped "an escape in a double-quoted entry" 'packages:\n  - "packages/\\x2A"\n'
+reads_list alias "an entry that is an alias" "x-libs: &libs packages/*\npackages:\n  - *libs\n"
+reads_list folded "a folded block scalar entry" "packages:\n  - >-\n    packages/*\n"
+reads_list plainpath "a path with no glob" "packages:\n  - packages/schemas\n  - packages/sdk\n"
+reads_list listalias "a packages: value that is an alias" "x-list: &list\n  - 'packages/*'\npackages: *list\n"
+reads_list crlf "CRLF line ends" "packages:\r\n  - 'packages/*'\r\n"
+
+# fails_closed <dir> <layout> <text> <message>: every reference is present, the file still fails.
+fails_closed() {
+  write_case "$1" all "$3"
+  assert_exit "$2 fails" 1 run_case
+  assert_last_output_contains "$2: the reason is named" "$4"
+}
+fails_closed negated "a negated glob" "packages:\n  - 'packages/*'\n  - '!**/test/**'\n" \
+  "pnpm-workspace.yaml line 3 has a packages: entry that starts with !; the gate does not support exclusions"
+fails_closed negatedpath "a negated path with no glob" "packages:\n  - 'packages/*'\n  - '!packages/legacy'\n" \
+  "pnpm-workspace.yaml line 3 has a packages: entry that starts with !; the gate does not support exclusions"
+fails_closed bangmid "a ! inside an entry" "packages:\n  - 'packages/a!b'\n" \
+  "pnpm-workspace.yaml line 2 has a packages: entry the gate cannot expand"
+fails_closed deepglob "a glob other than <dir>/*" "packages:\n  - 'packages/**'\n" \
+  "pnpm-workspace.yaml line 2 has a packages: entry the gate cannot expand"
+fails_closed notext "an entry that is not text" "packages:\n  - { dir: 'packages/*' }\n" \
+  "pnpm-workspace.yaml line 2 has a packages: entry the gate cannot expand"
+fails_closed twokeys "a second packages: key" "packages:\n  - 'packages/*'\npackages:\n  - 'examples/*'\n" \
+  "pnpm-workspace.yaml line 3 does not parse"
+fails_closed twodocs "two YAML documents" "packages:\n  - 'packages/*'\n---\npackages:\n  - 'examples/*'\n" \
+  "pnpm-workspace.yaml holds 2 YAML documents"
+fails_closed tabs "a tab as indentation" "packages:\n\t- 'packages/*'\n" \
+  "pnpm-workspace.yaml line 2 does not parse"
+fails_closed tag "a YAML tag" "packages:\n  - !!str packages/*\n" \
+  "pnpm-workspace.yaml line 2 has a YAML tag"
+fails_closed nolist "no packages: key" "minimumReleaseAge: 10080\n" \
+  "pnpm-workspace.yaml has no packages: list with an entry at the top level"
+fails_closed emptylist "an empty packages: list" "packages: []\n" \
+  "pnpm-workspace.yaml has no packages: list with an entry at the top level"
+fails_closed uppercase "Packages: in another letter case" "Packages:\n  - 'packages/*'\n" \
+  "pnpm-workspace.yaml has no packages: list with an entry at the top level"
+fails_closed absplain "an absolute path entry" "packages:\n  - 'packages/*'\n  - /nonexistent/dir\n" \
+  "pnpm-workspace.yaml line 3 has a packages: entry that is an absolute path; write it relative to the repository root"
+fails_closed absglob "an absolute <dir>/* entry" "packages:\n  - 'packages/*'\n  - '/nonexistent/dir/*'\n" \
+  "pnpm-workspace.yaml line 3 has a packages: entry that is an absolute path; write it relative to the repository root"
+fails_closed emptyentry "an empty entry" "packages:\n  - 'packages/*'\n  - ''\n" \
+  "pnpm-workspace.yaml line 3 has an empty packages: entry"
+
+# An entry is read the way pnpm reads it: one trailing slash, ./ and . do not change what it names.
+reads_list glob_slash "a <dir>/*/ entry" "packages:\n  - 'packages/*/'\n"
+reads_list dot_slash "a ./ prefix on a path" "packages:\n  - ./packages/schemas\n  - ./packages/sdk\n"
+write_case pathslash all "packages:\n  - packages/schemas/\n  - packages/sdk/\n"
+assert_exit "a path with a trailing slash names the same directory" 0 run_case
+write_case dotroot all "packages:\n  - .\n  - ./\n  - 'packages/*'\n"
+assert_exit "the workspace root entries . and ./ name no package" 0 run_case
+write_case entrynorm all "packages:\n  - packages//schemas\n  - packages/./sdk\n"
+assert_exit "an entry is normalised before it is compared with the references" 0 run_case
+write_case refnorm all "packages:\n  - 'packages/*'\n"
+printf '{ "files": [], "references": [{ "path": "./packages/schemas" }, { "path": "packages/sdk/../sdk" }] }\n' > "${CASE}/tsconfig.json"
+assert_exit "a reference is normalised before it is compared with the entries" 0 run_case
+write_case slashboth all "packages:\n  - packages/schemas/\n  - packages/sdk/\n"
+printf '{ "files": [], "references": [{ "path": "packages/schemas/" }, { "path": "packages/sdk/" }] }\n' > "${CASE}/tsconfig.json"
+assert_exit "an entry and a reference that both end in a slash match" 0 run_case
+write_case slashref all "packages:\n  - packages/schemas\n  - packages/sdk\n"
+printf '{ "files": [], "references": [{ "path": "packages/schemas/" }, { "path": "packages/sdk//" }] }\n' > "${CASE}/tsconfig.json"
+assert_exit "a reference that ends in a slash matches an entry that does not" 0 run_case
+write_case slashes all "packages:\n  - packages/schemas//\n  - packages/sdk\n"
+assert_exit "a path with two trailing slashes names the same directory" 0 run_case
+write_case dotslashes all "packages:\n  - .//\n  - 'packages/*'\n"
+assert_exit "the workspace root entry .// names no package" 0 run_case
+
+# An entry outside the repository root is read the way pnpm reads it, relative to the root.
+write_case outside all "packages:\n  - 'packages/*'\n  - '../outside/*'\n"
+mkdir -p "${WORK}/outside/pkg"
+printf '{}\n' > "${WORK}/outside/pkg/tsconfig.json"
+assert_exit "an unreferenced package outside the root fails" 1 run_case
+assert_last_output_contains "the package outside the root is named" "  - ../outside/pkg"
+printf '{ "files": [], "references": [{ "path": "packages/schemas" }, { "path": "packages/sdk" }, { "path": "../outside/pkg" }] }\n' > "${CASE}/tsconfig.json"
+assert_exit "a referenced package outside the root passes" 0 run_case
+
+# A settings-only line after the list, as the real file has, still reads the list.
+write_case settings all "packages:\n  - 'packages/*'\nminimumReleaseAge: 10080\nallowBuilds:\n  esbuild: true\n"
+assert_exit "a workspace file with settings after the list passes" 0 run_case
+
+# --- The gate stops with an install hint when the yaml package cannot be resolved ---
+BARE="${WORK}/bare"
+mkdir -p "${BARE}/scripts/gates" "${BARE}/scripts/lib"
+cp "${SCRIPT_DIR}"/check-tsconfig-references.sh "${SCRIPT_DIR}"/check-tsconfig-references.mjs "${SCRIPT_DIR}"/workflow-yaml.mjs "${BARE}/scripts/gates/"
+cp "${SCRIPT_DIR}"/../lib/require-yaml.sh "${BARE}/scripts/lib/"
+run_without_yaml() { ROOT_DIR="${OK}" bash "${BARE}/scripts/gates/check-tsconfig-references.sh"; }
+assert_exit "a gate that cannot resolve the yaml package fails" 1 run_without_yaml
+assert_last_output_contains "the missing package is named with the fix" "the yaml package is missing, run pnpm install"
+
+assert_exit "the real repository passes" 0 bash "${CHECK}"
+
 assert_exit "verify-gates registers the tsconfig references gate" 0 \
   grep -Fq 'bash scripts/gates/check-tsconfig-references.sh' "${SCRIPT_DIR}/../verify-gates.sh"
 
