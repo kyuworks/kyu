@@ -328,6 +328,36 @@ git -C "${FORMS}" commit -qm "touch resolve"
 assert_output_contains "a helper outside scripts/lib selects the suite of the script that sources it" \
   "selftest:.agents/skills/demo/use.test.sh" run_select "${FORMS}" "HEAD~1...HEAD"
 
+# --- Rules that no other test pins: a case arm, non-.sh files, and each gate file kind (#60) ---
+PINS="${WORK}/pins"
+init_fixture "${PINS}"
+mkdir -p "${PINS}/infra/pins" "${PINS}/.github/workflows"
+printf '# pinned\n' > "${PINS}/scripts/lib/pinned.sh"
+printf '#!/usr/bin/env bash\ncase "$1" in\n  x) source "${D}/pinned.sh" ;;\nesac\n' > "${PINS}/infra/pins/arm.sh"
+printf '#!/usr/bin/env bash\necho arm\n' > "${PINS}/infra/pins/arm.test.sh"
+printf 'source "${D}/pinned.sh"\n' > "${PINS}/infra/pins/notes.txt"
+printf '#!/usr/bin/env bash\n' > "${PINS}/scripts/verify-gates.sh"
+printf 'name: ci\n' > "${PINS}/.github/workflows/ci.yml"
+git -C "${PINS}" add -A
+git -C "${PINS}" commit -qm "add pins"
+printf '# touched\n' >> "${PINS}/scripts/lib/pinned.sh"
+git -C "${PINS}" add -A
+git -C "${PINS}" commit -qm "touch pinned"
+assert_output_contains "a source after a case arm selects the suite of the script that sources it" \
+  "selftest:infra/pins/arm.test.sh" run_select "${PINS}" "HEAD~1...HEAD"
+assert_output_lacks "a file that is not a .sh file is not read as a sourcer" \
+  "infra/pins/notes.txt" run_select "${PINS}" "HEAD~1...HEAD"
+printf '# touched\n' >> "${PINS}/scripts/verify-gates.sh"
+git -C "${PINS}" add -A
+git -C "${PINS}" commit -qm "touch verify-gates"
+assert_output_contains "a change to verify-gates.sh selects the gates" \
+  $'gates\tbash scripts/verify-gates.sh' run_select "${PINS}" "HEAD~1...HEAD"
+printf '# touched\n' >> "${PINS}/.github/workflows/ci.yml"
+git -C "${PINS}" add -A
+git -C "${PINS}" commit -qm "touch workflow"
+assert_output_contains "a change to a workflow file selects the gates" \
+  $'gates\tbash scripts/verify-gates.sh' run_select "${PINS}" "HEAD~1...HEAD"
+
 # --- A path the selector cannot read is skipped in one plain line; a tree it cannot list fails (#60) ---
 ODD="${WORK}/odd"
 init_fixture "${ODD}"
@@ -342,16 +372,23 @@ git -C "${ODD}" add -A
 git -C "${ODD}" commit -qm "touch odd helper"
 ln -s missing.sh "${ODD}/scripts/gates/dangling.sh"
 mkdir "${ODD}/infra/dir.sh"
+mkfifo "${ODD}/infra/pipe.sh"
+ln -s loop-b.sh "${ODD}/infra/loop-a.sh"
+ln -s loop-a.sh "${ODD}/infra/loop-b.sh"
 printf 'source odd.sh\n' > "${ODD}/infra/locked.sh"
 chmod 000 "${ODD}/infra/locked.sh"
-assert_exit "a dangling symlink, a directory named x.sh and an unreadable file do not stop the selector" 0 \
-  run_select "${ODD}" "HEAD~1...HEAD"
+assert_exit "a dangling symlink, a directory, a named pipe, a link loop and an unreadable file do not stop the selector" 0 \
+  with_deadline env SELECT_CHANGED_ROOT="${ODD}" CHECK_CHANGED_RANGE="HEAD~1...HEAD" node "${SELECTOR}"
 assert_last_output_contains "the selector still selects the real sourcer next to odd paths" \
   "selftest:scripts/gates/check-odd.test.sh"
 assert_last_output_contains "a dangling symlink is skipped in one plain line" \
   "select-changed-checks: skipped scripts/gates/dangling.sh (ENOENT)"
 assert_last_output_contains "a directory named x.sh is skipped in one plain line" \
   "select-changed-checks: skipped infra/dir.sh (EISDIR)"
+assert_last_output_contains "a named pipe is skipped in one plain line" \
+  "select-changed-checks: skipped infra/pipe.sh (ENOTREG)"
+assert_last_output_contains "a symlink loop is skipped in one plain line" \
+  "select-changed-checks: skipped infra/loop-a.sh (ELOOP)"
 # root reads every file and lists every directory, so these two cases only exist for other users.
 if [ "$(id -u)" -ne 0 ]; then
   assert_last_output_contains "an unreadable file is skipped in one plain line" \

@@ -12,7 +12,7 @@
 // ROOT_DIR name from its own environment before invoking this script, so
 // neither leaks in from a caller and silently selects nothing.
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 const root = process.env.SELECT_CHANGED_ROOT
@@ -103,10 +103,10 @@ function sourcers(file) {
   return [...found]
 }
 
-// `source` or `.` where a command starts, then the file name up to a quote, space, ; & | ) < > or the
-// line end. It also matches inside comments and heredocs; that only selects more.
+// `source` or `.` where a command starts (also after a case arm's `)`), then the file name up to a quote,
+// space, ; & | ) < > or the line end. It also matches inside comments and heredocs; that only selects more.
 function sourcePattern(name) {
-  return new RegExp(`(^|[;&|({]|\\b(if|then|do|else|elif)\\s)\\s*(source|\\.)\\s(.*[/"'\\s])?${escapeRegExp(name)}["']?($|[\\s;&|)<>])`, 'm')
+  return new RegExp(`(^|[;&|(){]|\\b(if|then|do|else|elif)\\s)\\s*(source|\\.)\\s(.*[/"'\\s])?${escapeRegExp(name)}["']?($|[\\s;&|)<>])`, 'm')
 }
 
 let shellScriptCache
@@ -131,15 +131,25 @@ function listTree(dir) {
   }
 }
 
-// A path this user cannot read (a dangling link, a directory, a locked file) cannot be sourced by this
-// user either, so it is skipped in one line.
+// A path this user cannot read or open as a file (a dangling or looping link, a directory, a named pipe, a
+// locked file) cannot be sourced by this user either, so it is skipped in one line. Any other error fails.
+const UNSOURCEABLE = new Set(['ENOENT', 'EISDIR', 'EACCES', 'ELOOP'])
 function readShellScript(name) {
+  const file = path.join(root, name)
   try {
-    return [[name, readFileSync(path.join(root, name), 'utf8')]]
+    const kind = statSync(file)
+    if (!kind.isFile()) return skipShellScript(name, kind.isDirectory() ? 'EISDIR' : 'ENOTREG')
+    return [[name, readFileSync(file, 'utf8')]]
   } catch (error) {
-    process.stderr.write(`select-changed-checks: skipped ${name} (${error.code})\n`)
-    return []
+    if (UNSOURCEABLE.has(error.code)) return skipShellScript(name, error.code)
+    process.stderr.write(`FAILED: select-changed-checks cannot read ${name}: ${error.message}\n`)
+    process.exit(1)
   }
+}
+
+function skipShellScript(name, code) {
+  process.stderr.write(`select-changed-checks: skipped ${name} (${code})\n`)
+  return []
 }
 
 function isGateFile(f) {
