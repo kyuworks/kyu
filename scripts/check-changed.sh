@@ -9,7 +9,8 @@
 # Selection rules (scripts/lib/select-changed-checks.mjs):
 #   packages/<p>/**, examples/<p>/**   lint, typecheck, typecheck:tests (when
 #                            defined) and unit tests for <p> and every
-#                            workspace package that depends on <p>
+#                            workspace package that depends on <p>, and the
+#                            package boundaries gate
 #   packages/sdk/migrations  migration immutability gate
 #   scripts/gates/*, scripts/verify-gates.sh, .github/workflows/*
 #                            every gate (they are cheap)

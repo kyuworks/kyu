@@ -105,7 +105,7 @@ Before writing code, stop at the first rung that holds:
 
 ## Package boundaries
 
-A package reaches another only through its package name and exports map. No relative import out of a package; no `@kyuworks/<pkg>/src/...`. Gate: `check-package-boundaries.sh`. `packages/schemas` depends on nothing in the workspace. `packages/sdk` depends on `@kyuworks/schemas`. An example under `examples/*` imports `@kyuworks/sdk` only, never `@hatchet-dev/` or `@kyuworks/schemas` directly; the same gate fails any import form (`from`, bare `import '...'`, dynamic `import('...')`, `require('...')`) and the dependency itself in `package.json`, not just one spelling of it. Add a package only with an ADR.
+A package reaches another only through its package name and exports map. No relative import out of a package; no `@kyuworks/<pkg>/src/...`. Gate: `check-package-boundaries.sh`. `packages/schemas` depends on nothing in the workspace. `packages/sdk` depends on `@kyuworks/schemas`. An example under `examples/*` imports `@kyuworks/sdk` only, never `@hatchet-dev/` or `@kyuworks/schemas` directly; the same gate fails any import form (`from`, bare `import '...'`, dynamic `import('...')`, `require('...')`) and the dependency itself in `package.json`, not just one spelling of it. Inside `packages/sdk`, only `src/hatchet.ts` imports `@hatchet-dev/` (and `src/hatchet.test.ts`, which checks the wrapper against the real package); the same gate fails any other file, tests included. Add a package only with an ADR.
 
 ## Running commands
 
