@@ -119,7 +119,11 @@ fails_closed() {
   assert_last_output_contains "$2: the reason is named" "$4"
 }
 fails_closed negated "a negated glob" "packages:\n  - 'packages/*'\n  - '!**/test/**'\n" \
-  "pnpm-workspace.yaml line 3 has a packages: entry the gate cannot expand"
+  "pnpm-workspace.yaml line 3 has a packages: entry that starts with !; the gate does not support exclusions"
+fails_closed negatedpath "a negated path with no glob" "packages:\n  - 'packages/*'\n  - '!packages/legacy'\n" \
+  "pnpm-workspace.yaml line 3 has a packages: entry that starts with !; the gate does not support exclusions"
+fails_closed bangmid "a ! inside an entry" "packages:\n  - 'packages/a!b'\n" \
+  "pnpm-workspace.yaml line 2 has a packages: entry the gate cannot expand"
 fails_closed deepglob "a glob other than <dir>/*" "packages:\n  - 'packages/**'\n" \
   "pnpm-workspace.yaml line 2 has a packages: entry the gate cannot expand"
 fails_closed notext "an entry that is not text" "packages:\n  - { dir: 'packages/*' }\n" \
@@ -138,6 +142,34 @@ fails_closed emptylist "an empty packages: list" "packages: []\n" \
   "pnpm-workspace.yaml has no packages: list with an entry at the top level"
 fails_closed uppercase "Packages: in another letter case" "Packages:\n  - 'packages/*'\n" \
   "pnpm-workspace.yaml has no packages: list with an entry at the top level"
+fails_closed absplain "an absolute path entry" "packages:\n  - 'packages/*'\n  - /nonexistent/dir\n" \
+  "pnpm-workspace.yaml line 3 has a packages: entry that is an absolute path; write it relative to the repository root"
+fails_closed absglob "an absolute <dir>/* entry" "packages:\n  - 'packages/*'\n  - '/nonexistent/dir/*'\n" \
+  "pnpm-workspace.yaml line 3 has a packages: entry that is an absolute path; write it relative to the repository root"
+fails_closed emptyentry "an empty entry" "packages:\n  - 'packages/*'\n  - ''\n" \
+  "pnpm-workspace.yaml line 3 has an empty packages: entry"
+
+# An entry is read the way pnpm reads it: one trailing slash, ./ and . do not change what it names.
+reads_list glob_slash "a <dir>/*/ entry" "packages:\n  - 'packages/*/'\n"
+reads_list dot_slash "a ./ prefix on a path" "packages:\n  - ./packages/schemas\n  - ./packages/sdk\n"
+write_case pathslash all "packages:\n  - packages/schemas/\n  - packages/sdk/\n"
+assert_exit "a path with a trailing slash names the same directory" 0 run_case
+write_case dotroot all "packages:\n  - .\n  - ./\n  - 'packages/*'\n"
+assert_exit "the workspace root entries . and ./ name no package" 0 run_case
+write_case entrynorm all "packages:\n  - packages//schemas\n  - packages/./sdk\n"
+assert_exit "an entry is normalised before it is compared with the references" 0 run_case
+write_case refnorm all "packages:\n  - 'packages/*'\n"
+printf '{ "files": [], "references": [{ "path": "./packages/schemas" }, { "path": "packages/sdk/../sdk" }] }\n' > "${CASE}/tsconfig.json"
+assert_exit "a reference is normalised before it is compared with the entries" 0 run_case
+
+# An entry outside the repository root is read the way pnpm reads it, relative to the root.
+write_case outside all "packages:\n  - 'packages/*'\n  - '../outside/*'\n"
+mkdir -p "${WORK}/outside/pkg"
+printf '{}\n' > "${WORK}/outside/pkg/tsconfig.json"
+assert_exit "an unreferenced package outside the root fails" 1 run_case
+assert_last_output_contains "the package outside the root is named" "  - ../outside/pkg"
+printf '{ "files": [], "references": [{ "path": "packages/schemas" }, { "path": "packages/sdk" }, { "path": "../outside/pkg" }] }\n' > "${CASE}/tsconfig.json"
+assert_exit "a referenced package outside the root passes" 0 run_case
 
 # A settings-only line after the list, as the real file has, still reads the list.
 write_case settings all "packages:\n  - 'packages/*'\nminimumReleaseAge: 10080\nallowBuilds:\n  esbuild: true\n"
