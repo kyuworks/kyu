@@ -103,6 +103,9 @@ assert_output_contains "package change selects typecheck:tests" \
   "typecheck-tests:packages/sdk" run_select "${REPO}" "HEAD~1...HEAD"
 assert_output_contains "package change selects test" \
   "test:packages/sdk" run_select "${REPO}" "HEAD~1...HEAD"
+assert_output_contains "package change selects the package boundaries gate" \
+  $'gate:package-boundaries\tbash scripts/gates/check-package-boundaries.sh' \
+  run_select "${REPO}" "HEAD~1...HEAD"
 
 # --- A change to a package pulls in the example that depends on it ---
 assert_output_contains "sdk change pulls in the dependent example" \

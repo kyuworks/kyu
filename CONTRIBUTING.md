@@ -66,7 +66,7 @@ A gate is a script under `scripts/gates/` that fails the commit or the PR. Each 
 | `check-no-escape-hatches.sh` | `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error` or a disable comment in production source |
 | `check-no-pipe-to-grep-q.sh` | a shell script under `scripts/`, `.agents/`, `.husky/` or `infra/` pipes into `grep -q`, `-m`, `-l` or `-L`, also across a backslash-newline (read a here-string instead); a pipe into grep with output to `/dev/null` is allowed, because GNU grep then reads the whole pipe |
 | `check-durable-wall-clock.sh` | `Date.now` (called or passed) or an argument-less `new Date()`, even with its `)` on the next line, in a production file that holds a durable handler; a grep error also fails it |
-| `check-package-boundaries.sh` | a package imports another by relative path or deep `src`/`dist` path |
+| `check-package-boundaries.sh` | a package imports another by relative path or deep `src`/`dist` path, or a file in `packages/sdk` other than `src/hatchet.ts` and its test imports `@hatchet-dev/` in any form |
 | `check-package-versions.sh` | the published packages' versions or `SDK_VERSION` differ, the SDK's range on schemas is not `workspace:*`, or (release only) the tag is not `v<version>` |
 | `check-package-exports.sh` | a package tarball lacks a file its `main`, `types` or `exports` names, or a file from its `migrations/` |
 | `check-required-ci-jobs.sh` | `required-checks.txt` names a job that is not in any workflow that runs on `pull_request` |

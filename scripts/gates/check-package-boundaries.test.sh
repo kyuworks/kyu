@@ -95,4 +95,38 @@ printf "import { Hatchet } from '@hatchet-dev/typescript-sdk'\nexport const h = 
 assert_exit "a banned import in an example's package-root file fails" 1 \
   env ROOT_DIR="${WORK}/example-root-file" bash "${CHECK}"
 
+# --- Inside packages/sdk only src/hatchet.ts imports the engine client (#38) ---
+sdk_case() {
+  local name="$1" rel="$2" body="$3"
+  mkdir -p "$(dirname "${WORK}/${name}/packages/sdk/${rel}")"
+  printf '%b' "${body}" > "${WORK}/${name}/packages/sdk/${rel}"
+}
+sdk_case sdk-from src/consume/worker.ts "import { HatchetClient } from '@hatchet-dev/typescript-sdk/v1/index.js'\nexport const h = HatchetClient\n"
+assert_exit "sdk file other than hatchet.ts importing the client with from fails" 1 env ROOT_DIR="${WORK}/sdk-from" bash "${CHECK}"
+assert_last_output_contains "sdk failure names the file and line" "packages/sdk/src/consume/worker.ts:1:"
+assert_last_output_contains "sdk failure points at src/hatchet.ts" "src/hatchet.ts only"
+sdk_case sdk-type src/consume/types.ts "import type { Context } from '@hatchet-dev/typescript-sdk/v1/index.js'\nexport type C = Context\n"
+assert_exit "sdk type-only import of the client fails" 1 env ROOT_DIR="${WORK}/sdk-type" bash "${CHECK}"
+sdk_case sdk-reexport src/index.ts "export * from '@hatchet-dev/typescript-sdk'\n"
+assert_exit "sdk re-export of the client fails" 1 env ROOT_DIR="${WORK}/sdk-reexport" bash "${CHECK}"
+sdk_case sdk-bare src/consume/worker.ts "import '@hatchet-dev/typescript-sdk'\nexport const p = 1\n"
+assert_exit "sdk bare side-effect import of the client fails" 1 env ROOT_DIR="${WORK}/sdk-bare" bash "${CHECK}"
+sdk_case sdk-dynamic src/consume/worker.ts "export const h = await import('@hatchet-dev/typescript-sdk/v1/index.js')\n"
+assert_exit "sdk dynamic import() of the client fails" 1 env ROOT_DIR="${WORK}/sdk-dynamic" bash "${CHECK}"
+sdk_case sdk-require src/consume/worker.ts "const h = require('@hatchet-dev/typescript-sdk')\nexport { h }\n"
+assert_exit "sdk require() of the client fails" 1 env ROOT_DIR="${WORK}/sdk-require" bash "${CHECK}"
+sdk_case sdk-other-test src/consume/worker.test.ts "import { HatchetClient } from '@hatchet-dev/typescript-sdk/v1/index.js'\nexport const h = HatchetClient\n"
+assert_exit "sdk test file other than hatchet.test.ts importing the client fails" 1 env ROOT_DIR="${WORK}/sdk-other-test" bash "${CHECK}"
+sdk_case sdk-root-file vitest.integration.setup.ts "import { HatchetClient } from '@hatchet-dev/typescript-sdk/v1/index.js'\nexport const h = HatchetClient\n"
+assert_exit "sdk package-root file importing the client fails" 1 env ROOT_DIR="${WORK}/sdk-root-file" bash "${CHECK}"
+sdk_case sdk-nested-name src/consume/hatchet.ts "import { HatchetClient } from '@hatchet-dev/typescript-sdk/v1/index.js'\nexport const h = HatchetClient\n"
+assert_exit "sdk file named hatchet.ts outside src/ root fails" 1 env ROOT_DIR="${WORK}/sdk-nested-name" bash "${CHECK}"
+sdk_case sdk-allowed src/hatchet.ts "import { HatchetClient } from '@hatchet-dev/typescript-sdk/v1/index.js'\nexport const h = await import('@hatchet-dev/typescript-sdk')\nexport { HatchetClient }\n"
+sdk_case sdk-allowed src/hatchet.test.ts "import { ClientConfigSchema } from '@hatchet-dev/typescript-sdk/clients/hatchet-client/client-config.js'\nexport const c = ClientConfigSchema\n"
+sdk_case sdk-allowed src/consume/worker.ts "import { HatchetClient } from '../hatchet.js'\nexport const h = HatchetClient\n"
+sdk_case sdk-allowed dist/consume/worker.d.ts "import { HatchetClient } from '@hatchet-dev/typescript-sdk/v1/index.js'\nexport declare const h: HatchetClient\n"
+assert_exit "sdk src/hatchet.ts, its test and built dist output pass" 0 env ROOT_DIR="${WORK}/sdk-allowed" bash "${CHECK}"
+sdk_case sdk-mention src/consume/worker.ts "// Wraps @hatchet-dev/typescript-sdk through ../hatchet.js.\nexport const engine = '@hatchet-dev/typescript-sdk'\n"
+assert_exit "sdk comment or string naming the client passes" 0 env ROOT_DIR="${WORK}/sdk-mention" bash "${CHECK}"
+
 gate_test_finish
