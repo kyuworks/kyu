@@ -1009,6 +1009,90 @@ run_broken_reader() {
 assert_exit "a reader that stops partway fails the gate" 1 run_broken_reader
 assert_last_output_contains "the stopped reader is named" "the workflow reader stopped"
 
+# File names: .yaml is read, other letter cases and directories are not workflows.
+grant_workflow $'    permissions:\n      id-token: write\n'
+mv "${WF_DIR}/release.yml" "${WF_DIR}/release.yaml"
+assert_exit "a .yaml workflow is read like a .yml one" 1 run_check
+assert_last_output_contains "the .yaml job is named" "release.yaml job publish has id-token: write"
+
+for upper in w.YML w.Yaml; do
+  grant_workflow $'    permissions:\n      id-token: write\n'
+  mv "${WF_DIR}/release.yml" "${WF_DIR}/${upper}"
+  assert_exit "${upper} (a workflow name in another letter case) is rejected" 1 run_check
+  assert_last_output_contains "${upper} is named" "${upper} has a workflow extension in another letter case"
+done
+
+publish_workflow "${NONE}" "${NO_CACHE}"
+mkdir "${WF_DIR}/x.yml"
+assert_exit "a directory named x.yml is ignored" 0 run_check
+assert_last_output_contains "the real workflow beside the directory is checked" "release.yml publish"
+
+# %TAG in any form fails: the default handles are replaced or extended.
+for tag in '%TAG !! tag:example.com,2000:' '%TAG !e! tag:example.com,2000:' '%TAG !! tag:yaml.org,2002:'; do
+  printf '%s\n---\nname: CI\non: push\njobs: {}\n' "${tag}" | write_ci
+  assert_exit "'${tag}' is rejected" 1 run_check
+  assert_last_output_contains "'${tag}' is named" "ci.yml uses a %YAML or %TAG directive"
+done
+
+printf '%%FOO bar\n---\nname: CI\non: push\njobs: {}\n' | write_ci
+assert_exit "an unknown directive (a parser warning) is rejected" 1 run_check
+assert_last_output_contains "the warning is named" "ci.yml line 1 does not parse"
+
+# The permissions and id-token values that do and do not grant.
+grant_workflow $'    permissions: write-all\n    cache-mode: none\n'
+sed -i.bak "s#- uses: actions/cache@v4#- uses: actions/checkout@v5#" "${WF_DIR}/release.yml" && rm "${WF_DIR}/release.yml.bak"
+assert_exit "a write-all job with cache-mode: none and no cache step is accepted" 0 run_check
+assert_last_output_contains "the write-all job is checked" "release.yml publish"
+grant_workflow $'    permissions: write-all\n'
+sed -i.bak "s#- uses: actions/cache@v4#- uses: actions/checkout@v5#" "${WF_DIR}/release.yml" && rm "${WF_DIR}/release.yml.bak"
+assert_exit "a write-all job without cache-mode: none is rejected" 1 run_check
+
+grant_workflow $'    permissions: read-all\n'
+assert_exit "a read-all job that uses the cache is accepted" 0 run_check
+assert_last_output_contains "the read-all job is not checked" "(none)"
+for level in read none; do
+  grant_workflow "    permissions:"$'\n'"      id-token: ${level}"$'\n'
+  assert_exit "an id-token: ${level} job that uses the cache is accepted" 0 run_check
+  assert_last_output_contains "the id-token: ${level} job is not checked" "(none)"
+done
+
+# A job reached through an alias is a job.
+write_ci <<'YAML'
+name: Release
+on: push
+jobs:
+  build: &job
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/cache@v4
+  publish: *job
+YAML
+assert_exit "a publishing job reached through an alias that uses the cache is rejected" 1 run_check
+assert_last_output_contains "the aliased job is checked" "ci.yml publish"
+
+write_ci <<'YAML'
+name: Release
+on: push
+jobs:
+  build: &job
+    runs-on: ubuntu-latest
+    cache-mode: none
+    permissions:
+      id-token: write
+    steps:
+      - run: echo hi
+  publish: *job
+YAML
+assert_exit "a compliant publishing job reached through an alias is accepted" 0 run_check
+assert_last_output_contains "the aliased compliant job is checked" "ci.yml publish"
+
+# Only ./ paths are local actions.
+publish_workflow "${NONE}" "${NO_CACHE}"
+sed -i.bak "s#uses: ./.github/actions/setup#uses: .github/actions/setup#; /^          cache: 'false'$/d" "${WF_DIR}/release.yml" && rm "${WF_DIR}/release.yml.bak"
+assert_exit "a setup path without ./ is not the local setup action" 0 run_check
+
 assert_exit "the repository's workflows pass" 0 run_real
 assert_last_output_contains "the release job is checked" "release.yml publish"
 

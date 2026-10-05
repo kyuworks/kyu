@@ -14,7 +14,7 @@
 // Usage: node check-oidc-jobs-skip-cache.mjs <workflows dir> <actions dir>
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { LineCounter, isAlias, isMap, isScalar, isSeq, parseAllDocuments, visit } from 'yaml'
+import { LineCounter, Parser, isAlias, isMap, isScalar, isSeq, parseAllDocuments, visit } from 'yaml'
 
 // GitHub reads YAML 1.2 without merge keys; anything the two readers could take differently fails.
 const YAML_OPTIONS = { version: '1.2', schema: 'core', merge: false, strict: true, uniqueKeys: true }
@@ -33,14 +33,16 @@ const fail = (msg) => out.push(`FAIL: ${msg}`)
 // Returns the document and a line lookup, or null after printing why the file cannot be trusted.
 function readWorkflowYaml(file, label) {
   const lines = new LineCounter()
-  const docs = parseAllDocuments(readFileSync(file, 'utf8'), { ...YAML_OPTIONS, lineCounter: lines })
+  const text = readFileSync(file, 'utf8')
+  const docs = parseAllDocuments(text, { ...YAML_OPTIONS, lineCounter: lines })
   if (!Array.isArray(docs) || docs.length === 0) return fail(`${label} holds no YAML document`), null
   if (docs.length > 1) return fail(`${label} holds ${docs.length} YAML documents; GitHub reads one, so keep one`), null
   const [doc] = docs
   const lineOf = (node) => lines.linePos(node?.range?.[0] ?? 0).line
   const [problem] = [...doc.errors, ...doc.warnings]
   if (problem) return fail(`${label} line ${problem.linePos?.[0]?.line ?? 1} does not parse: ${problem.message.split(' at line ')[0]}`), null
-  if (doc.directives.yaml.explicit || Object.keys(doc.directives.tags).length > 1) {
+  const tagDirective = [...new Parser().parse(text)].some((token) => token.type === 'directive' && token.source.startsWith('%TAG'))
+  if (doc.directives.yaml.explicit || tagDirective) {
     return fail(`${label} uses a %YAML or %TAG directive; the gate reads YAML 1.2 only, so remove it`), null
   }
   const before = out.length
@@ -185,7 +187,9 @@ const [workflowsDir, actionsDir] = process.argv.slice(2)
 const isFile = (file) => statSync(file).isFile()
 for (const name of readdirSync(workflowsDir).sort()) {
   const file = path.join(workflowsDir, name)
-  if (/\.ya?ml$/.test(name) && isFile(file)) checkWorkflow(file)
+  if (!/\.ya?ml$/i.test(name) || !isFile(file)) continue
+  if (/\.ya?ml$/.test(name)) checkWorkflow(file)
+  else fail(`${name} has a workflow extension in another letter case; GitHub's reading of it is not documented, so rename it to .yml`)
 }
 if (existsSync(actionsDir)) {
   for (const name of readdirSync(actionsDir, { recursive: true }).sort()) {
