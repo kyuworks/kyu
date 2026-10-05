@@ -39,7 +39,7 @@ services:
       retries: 10
       start_period: 5s
   hatchet-lite:
-    # Pinned to the same tag as infra/hatchet/fly/fly.toml. Upgrade both together: docs/operations/kyu-engine-on-fly.md
+    # fly.toml and both CI workflows pin this same tag (scripts/gates/check-engine-image-tag.sh). Upgrade: docs/operations/kyu-engine-on-fly.md
     image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:${KYU_HATCHET_IMAGE_TAG:-v0.107.0}
     restart: unless-stopped
     ports:

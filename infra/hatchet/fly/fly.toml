@@ -1,6 +1,6 @@
 # Fly config for the dev Kyu engine (hatchet-lite), issue #162.
 #
-# Pinned image tag: v0.107.0 — keep in step with infra/hatchet/compose.yaml.
+# Image tag: the same as infra/hatchet/compose.yaml and CI (scripts/gates/check-engine-image-tag.sh).
 # Every secret this app needs is set by the CTO, never by an agent: run
 # infra/hatchet/fly/secrets.sh to print the exact commands. Full runbook:
 # docs/operations/kyu-engine-on-fly.md

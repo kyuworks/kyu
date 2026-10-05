@@ -40,9 +40,4 @@ assert_eq "compose.yaml sets the same 168h retention as dev" "168h" "${COMPOSE_R
 assert_exit "signup is off on dev" 0 \
   grep -qE "^[[:space:]]*SERVER_ALLOW_SIGNUP = 'f'\$" "${FLY_TOML}"
 
-FLY_TAG="$(sed -nE "s#^  image = 'ghcr.io/hatchet-dev/hatchet/hatchet-lite:(v[0-9.]+)'\$#\1#p" "${FLY_TOML}")"
-COMPOSE_TAG="$(sed -nE 's#.*hatchet-lite:\$\{KYU_HATCHET_IMAGE_TAG:-(v[0-9.]+)\}.*#\1#p' "${COMPOSE}")"
-gate_test_record "an engine image tag is pinned" "$([ -n "${FLY_TAG}" ] && echo 0 || echo 1)"
-assert_eq "fly.toml and compose.yaml pin the same hatchet-lite tag" "${FLY_TAG}" "${COMPOSE_TAG}"
-
 gate_test_finish

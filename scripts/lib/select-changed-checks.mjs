@@ -115,7 +115,7 @@ for (const raw of changedFiles()) {
     continue
   }
   if (f.startsWith('oxlint-rules/')) lintAll = true
-  if (f.startsWith('scripts/gates/') || f === 'scripts/verify-gates.sh' || f.startsWith('.github/workflows/')) allGates = true
+  if (f.startsWith('scripts/gates/') || f === 'scripts/verify-gates.sh' || f.startsWith('.github/workflows/') || f === 'infra/hatchet/compose.yaml' || f === 'infra/hatchet/fly/fly.toml') allGates = true
   if (f.endsWith('.sh') || f.endsWith('.mjs')) {
     const suite = f.endsWith('.test.sh') ? f : f.replace(/\.(sh|mjs)$/, '.test.sh')
     // Routed through run-isolated-selftest.sh, not a bare `bash <suite>`: this
