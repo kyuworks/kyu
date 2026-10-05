@@ -344,6 +344,8 @@ Your project runs its own engine. Kyu runs none ([ADR](../architecture/adr/20261
    Leave `HATCHET_CLIENT_TLS_STRATEGY` unset against a deployed engine; it defaults to `tls`. Set it to `none` only for a local engine. A process that only publishes needs none of these.
 5. **Namespace.** Set `HATCHET_CLIENT_NAMESPACE` (or pass `namespace` to `createHatchetClient`) to the same value in the relay and every worker. The engine prefixes every message name and subscription with it, lower-cased, with a trailing `_`, so a relay and a worker with different namespaces never meet.
 
+If your project receives another producer's messages, that producer's operator creates your tenant on its engine and puts the token in your secret store; use that engine's addresses.
+
 For a first try without an engine of your own, run the engine on your machine from a Kyu checkout: `pnpm hatchet:up`, then `export HATCHET_CLIENT_TOKEN="$(bash infra/hatchet/token.sh)"` and `export HATCHET_CLIENT_TLS_STRATEGY=none` ([`README.md`](../../README.md#quick-start)).
 
 ## 9. Flag and rollout
