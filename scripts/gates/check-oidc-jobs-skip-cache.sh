@@ -22,7 +22,9 @@
 # fails, so a layout it cannot parse never passes silently.
 # It does not resolve YAML anchors, aliases or tags either, so it fails on one in a
 # permissions, id-token or cache-mode value, and on any alias or merge key in a
-# workflow that grants id-token: write. Block scalars and quoted text are skipped.
+# workflow that grants id-token: write. It also fails on a `?` explicit key and on a
+# permissions, id-token or cache-mode value that is not key: value on one line.
+# Block scalars and quoted text are skipped; a quote opens only where a value starts.
 #
 # Env overrides (for tests):
 #   CI_WORKFLOWS_DIR — directory of workflow yaml files
@@ -56,34 +58,77 @@ check_workflow() {
       if (in_step && step_setup && !step_nocache) setup_bad[n] = 1
       in_step = 0; step_setup = 0; step_nocache = 0
     }
+    function is_flow(q,    m) {
+      m = q
+      sub(/^[[:space:]]*(-[[:space:]]+)*/, "", m)
+      return m ~ /^[[{]/ || m ~ /^[^[:space:]][^:]*:[[:space:]]+[[{]/
+    }
+    # Empties each quoted span, opening a quote only where a value starts, so an
+    # apostrophe in plain text pairs with nothing. A quote that never closes stays.
+    function mask(s, flow,    out, i, j, n, c, d, ns) {
+      n = length(s); ns = 1; out = ""
+      for (i = 1; i <= n; i++) {
+        c = substr(s, i, 1)
+        if (c == "#" && (i == 1 || substr(s, i - 1, 1) ~ /[[:space:]]/)) return out substr(s, i)
+        if (ns && (c == sq || c == "\"")) {
+          for (j = i + 1; j <= n; j++) {
+            d = substr(s, j, 1)
+            if (c == "\"" && d == "\\") { j++; continue }
+            if (d != c) continue
+            if (c == sq && substr(s, j + 1, 1) == sq) { j++; continue }
+            break
+          }
+          if (j > n) return out substr(s, i)
+          out = out c c; i = j; ns = 0
+          continue
+        }
+        out = out c
+        if (c ~ /[[:space:]]/) continue
+        d = substr(s, i + 1, 1)
+        if (c == ":" || (c == "-" && ns)) ns = (d == "" || d ~ /[[:space:]]/)
+        else if (c == "," || c == "[" || c == "{") ns = flow
+        else ns = 0
+      }
+      return out
+    }
     # A node starts after "key: ", after "- ", at the start of a line, or inside a
     # flow collection; there a leading & * or ! is an anchor, alias or tag.
     function scan_node(q, bare,    m, flow) {
       m = q
       sub(/^[[:space:]]*(-[[:space:]]+)*/, "", m)
-      flow = m ~ /^[[{]/ || m ~ /^[^[:space:]][^:]*:[[:space:]]+[[{]/
+      flow = is_flow(q)
       if (m ~ /^(\*|<<[[:space:]]*:)/ || m ~ /:[[:space:]]+\*/ || (flow && m ~ /[[{,:][[:space:]]*\*/)) {
         if (!alias_nr) alias_nr = NR
       }
       if ((m ~ /^[!&*]/ || m ~ /:[[:space:]]+[!&*]/ || (flow && m ~ /[[{,:][[:space:]]*[!&*]/)) && (in_guard || bare ~ /(^|[^-[:alnum:]_])(permissions|id-token|cache-mode)[[:space:]]*:[[:space:]]*[!&*]/)) {
         print "FAIL: " file " line " NR " puts a YAML anchor, alias or tag on permissions, id-token or cache-mode; write the value out"
       }
-      if (m ~ /(^|:[[:space:]]+)([!&][^[:space:]]*[[:space:]]+)*[|>][-+0-9]*[[:space:]]*$/) { in_bs = 1; bs_ind = length(q) - length(m) }
-      if (bare ~ /^[[:space:]]*(-[[:space:]]+)*(permissions|id-token|cache-mode)[[:space:]]*:[[:space:]]*$/) { in_guard = 1; guard_ind = length(q) - length(m) }
+      if (m ~ /^\?([[:space:]]|$)/) print "FAIL: " file " line " NR " uses a YAML explicit key; the gate does not read explicit keys, so write the key on one line"
+      if (guard_first) {
+        guard_first = 0
+        if (q !~ /^[[:space:]]*[^[:space:]:?&*!|>{[#-][^:]*:([[:space:]]|$)/) print "FAIL: " file " line " NR " cannot read the value of permissions, id-token or cache-mode; write it as key: value on one line"
+      }
+      if (m ~ /(^|:[[:space:]]+)([!&][^[:space:]]*[[:space:]]+)*[|>][-+0-9]*[[:space:]]*$/) {
+        in_bs = 1; bs_ind = length(q) - length(m)
+        if (bare ~ /(^|[^-[:alnum:]_])(permissions|id-token|cache-mode)[[:space:]]*:[[:space:]]*([!&][^[:space:]]*[[:space:]]+)*[|>][-+0-9]*[[:space:]]*$/) print "FAIL: " file " line " NR " cannot read the value of permissions, id-token or cache-mode; write it as key: value on one line"
+      }
+      if (bare ~ /^[[:space:]]*(-[[:space:]]+)*(permissions|id-token|cache-mode)[[:space:]]*:[[:space:]]*$/) {
+        in_guard = 1; guard_ind = length(q) - length(m)
+        if (bare ~ /(id-token|cache-mode)[[:space:]]*:[[:space:]]*$/) print "FAIL: " file " line " NR " cannot read the value of permissions, id-token or cache-mode; write it as key: value on one line"
+        else guard_first = 1
+      }
     }
     {
       line = $0
       sub(/(^|[[:space:]]+)#.*$/, "", line)
       gsub(sq, "", line)
       gsub(/"/, "", line)
-      q = $0
-      gsub(sq "[^" sq "]*" sq, sq sq, q)
-      gsub(/"[^"]*"/, "\"\"", q)
+      q = mask($0, is_flow($0))
       sub(/(^|[[:space:]]+)#.*$/, "", q)
       if (q !~ /^[[:space:]]*$/) {
         match(q, /^ */)
         if (in_bs && RLENGTH <= bs_ind) in_bs = 0
-        if (in_guard && RLENGTH <= guard_ind) in_guard = 0
+        if (in_guard && RLENGTH <= guard_ind) { in_guard = 0; guard_first = 0 }
         if (!in_bs) scan_node(q, line)
       }
     }
