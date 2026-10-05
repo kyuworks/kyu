@@ -19,6 +19,9 @@ concurrency:
 permissions:
   contents: read
 
+# This workflow installs code younger than the release-age rule, so it gets no cache access.
+cache-mode: none
+
 env:
   FORCE_COLOR: '1'
 
