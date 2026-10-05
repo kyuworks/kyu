@@ -577,8 +577,7 @@ run_block '          docker pull evil.example/\' "          ${PULLED}"
 assert_exit "a run: continuation that joins another path to the image fails" 1 run_check
 assert_last_output_contains "the joined path is named" "names the engine as ${JOINED}, ${WANT}"
 run_block '          docker pull evil.example/\' "              ${PULLED}"
-assert_exit "an indented run: continuation that joins another path fails" 1 run_check
-assert_last_output_contains "the indented join is named" "names the engine as ${JOINED}, ${WANT}"
+assert_exit "an indented run: continuation is two words in bash, and the image is at a word start, so it passes" 0 run_check
 run_block '          cat > Dockerfile <<DF' '          FROM evil.example/\' "          ${PULLED}" '          DF'
 assert_exit "a Dockerfile heredoc continuation that joins another path fails" 1 run_check
 assert_last_output_contains "the heredoc join is named" "names the engine as ${JOINED}, ${WANT}"
@@ -588,6 +587,11 @@ assert_exit "a CRLF continuation that joins another path fails" 1 run_check
 assert_last_output_contains "the CRLF join is named" "names the engine as ${JOINED}, ${WANT}"
 run_block '          docker pull \' "          ${PULLED}"
 assert_exit "a continuation after a space reads the right path" 0 run_check
+run_block '          docker pull\' "              ${PULLED}"
+assert_exit "docker pull, a continuation and an indented image pass" 0 run_check
+run_block '          docker pull evil.example/\' '          x/\' "          ${PULLED}"
+assert_exit "two continuations in a row join every line" 1 run_check
+assert_last_output_contains "the doubly joined path is named" "names the engine as evil.example/x/${IMG}, ${WANT}"
 
 # An expression can build the path at run time; a reference inside one cannot be read.
 every_tag v0.107.0
@@ -597,6 +601,24 @@ assert_last_output_contains "the expression line is named as unreadable" ".githu
 every_tag v0.107.0
 printf '%s\n' 'jobs:' '  t:' '    steps:' "      - run: echo \"\${{ github.sha }}\" && docker pull ${PULLED}" > "${TREE}/.github/workflows/pull.yml"
 assert_exit "a reference after an unrelated expression on its line passes" 0 run_check
+every_tag v0.107.0
+printf '%s\n' 'jobs:' '  t:' '    steps:' "      - run: echo \"\${{ github.sha }}\" && docker pull ${PULLED} \"\${{ github.ref }}\"" > "${TREE}/.github/workflows/pull.yml"
+assert_exit "a reference between two closed expressions passes" 0 run_check
+for literal in "'}}'" "'\${{ }}'" "'it''s }}'"; do
+  every_tag v0.107.0
+  printf '%s\n' 'jobs:' '  t:' '    container:' "      image: \"\${{ format('{2}{1}', ${literal}, '${PULLED}', 'evil.example/') }}\"" > "${TREE}/.github/workflows/pull.yml"
+  assert_exit "a reference after the string ${literal} inside an expression fails" 1 run_check
+  assert_last_output_contains "the ${literal} line is named as unreadable" ".github/workflows/pull.yml:4 names hatchet-lite in a layout this gate cannot read"
+done
+every_tag v0.107.0
+printf '%s\n' 'jobs:' '  t:' '    container:' "      image: \"\${{ format('{2}{1}', '}}', '${PULLED}', 'evil.example/') }}\"" > "${WEEKLY}"
+assert_exit "the same expression in newest-engine.yml fails" 1 run_check
+every_tag v0.107.0
+printf '%s\n' 'jobs:' '  t:' '    steps:' "      - run: docker pull \${{ ${PULLED}" > "${TREE}/.github/workflows/pull.yml"
+assert_exit "a reference after an unclosed \${{ fails" 1 run_check
+every_tag v0.107.0
+printf '%s\n' 'jobs:' '  test:' '    steps:' "      - run: echo \${{ github.sha }} && docker pull ${IMG}:${RT}" > "${WEEKLY}"
+assert_exit "the run-time tag after another expression on its line still passes" 0 run_check
 
 # None of these starts a word: only a space, tab or line break does.
 for glue in , '(' '[' '{' '>' '|' ';' '&' '`' @ '#' : "'" '$' '='; do

@@ -5,10 +5,12 @@
 // layout and after YAML escapes and line folding, is a reference. A reference's tag must equal
 // the compose default, and a file may not name two tags. Its registry path must equal ENGINE_PATH
 // exactly, so moving the engine to another registry is an edit here; under .github/ the path is
-// the text after the last space, tab or line break (a backslash, its line break and the spaces
-// after it are removed first, as a shell joins them), less one opening quote and one docker://.
-// A reference inside a ${{ }} expression, which can build the path, fails as unreadable. The gate
-// reads text, not what a shell computes, so indirection such as $(printf ...) is not caught. A
+// the text after the last space, tab or line break (a backslash and its line break are removed
+// first, as a shell joins the lines; indentation on the next line stays and starts a word), less
+// one opening quote and one docker://. A reference inside a ${{ }} expression (a }} inside a
+// single-quoted string does not end it), which can build the path, fails as unreadable. The gate
+// reads text, not what a shell computes, so indirection such as $(printf ...) and a Windows cmd
+// caret continuation are not read. A
 // digest after a tag, hatchet-lite with no / before it, or in upper case, fails in any YAML
 // string; hatchet-lite:<digits> with no registry path (a host and port, also after ://) and names
 // that merely end in hatchet-lite are not references. fly.toml is not YAML: outside whole-line
@@ -46,7 +48,7 @@ const DIGEST = /^(:[^\s"'@,\]}#]*)?@/
 const FLY_BUILD = /^\s*\[build\]\s*$/
 const FLY_IMAGE = /^\s*image\s*=\s*(['"])([^\s'"\\@]*)\/hatchet-lite:[^\s'"\\@]+\1\s*$/
 const WORD_BREAK = /[ \t\r\n]/
-const CONTINUATION = /\\\r?\n[ \t]*/g
+const CONTINUATION = /\\\r?\n/g
 const WORD_PREFIX = /^["']?(?:docker:\/\/)?/
 const FLY_WATCHED = /\bbuild\b|\bimage\b|hatchet-lite|'''|"""|\\/i
 
@@ -65,16 +67,32 @@ function tagAfter(rest, runtime) {
   return /^[:A-Za-z0-9_.-]/.test(rest) ? UNREAD : '(none)'
 }
 
+// [start, end) of each ${{ }} expression in the text. A }} or ${{ inside a single-quoted string
+// (a doubled quote is an escaped one) does not count; an expression never closed runs to the end.
+function expressionSpans(text) {
+  const spans = []
+  for (let start = text.indexOf('${{'); start >= 0; ) {
+    let quoted = false
+    let end = text.length
+    for (let i = start + 3; i < text.length && end === text.length; i++) {
+      if (text[i] === "'") quoted = !quoted
+      else if (!quoted && text.startsWith('}}', i)) end = i + 2
+    }
+    spans.push([start, end])
+    start = text.indexOf('${{', end)
+  }
+  return spans
+}
+
 // [{ tag, registryPath }] for each engine reference in one string.
 function engineReferences(text, runtime = false) {
   const refs = []
+  const spans = expressionSpans(text)
   for (let at = text.indexOf(ENGINE); at >= 0; at = text.indexOf(ENGINE, at + 1)) {
     const rest = text.slice(at + ENGINE.length)
     if (text.slice(at - 2, at + 1) === '://' && HOST_PORT.test(rest)) continue
     const registryPath = text.slice(0, at).replace(CONTINUATION, '').split(WORD_BREAK).at(-1).replace(WORD_PREFIX, '')
-    const open = text.lastIndexOf('${{', at)
-    const close = text.indexOf('}}', open)
-    const inExpression = open >= 0 && (close < 0 || close > at)
+    const inExpression = spans.some(([start, end]) => start < at && at < end)
     refs.push({ tag: inExpression ? UNREAD : tagAfter(rest, runtime), registryPath })
   }
   return refs

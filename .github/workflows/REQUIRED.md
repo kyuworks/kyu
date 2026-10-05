@@ -47,8 +47,9 @@ reference, compose.yaml's included, must also sit at the registry path
 `ghcr.io/hatchet-dev/hatchet` exactly (`ENGINE_PATH` in
 `check-engine-image-tag.mjs`), so moving the engine to another registry is a
 deliberate edit to the gate; under `.github/` the path is the text after the last
-space, tab or line break (a backslash, its line break and the spaces after it are
-removed first, as a shell joins them), less one opening quote and one `docker://`.
+space, tab or line break (a backslash and its line break are
+removed first, as a shell joins the lines; indentation on the next line stays and
+starts a word), less one opening quote and one `docker://`.
 A reference inside a `${{ }}` expression, which can build the path, fails as
 unreadable; the gate reads text, not what a shell computes, so indirection such as
 `$(printf ...)` is not caught. Its only
