@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Print the fly secrets set commands for the Kyu engine app. This script never
+# Print the fly secrets set commands for a producer application's engine app. This script never
 # calls `fly` and never generates a value — it only prints commands with
-# placeholders for the CTO to fill in and run by hand.
+# placeholders for the producer's operator to fill in and run by hand.
 #
 #   bash infra/hatchet/fly/secrets.sh
 #
-# Store every real value in 1Password. Never paste one into a pull request,
+# Store every real value in your password manager. Never paste one into a pull request,
 # an issue, a commit, or a chat message.
 set -euo pipefail
 
@@ -22,12 +22,12 @@ Secrets this app needs, and where each value comes from:
     The direct connection string from the cluster's page in the Fly
     dashboard, not the pooler (Hatchet needs a session-mode connection for
     LISTEN/NOTIFY, prepared statements and advisory locks; a transaction
-    pooler breaks all three). Assumption to verify on first deploy: whether
-    this string needs an sslmode parameter added.
+    pooler breaks all three). It needs no sslmode parameter.
   ADMIN_EMAIL
-    Chosen by the CTO for the dashboard admin account.
+    Chosen by the operator for the dashboard admin account: a lower-case
+    address on the company domain.
   ADMIN_PASSWORD
-    Chosen by the CTO for the dashboard admin account.
+    Chosen by the operator for the dashboard admin account.
   SERVER_MSGQUEUE_RABBITMQ_URL
     Needed while fly.toml sets SERVER_MSGQUEUE_KIND = 'rabbitmq'. Built from
     the two values set on <rabbitmq-app> (infra/hatchet/fly/rabbitmq/secrets.sh):
@@ -72,6 +72,6 @@ Then apply everything staged in one deploy:
 
 fly deploy -c infra/hatchet/fly/fly.toml -a '${APP}'
 
-Store every value in 1Password. Never paste one into a pull request or a
+Store every value in your password manager. Never paste one into a pull request or a
 chat message.
 EOF

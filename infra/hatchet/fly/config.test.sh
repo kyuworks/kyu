@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Static checks on the engine's fly.toml and the runbook names that must match it. Run: bash infra/hatchet/fly/config.test.sh
+# Static checks on the engine template's fly.toml and the guide names that must match it. Run: bash infra/hatchet/fly/config.test.sh
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../../scripts/lib/gate-test-lib.sh"
@@ -30,14 +30,14 @@ for name in SERVER_URL SERVER_AUTH_COOKIE_DOMAIN SERVER_GRPC_BROADCAST_ADDRESS; 
   assert_exit "${name} is a secret, not env" 1 grep -q "^  ${name} =" "${FLY_TOML}"
 done
 
-# Engine-wide: the engine drops whole daily partitions older than this (runbook "Retention").
-assert_exit "dev retention is seven days" 0 \
+# Engine-wide: the engine drops whole daily partitions older than this (guide "Retention").
+assert_exit "the template's retention is seven days" 0 \
   grep -qE "^[[:space:]]*SERVER_LIMITS_DEFAULT_TENANT_RETENTION_PERIOD = '168h'\$" "${FLY_TOML}"
 COMPOSE_RETENTION="$(sed -nE "s#^[[:space:]]*SERVER_LIMITS_DEFAULT_TENANT_RETENTION_PERIOD: '([0-9a-z]+)'\$#\1#p" "${COMPOSE}")"
-assert_eq "compose.yaml sets the same 168h retention as dev" "168h" "${COMPOSE_RETENTION}"
+assert_eq "compose.yaml sets the same 168h retention as the template" "168h" "${COMPOSE_RETENTION}"
 
 # Refuses every signup (form and OAuth starts) before the domain check even runs.
-assert_exit "signup is off on dev" 0 \
+assert_exit "signup is off in the template" 0 \
   grep -qE "^[[:space:]]*SERVER_ALLOW_SIGNUP = 'f'\$" "${FLY_TOML}"
 
 gate_test_finish

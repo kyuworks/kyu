@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Print the fly secrets set commands for the Kyu RabbitMQ app. This script never
+# Print the fly secrets set commands for a producer application's RabbitMQ app. This script never
 # calls `fly` and never generates a value — it only prints commands with
-# placeholders for the CTO to fill in and run by hand.
+# placeholders for the producer's operator to fill in and run by hand.
 #
 #   bash infra/hatchet/fly/rabbitmq/secrets.sh
 #
-# Store every real value in 1Password. Never paste one into a pull request,
+# Store every real value in your password manager. Never paste one into a pull request,
 # an issue, a commit, or a chat message.
 set -euo pipefail
 
@@ -19,9 +19,9 @@ App: ${APP}
 
 Secrets this app needs, and where each value comes from:
   RABBITMQ_DEFAULT_USER
-    Chosen by the CTO.
+    Chosen by the operator.
   RABBITMQ_DEFAULT_PASS
-    Generated in 1Password. Letters and digits only, so the engine's
+    Generated in your password manager. Letters and digits only, so the engine's
     amqp://<user>:<pass>@<rabbitmq-app>.internal:5672/ URL needs no
     escaping.
 
@@ -42,6 +42,6 @@ Then deploy (the kyu_rabbitmq_data volume must already exist):
 
 fly deploy -c infra/hatchet/fly/rabbitmq/fly.toml -a '${APP}' --ha=false
 
-Store every value in 1Password. Never paste one into a pull request or a
+Store every value in your password manager. Never paste one into a pull request or a
 chat message.
 EOF

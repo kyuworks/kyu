@@ -8,6 +8,7 @@ Kyu sounds like queue, and the kanji 急 (kyū) means urgent or express, as in e
 
 - [Design](docs/design/kyu-requirements-and-design.md): requirements, architecture, the integration plan.
 - [First consumer](docs/operations/first-consumer.md): the ordered steps a project follows to publish its first event and run its first subscriber.
+- [Run an engine](docs/operations/kyu-engine-on-fly.md): how a producer application runs its own Hatchet engine on Fly from the template in `infra/hatchet/fly/`. Kyu runs none of its own.
 - [Decisions](docs/architecture/adr/): why it is standalone, why Hatchet, why migrations are immutable, why user-defined workflows run through one interpreter.
 - [Contributing](CONTRIBUTING.md): setup, the loop, layout, gates.
 - [Agent notes](AGENTS.md): the rules agents work under. [Glossary](CONTEXT.md).

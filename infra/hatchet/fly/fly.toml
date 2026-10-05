@@ -1,11 +1,12 @@
-# Fly config for the dev Kyu engine (hatchet-lite), issue #162.
+# Template: Fly config for a producer application's engine (hatchet-lite). Kyu runs no engine
+# of its own; a producer copies this directory and runs it. Guide: docs/operations/kyu-engine-on-fly.md
 #
 # Image tag: the same as infra/hatchet/compose.yaml and CI (scripts/gates/check-engine-image-tag.sh).
-# Every secret this app needs is set by the CTO, never by an agent: run
-# infra/hatchet/fly/secrets.sh to print the exact commands. Full runbook:
-# docs/operations/kyu-engine-on-fly.md
+# Every secret this app needs is set by the producer's operator, never by an agent: run
+# infra/hatchet/fly/secrets.sh to print the exact commands.
 # The app name and the four deployment-specific values (SERVER_URL, SERVER_AUTH_COOKIE_DOMAIN,
 # SERVER_GRPC_BROADCAST_ADDRESS, SERVER_AUTH_RESTRICTED_EMAIL_DOMAINS) are secrets: see secrets.sh.
+# The template's region; change it in both fly.toml files (guide, "Copy the template").
 primary_region = 'syd'
 
 [build]
@@ -21,25 +22,26 @@ primary_region = 'syd'
   # 'tls' strategy to the edge. Verify against /api/ready on first deploy.
   SERVER_GRPC_INSECURE = 't'
   SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS = 'localhost:7077'
-  # Hatchet's internal queue (#176). Needs the SERVER_MSGQUEUE_RABBITMQ_URL
+  # Hatchet's internal queue. Needs the SERVER_MSGQUEUE_RABBITMQ_URL
   # secret; hatchet-lite falls back to postgres only when none of the four
-  # queue variables is set. Switch back: 'postgres' (runbook, "Queue on RabbitMQ").
+  # queue variables is set. Switch back: 'postgres' (guide, "Queue on RabbitMQ").
   SERVER_MSGQUEUE_KIND = 'rabbitmq'
   # Engine-wide: whole daily partitions (runs, events, logs, payloads) older than this are dropped.
+  # 168h suits dev; set 720h in production (guide, "Retention").
   SERVER_LIMITS_DEFAULT_TENANT_RETENTION_PERIOD = '168h'
   # Refuses every signup (local form and OAuth starts) before the domain check runs. To admit a
   # new user: set 't', deploy, they sign up with a company address, set back to 'f', deploy.
   SERVER_ALLOW_SIGNUP = 'f'
 
 [[mounts]]
-  # Renamed with the #173 resize; see "Resizing the engine machine" in the runbook.
+  # Must exist before the first deploy (guide, "First deploy" step 4).
   source = 'kyu_hatchet_config_2x'
   destination = '/config'
 
 [[vm]]
   # hatchet-lite runs the API, dashboard, gRPC server and queue workers in
   # one process; shared-cpu-2x's 512 MB does not fit that comfortably under
-  # harness load, and shared CPU throttling would corrupt latency numbers.
+  # load, and shared CPU throttling would distort latency.
   size = 'performance-2x'
 
 [[services]]
@@ -73,8 +75,8 @@ primary_region = 'syd'
 
   [[services.ports]]
     port = 7077
-    # A bare 'tls' handler offers no ALPN on Fly's public hostnames; see step 7 of
-    # docs/operations/kyu-engine-on-fly.md for why 'http' is needed too.
+    # A bare 'tls' handler offers no ALPN on Fly's public hostnames; see "First deploy" step 8
+    # of docs/operations/kyu-engine-on-fly.md for why 'http' is needed too.
     handlers = ['tls', 'http']
 
     [services.ports.http_options]

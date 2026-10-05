@@ -77,7 +77,7 @@ Before writing code, stop at the first rung that holds:
 
 - `packages/schemas` (`@kyuworks/schemas`): the envelope, naming rules, Standard Schema adapter. Zod only. No Hatchet, no I/O.
 - `packages/sdk` (`@kyuworks/sdk`): `publish()` and the outbox, the relay, `subscribe()` / `durable()` over the Hatchet SDK, `onceById()`, the worker. Ships `migrations/` SQL for consumers.
-- `infra/hatchet`: the local engine stack and, later, the Fly deployment.
+- `infra/hatchet`: the local engine stack (test infrastructure) and `fly/`, the template a producer application copies to run its own engine. Kyu runs no deployed engine ([ADR](docs/architecture/adr/20261006-each-producer-application-runs-its-own-engine.md)).
 - Consumers never call the Hatchet SDK directly for bus work. If the SDK lacks something, add it to the SDK.
 - The shop example lives in `kyuworks/shop-example` and installs the published packages. A daily workflow there runs it against this repository's `main`; a red run there is an SDK regression until shown otherwise. `examples/*` stays open for a future example; the gates still scan it. A new example also needs the `examples/*` entry put back in `pnpm-workspace.yaml`.
 
