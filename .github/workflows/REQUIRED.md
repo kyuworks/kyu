@@ -7,9 +7,12 @@ exhaustive gate; the Husky pre-commit hook is the local quick loop.
 GitHub matches the job `name:` string, not the job id. Renaming a `name:`
 unhooks branch protection until an admin updates the ruleset **and** this
 list. `scripts/gates/check-required-ci-jobs.sh` (in the Lint job) fails the
-PR if `required-checks.txt` names a check that is not a job in a workflow that
-runs on `pull_request` (`ci.yml` and `ship-loop.yml` today). `release.yml` runs
-on tags and does not count.
+PR if `required-checks.txt` names a check that is not the `name:` (else the job
+id) of a job in a workflow that runs on `pull_request` (`ci.yml` and
+`ship-loop.yml` today). It reads each workflow with the `yaml` package and fails
+one it cannot read. A matrix job or a job that calls a reusable workflow does
+not count: GitHub builds its check names at run time. `release.yml` runs on tags
+and does not count.
 
 | Job id | Check name | What it runs |
 | --- | --- | --- |
@@ -32,11 +35,12 @@ Both integration jobs, and `newest-client.yml`, run the `hatchet-lite` tag that
 `infra/hatchet/fly/fly.toml`, never `latest`. An engine upgrade changes that one
 tag in all four files in one pull request.
 `scripts/gates/check-engine-image-tag.sh` (in the Lint job, and in the commit
-hook when compose.yaml or fly.toml changes) reads every non-comment line under
-`.github/` (workflows and actions) that names `/hatchet-lite`, in any layout,
-including `run:` text. It fails the PR and names each file whose tag differs
-from compose.yaml; it also fails `latest`, an image with no tag, a file that
-names two tags, and a line whose tag it cannot read. Each run's "Wait for the
+hook when compose.yaml or fly.toml changes) reads compose.yaml and every YAML
+file under `.github/` (workflows and actions) with the `yaml` package and checks
+every string that names `/hatchet-lite`, in any layout, including `run:` text.
+It fails a file it cannot read, and it fails the PR and names each file whose
+tag differs from compose.yaml; it also fails `latest`, an image with no tag, a
+file that names two tags, and a reference whose tag it cannot read. Each run's "Wait for the
 engine" step prints the engine's version.
 
 `Build` is not required. It `needs:` the others, so a failed sibling skips it,

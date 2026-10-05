@@ -184,6 +184,172 @@ write_second_workflow called.yml "$(printf 'on:\n  workflow_call:\n    inputs:\n
 printf 'Migration Check\nCalled Only\n' > "${REQ}"
 assert_exit "a workflow_call input named pull_request does not count" 1 run_check
 
+# --- Layouts a line scanner misread: the gate reads the parsed workflow ---
+# write_extra_workflow file — the workflow body comes from stdin.
+write_extra_workflow() {
+  cat > "${WF_DIR}/$1"
+}
+
+write_workflow
+write_extra_workflow flowon.yml <<'YAML'
+on: { push: { branches: [pull_request] } }
+jobs:
+  flow-push:
+    name: Flow Push
+YAML
+printf 'Migration Check\nFlow Push\n' > "${REQ}"
+assert_exit "a flow-map on: whose only pull_request is a branch name does not count" 1 run_check
+assert_output_lacks "the flow-map workflow is not listed as a pull-request workflow" "flowon.yml" run_check
+
+write_workflow
+write_extra_workflow nextline.yml <<'YAML'
+on: pull_request
+jobs:
+  bare-job:
+    name:
+      Shown On Next Line
+YAML
+printf 'Migration Check\nbare-job\n' > "${REQ}"
+assert_exit "a job id does not count when its name: is on the next line" 1 run_check
+printf 'Migration Check\nShown On Next Line\n' > "${REQ}"
+assert_exit "a name: on the next line is read" 0 run_check
+
+write_workflow
+write_extra_workflow folded.yml <<'YAML'
+on: pull_request
+jobs:
+  typecheck2:
+    name: Type Check
+      Extended
+YAML
+printf 'Type Check Extended\n' > "${REQ}"
+assert_exit "a name: that continues on the next line is read whole" 0 run_check
+rm "${WF}"
+printf 'Type Check\n' > "${REQ}"
+assert_exit "the first line of a continued name: does not count" 1 run_check
+
+for key in '"name"' 'name '; do
+  write_workflow
+  printf 'on: pull_request\njobs:\n  quoted-key:\n    %s: Shown Name\n' "${key}" > "${WF_DIR}/key.yml"
+  printf 'quoted-key\n' > "${REQ}"
+  assert_exit "a job id does not count when its name key is written ${key}" 1 run_check
+done
+
+write_workflow
+write_extra_workflow anchored.yml <<'YAML'
+'on': pull_request
+env:
+  LABEL: &label Anchored Name
+jobs:
+  quoted:
+    name: 'Quoted Name' # shown in the checks list
+  aliased:
+    name: *label
+  folded:
+    name: >-
+      Folded Name
+YAML
+write_extra_workflow indented.yml <<'YAML'
+on: [pull_request]
+jobs:
+    four-spaces:
+        name: Four Spaces
+    flow: { name: Flow Name, runs-on: ubuntu-latest }
+YAML
+printf 'Quoted Name\nAnchored Name\nFolded Name\nFour Spaces\nFlow Name\n' > "${REQ}"
+assert_exit "quoted, commented, aliased, folded, indented and flow names are read" 0 run_check
+
+write_workflow
+write_extra_workflow matrix.yml <<'YAML'
+on: pull_request
+jobs:
+  matrix-job:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+  called:
+    name: Called Name
+    uses: ./.github/workflows/reusable.yml
+YAML
+printf 'matrix-job\n' > "${REQ}"
+assert_exit "a matrix job's id does not count" 1 run_check
+printf 'Called Name\n' > "${REQ}"
+assert_exit "a job that calls a reusable workflow does not count" 1 run_check
+assert_last_output_contains "the run-time names are explained" "A job with a matrix, or one that calls a reusable workflow, counts for no name."
+
+# --- A file the gate cannot read fails, pull-request workflow or not ---
+write_workflow
+write_extra_workflow twodocs.yml <<'YAML'
+on: push
+jobs:
+  a:
+    name: First Doc
+---
+on: pull_request
+jobs:
+  b:
+    name: Second Doc
+YAML
+printf 'Second Doc\n' > "${REQ}"
+assert_exit "a second YAML document cannot supply a required name" 1 run_check
+assert_last_output_contains "the two documents are named" "twodocs.yml holds 2 YAML documents"
+
+write_workflow
+write_extra_workflow dup.yml <<'YAML'
+on: pull_request
+jobs:
+  dup:
+    name: Dup One
+    name: Dup Two
+YAML
+printf 'Dup One\n' > "${REQ}"
+assert_exit "a job with two name: keys fails" 1 run_check
+assert_last_output_contains "the repeated key is named" "dup.yml line 5 does not parse"
+
+write_workflow
+write_extra_workflow merged.yml <<'YAML'
+on: pull_request
+x-base: &base
+  runs-on: ubuntu-latest
+jobs:
+  merged:
+    <<: *base
+    name: Merged Name
+YAML
+printf 'Merged Name\n' > "${REQ}"
+assert_exit "a workflow with a merge key fails" 1 run_check
+assert_last_output_contains "the merge key is named" "merged.yml line 6 uses a YAML merge key"
+
+write_workflow
+printf 'on: push\njobs: [\n' > "${WF_DIR}/broken.yaml"
+write_required
+assert_exit "a workflow that does not parse fails even when it is not a pull-request workflow" 1 run_check
+assert_last_output_contains "the broken workflow is named" "broken.yaml line 3 does not parse"
+
+write_workflow
+write_extra_workflow tagged.yml <<'YAML'
+%TAG !e! tag:example.com,2000:
+---
+on: pull_request
+jobs:
+  tagged:
+    name: Tagged Name
+YAML
+printf 'Tagged Name\n' > "${REQ}"
+assert_exit "a %TAG directive fails" 1 run_check
+assert_last_output_contains "the directive is named" "tagged.yml uses a %YAML or %TAG directive"
+
+write_workflow
+write_extra_workflow Upper.YML <<'YAML'
+on: pull_request
+jobs:
+  upper:
+    name: Upper Name
+YAML
+printf 'Upper Name\n' > "${REQ}"
+assert_exit "a workflow with an upper-case extension fails" 1 run_check
+assert_last_output_contains "the upper-case file is named" "Upper.YML has a workflow extension in another letter case"
+
 # --- Real repo files (no env override) ---
 REAL_REQ="${ROOT_DIR}/.github/workflows/required-checks.txt"
 if [ -f "${REAL_REQ}" ]; then

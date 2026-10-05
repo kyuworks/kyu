@@ -82,6 +82,15 @@ function dependants(dir, acc = new Set()) {
   return acc
 }
 
+// A gate module with no suite of its own (workflow-yaml.mjs) is tested through each gate that imports it.
+function importerSuites(file) {
+  const dir = path.join(root, 'scripts/gates')
+  return readdirSync(dir)
+    .filter((name) => name.endsWith('.mjs') && readFileSync(path.join(dir, name), 'utf8').includes(`'./${path.basename(file)}'`))
+    .map((name) => `scripts/gates/${name.replace(/\.mjs$/, '.test.sh')}`)
+    .filter((suite) => existsSync(path.join(root, suite)))
+}
+
 const steps = new Map()
 const add = (id, cmd) => {
   if (!steps.has(id)) steps.set(id, cmd)
@@ -122,6 +131,7 @@ for (const raw of changedFiles()) {
     // step runs outside scripts/verify-self-tests.sh, so nothing else clears
     // the GIT_* vars a hook invocation exports (scripts/lib/git-env.sh).
     if (existsSync(path.join(root, suite))) add(`selftest:${suite}`, `bash scripts/lib/run-isolated-selftest.sh ${suite}`)
+    else if (f.startsWith('scripts/gates/') && f.endsWith('.mjs')) for (const s of importerSuites(f)) add(`selftest:${s}`, `bash scripts/lib/run-isolated-selftest.sh ${s}`)
   }
 }
 
