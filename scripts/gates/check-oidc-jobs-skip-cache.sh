@@ -11,11 +11,15 @@
 #   - the job does not set `cache-mode: none`
 #   - a step uses ./.github/actions/setup without `cache: 'false'`
 #   - a step uses actions/cache, actions/cache/restore or actions/cache/save
-# And per workflow: one that mentions minimumReleaseAge (it changes the
-# release-age rule) does not set a top-level `cache-mode: none`.
+# A top-level `cache-mode: none` covers a job that sets no cache-mode of its own.
+# And per workflow: one that relaxes the release-age rule does not set a
+# top-level `cache-mode: none`. The rule matches minimumReleaseAge, the
+# PNPM_CONFIG_MINIMUM_RELEASE_AGE variable (any case) and --config.minimum-release-age.
 #
-# Line-based, for this repository's layout: two-space job keys, four-space job
-# keys, six-space `- ` steps.
+# Line-based, for this repository's layout: block-map permissions, two-space job
+# keys, four-space job keys, six-space `- ` steps. It fails closed: a file with
+# an id-token: write (or write-all) the scanner did not read as an OIDC job
+# fails, so a layout it cannot parse never passes silently.
 #
 # Env overrides (for tests):
 #   CI_WORKFLOWS_DIR — directory of workflow yaml files
@@ -51,7 +55,7 @@ check_workflow() {
     }
     {
       line = $0
-      sub(/[[:space:]]+#.*$/, "", line)
+      sub(/(^|[[:space:]]+)#.*$/, "", line)
       gsub(sq, "", line)
       gsub(/"/, "", line)
     }
@@ -59,11 +63,12 @@ check_workflow() {
       end_step()
       in_jobs = 0; in_wf_perm = 0; in_job_perm = 0
     }
-    line ~ /minimumReleaseAge/ { lifts_age = 1 }
+    line ~ /minimumReleaseAge/ || tolower(line) ~ /pnpm_config_minimum_release_age|--config\.minimum-release-age/ { lifts_age = 1 }
+    line ~ /id-token:[[:space:]]*write([^-[:alnum:]]|$)/ || line ~ /permissions:[[:space:]]*write-all/ { raw++ }
     line ~ /^cache-mode:[[:space:]]*none$/ { wf_none = 1 }
-    line ~ /^permissions:[[:space:]]*write-all$/ { wf_oidc = 1 }
+    line ~ /^permissions:[[:space:]]*write-all$/ { wf_oidc = 1; read_oidc++ }
     line ~ /^permissions:[[:space:]]*$/ { in_wf_perm = 1; next }
-    in_wf_perm && line ~ /^  id-token:[[:space:]]*write$/ { wf_oidc = 1 }
+    in_wf_perm && line ~ /^  id-token:[[:space:]]*write$/ { wf_oidc = 1; read_oidc++ }
     line ~ /^jobs:[[:space:]]*$/ { in_jobs = 1; next }
     !in_jobs { next }
     line ~ /^  [A-Za-z0-9_-]+:$/ {
@@ -77,9 +82,10 @@ check_workflow() {
     }
     line ~ /^    [^[:space:]-]/ { end_step(); in_job_perm = 0 }
     line ~ /^    permissions:/ { has_perm[n] = 1 }
-    line ~ /^    permissions:[[:space:]]*write-all$/ { oidc[n] = 1 }
+    line ~ /^    permissions:[[:space:]]*write-all$/ { oidc[n] = 1; read_oidc++ }
     line ~ /^    permissions:[[:space:]]*$/ { in_job_perm = 1; next }
-    in_job_perm && line ~ /^      id-token:[[:space:]]*write$/ { oidc[n] = 1 }
+    in_job_perm && line ~ /^      id-token:[[:space:]]*write$/ { oidc[n] = 1; read_oidc++ }
+    line ~ /^    cache-mode:/ { has_cm[n] = 1 }
     line ~ /^    cache-mode:[[:space:]]*none$/ { none[n] = 1 }
     line ~ /^      - / { end_step(); in_step = 1 }
     in_step && line ~ /uses:[[:space:]]*\.\/\.github\/actions\/setup\/?$/ { step_setup = 1 }
@@ -90,11 +96,13 @@ check_workflow() {
       if (lifts_age && !wf_none) print "FAIL: " file " mentions minimumReleaseAge but does not set top-level cache-mode: none"
       for (i = 1; i <= n; i++) {
         if (!(has_perm[i] ? oidc[i] : wf_oidc)) continue
+        checked++
         print "CHECKED " file " " job[i]
-        if (!none[i]) print "FAIL: " file " job " job[i] " has id-token: write but does not set cache-mode: none"
+        if (!(none[i] || (!has_cm[i] && wf_none))) print "FAIL: " file " job " job[i] " has id-token: write but does not set cache-mode: none"
         if (setup_bad[i]) print "FAIL: " file " job " job[i] " uses ./.github/actions/setup without cache: " sq "false" sq
         if (direct[i]) print "FAIL: " file " job " job[i] " uses actions/cache directly"
       }
+      if (raw > read_oidc || (raw > 0 && !checked)) print "FAIL: " file " has id-token: write but the gate could not find the job that holds it; write permissions as a block map with 2-space job indentation"
     }
   ' "$1"
 }

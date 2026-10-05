@@ -136,6 +136,139 @@ assert_exit "a workflow that changes minimumReleaseAge without top-level cache-m
 printf 'cache-mode: none\n' >> "${WF_DIR}/ci.yml"
 assert_exit "a workflow that changes minimumReleaseAge with top-level cache-mode: none is accepted" 0 run_check
 
+# Layouts the scanner cannot read must fail closed, not pass with no job checked.
+UNREADABLE="could not find the job"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions: {id-token: write, contents: read}
+    steps:
+      - uses: actions/cache@v4
+YAML
+assert_exit "a job-level flow-map permissions with id-token: write is rejected" 1 run_check
+assert_last_output_contains "the unreadable flow map is named" "${UNREADABLE}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+permissions: {id-token: write, contents: read}
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache@v4
+YAML
+assert_exit "a workflow-level flow-map permissions with id-token: write is rejected" 1 run_check
+assert_last_output_contains "the unreadable workflow flow map is named" "${UNREADABLE}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        permissions:
+            id-token: write
+        steps:
+            - uses: actions/cache@v4
+YAML
+assert_exit "jobs indented four spaces with id-token: write are rejected" 1 run_check
+assert_last_output_contains "the unreadable indentation is named" "${UNREADABLE}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+permissions:
+    id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache@v4
+YAML
+assert_exit "a four-space workflow-level permissions block with id-token: write is rejected" 1 run_check
+assert_last_output_contains "the unreadable permissions block is named" "${UNREADABLE}"
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+permissions:
+  id-token: write
+jobs:
+  readable:
+    runs-on: ubuntu-latest
+    cache-mode: none
+    steps:
+      - run: echo hi
+  odd:
+    runs-on: ubuntu-latest
+    permissions: {id-token: write}
+    steps:
+      - uses: actions/cache@v4
+YAML
+assert_exit "one readable id-token job does not excuse an unreadable one" 1 run_check
+assert_last_output_contains "the unreadable job is named" "${UNREADABLE}"
+
+# cache-mode inheritance: a top-level value applies unless the job overrides it.
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: Release
+on: push
+cache-mode: none
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+YAML
+assert_exit "a top-level cache-mode: none covers an id-token job with no cache-mode of its own" 0 run_check
+sed -i.bak 's/^    runs-on: ubuntu-latest$/    runs-on: ubuntu-latest\n    cache-mode: write/' "${WF_DIR}/ci.yml" && rm "${WF_DIR}/ci.yml.bak"
+assert_exit "a job-level cache-mode: write overrides a top-level cache-mode: none and is rejected" 1 run_check
+
+# Every spelling of relaxing the release-age rule needs a top-level cache-mode: none.
+for lift in \
+  'run: PNPM_CONFIG_MINIMUM_RELEASE_AGE=0 pnpm install' \
+  'run: pnpm_config_minimum_release_age=0 pnpm install' \
+  'run: pnpm install --config.minimum-release-age=0'; do
+  cat > "${WF_DIR}/ci.yml" <<YAML
+name: Newest client
+on: schedule
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - ${lift}
+YAML
+  assert_exit "'${lift#run: }' without top-level cache-mode: none is rejected" 1 run_check
+  printf 'cache-mode: none\n' >> "${WF_DIR}/ci.yml"
+  assert_exit "'${lift#run: }' with top-level cache-mode: none is accepted" 0 run_check
+done
+
+cat > "${WF_DIR}/ci.yml" <<'YAML'
+name: CI
+on: push
+# minimumReleaseAge stays at seven days; this workflow does not change it.
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+YAML
+assert_exit "a column-zero comment that mentions minimumReleaseAge is not a change to the rule" 0 run_check
+
+publish_workflow "${NONE}" $'          cache: ${{ false }}\n'
+assert_exit "cache: \${{ false }} is rejected (only the literal 'false' counts)" 1 run_check
+
 assert_exit "the repository's workflows pass" 0 run_real
 assert_last_output_contains "the release job is checked" "release.yml publish"
 
