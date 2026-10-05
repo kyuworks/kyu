@@ -350,8 +350,12 @@ the setup steps are deferred to a later PR.
 
 1. Take a snapshot: `fly mpg backup list <engine-cluster-id>` and, if the platform does not do
    this automatically, trigger one first with `fly mpg backup create <engine-cluster-id>`.
-2. Bump the image tag in `infra/hatchet/fly/fly.toml` and `infra/hatchet/compose.yaml` together
-   — they must always name the same tag.
+2. In one pull request, change the tag in all four places that name it: the default in
+   `infra/hatchet/compose.yaml`, `infra/hatchet/fly/fly.toml`, and the `hatchet-lite` service image
+   in `.github/workflows/ci.yml` and `.github/workflows/newest-client.yml`.
+   `scripts/gates/check-engine-image-tag.sh` fails the pull request and names any file still on
+   the old tag. The integration suites then run on the new tag in CI before anything is deployed.
+   The shop example checks its own workflows against this compose tag, so change it there too.
 3. Deploy dev: `fly deploy -c infra/hatchet/fly/fly.toml -a <engine-app>`
 4. Soak for a day: watch the dashboard, worker logs, and `/api/ready` for anything unusual.
 5. Only then promote the same tag to any later environment.

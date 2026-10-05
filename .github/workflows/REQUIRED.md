@@ -27,6 +27,15 @@ Shard 1 runs the files listed in the suite's `vitest.integration.config.ts`;
 shard 2 runs every other file. `scripts/gates/check-integration-shards.sh`
 (in the Lint job) fails the PR if a file is in no shard or in both.
 
+Both integration jobs, and `newest-client.yml`, run the `hatchet-lite` tag that
+`infra/hatchet/compose.yaml` pins by default, the same tag as
+`infra/hatchet/fly/fly.toml`, never `latest`. An engine upgrade changes that one
+tag in all four files in one pull request.
+`scripts/gates/check-engine-image-tag.sh` (in the Lint job) fails the PR and
+names each file whose tag differs from compose.yaml; it also fails `latest`, an
+image with no tag, or a file that names two tags. Each run's "Wait for the
+engine" step prints the engine's version.
+
 `Build` is not required. It `needs:` the others, so a failed sibling skips it,
 and a skipped required check passes. Require each name above instead.
 

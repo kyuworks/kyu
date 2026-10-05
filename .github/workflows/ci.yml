@@ -91,7 +91,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       hatchet-lite:
-        image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:latest
+        image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.107.0
         env:
           DATABASE_URL: postgresql://hatchet:hatchet@postgres:5432/hatchet?sslmode=disable
           SERVER_AUTH_COOKIE_DOMAIN: localhost
@@ -133,7 +133,7 @@ jobs:
       - name: Wait for the engine
         run: |
           for i in $(seq 1 60); do
-            if curl -fsS http://localhost:8888/api/ready >/dev/null 2>&1; then echo ready; exit 0; fi
+            if curl -fsS http://localhost:8888/api/ready >/dev/null 2>&1; then echo "ready: $(curl -fsS http://localhost:8888/api/v1/version)"; exit 0; fi
             sleep 2
           done
           echo "hatchet-lite never became ready" >&2

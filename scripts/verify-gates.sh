@@ -24,6 +24,9 @@ bash scripts/gates/check-oidc-jobs-skip-cache.sh
 echo "[verify:gates] check-integration-shards"
 bash scripts/gates/check-integration-shards.sh
 
+echo "[verify:gates] check-engine-image-tag"
+bash scripts/gates/check-engine-image-tag.sh
+
 echo "[verify:gates] check-no-escape-hatches"
 bash scripts/gates/check-no-escape-hatches.sh
 
