@@ -44,7 +44,7 @@ echo "=== check-engine-image-tag tests ==="
 
 every_tag v0.107.0
 assert_exit "all four files on the same pinned tag pass" 0 run_check
-assert_last_output_contains "the tag and every file are named" "hatchet-lite:v0.107.0 in infra/hatchet/compose.yaml infra/hatchet/fly/fly.toml .github/workflows/ci.yml .github/workflows/newest-client.yml"
+assert_last_output_contains "the image, the tag and every file are named" "ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.107.0 in infra/hatchet/compose.yaml infra/hatchet/fly/fly.toml .github/workflows/ci.yml .github/workflows/newest-client.yml"
 
 every_tag v0.107.0
 compose_with_tag v0.108.0
@@ -424,6 +424,11 @@ for tail in "WHICH = 'build' # x" "X = \"\"\"  # x"; do
   assert_last_output_contains "the trailing comment is explained for: ${tail}" "infra/hatchet/fly/fly.toml:4 holds # after other text; a comment must be on its own line"
 done
 
+# A line the gate does not watch may carry a trailing comment (#62).
+every_tag v0.107.0
+fly_body "primary_region = 'syd' # region\n${FLY_TEXT_GOOD}"
+assert_exit "a trailing comment on a line the gate does not watch passes" 0 run_check
+
 every_tag v0.107.0
 fly_body "[build]\n  image = '${IMG}:v0.107.0' # keep with compose\n"
 assert_exit "an image line with a trailing comment fails" 1 run_check
@@ -466,6 +471,166 @@ every_tag v0.107.0
 printf 'jobs:\n  t:\n    steps:\n      - run: docker pull %s:8888\n' "${IMG}" > "${TREE}/.github/workflows/portlike.yml"
 assert_exit "a numeric tag behind a registry path still fails" 1 run_check
 assert_last_output_contains "the numeric tag is compared" ".github/workflows/portlike.yml pins hatchet-lite:8888, infra/hatchet/compose.yaml pins hatchet-lite:v0.107.0"
+
+# --- The registry path is compared as well as the tag (#61) ---
+EVIL=evil.example/x/hatchet-lite
+WANT="expected ${IMG}"
+
+every_tag v0.107.0
+sed -i.bak "s|${IMG}|${EVIL}|" "${CI}" && rm "${CI}.bak"
+assert_exit "ci.yml on the pinned tag at another registry fails" 1 run_check
+assert_last_output_contains "the ci.yml line names both paths" ".github/workflows/ci.yml:6 names the engine as ${EVIL}, ${WANT}"
+
+every_tag v0.107.0
+sed -i.bak "s|${IMG}|${EVIL}|" "${COMPOSE}" && rm "${COMPOSE}.bak"
+assert_exit "compose.yaml on the pinned tag at another registry fails" 1 run_check
+assert_last_output_contains "the compose line names both paths" "infra/hatchet/compose.yaml:4 names the engine as ${EVIL}, ${WANT}"
+assert_last_output_contains "a registry change is an edit to the gate" "another registry is an edit to ENGINE_PATH in scripts/gates/check-engine-image-tag.mjs"
+
+every_tag v0.107.0
+for moved in "${COMPOSE}" "${FLY}" "${CI}" "${NEWEST}"; do
+  sed -i.bak "s|${IMG}|${EVIL}|" "${moved}" && rm "${moved}.bak"
+done
+assert_exit "every file moved to another registry together still fails" 1 run_check
+assert_last_output_contains "the compose line is named when every file moved" "infra/hatchet/compose.yaml:4 names the engine as ${EVIL}, ${WANT}"
+
+every_tag v0.107.0
+sed -i.bak "s|${IMG}|${EVIL}|" "${FLY}" && rm "${FLY}.bak"
+assert_exit "fly.toml on the pinned tag at another registry fails" 1 run_check
+assert_last_output_contains "the fly.toml line names both paths" "infra/hatchet/fly/fly.toml:3 names the engine as ${EVIL}, ${WANT}"
+
+every_tag v0.107.0
+printf 'jobs:\n  test:\n    services:\n      e:\n        image: %s:%s\n' "${EVIL}" "${RT}" > "${WEEKLY}"
+assert_exit "the run-time tag at another registry in newest-engine.yml fails" 1 run_check
+assert_last_output_contains "the newest-engine.yml line names both paths" ".github/workflows/newest-engine.yml:5 names the engine as ${EVIL}, ${WANT}"
+
+every_tag v0.107.0
+printf 'jobs:\n  t:\n    env:\n      ENGINE: %s:v0.107.0\n' "${EVIL}" > "${TREE}/.github/workflows/env.yml"
+assert_exit "an env value at another registry fails" 1 run_check
+assert_last_output_contains "the env line names both paths" ".github/workflows/env.yml:4 names the engine as ${EVIL}, ${WANT}"
+
+# Only the exact path passes: no other host, port, case, segment, scheme or text glued before it.
+for wrong in evil.example/x docker.io/ghcr.io/hatchet-dev/hatchet ghcr.io//hatchet-dev/hatchet ghcr.io/./hatchet-dev/hatchet \
+  ghcr.io:443/hatchet-dev/hatchet ghcr.io./hatchet-dev/hatchet GHCR.IO/hatchet-dev/hatchet ghcr.io/hatchet-dev/Hatchet \
+  ghcr.io/hatchet-dev/hatchet/x hatchet-dev/hatchet docker.io/hatchet-dev/hatchet https://ghcr.io/hatchet-dev/hatchet \
+  DOCKER://ghcr.io/hatchet-dev/hatchet oci://ghcr.io/hatchet-dev/hatchet \
+  IMAGE=ghcr.io/hatchet-dev/hatchet '$REGISTRY/hatchet-dev/hatchet' 'x"ghcr.io/hatchet-dev/hatchet'; do
+  every_tag v0.107.0
+  printf 'jobs:\n  t:\n    steps:\n      - run: docker pull %s/hatchet-lite:v0.107.0\n' "${wrong}" > "${TREE}/.github/workflows/pull.yml"
+  assert_exit "a run: line that pulls from ${wrong} fails" 1 run_check
+  assert_last_output_contains "the ${wrong} path is named" ".github/workflows/pull.yml:4 names the engine as ${wrong}/hatchet-lite, ${WANT}"
+done
+
+every_tag v0.107.0
+printf 'jobs:\n  t:\n    steps:\n      - uses: docker://docker://%s:v0.107.0\n' "${IMG}" > "${TREE}/.github/workflows/step.yml"
+assert_exit "a doubled docker:// fails" 1 run_check
+assert_last_output_contains "the path after one docker:// is named" ".github/workflows/step.yml:4 names the engine as docker://${IMG}, ${WANT}"
+
+every_tag v0.107.0
+printf 'jobs:\n  t:\n    steps:\n      - run: docker pull evil.example/x/"%s:v0.107.0"\n' "${IMG}" > "${TREE}/.github/workflows/pull.yml"
+assert_exit "a quoted reference glued to another path in run: text fails" 1 run_check
+assert_last_output_contains "the glued path is named" ".github/workflows/pull.yml:4 names the engine as evil.example/x/\"${IMG}, ${WANT}"
+
+every_tag v0.107.0
+printf 'jobs:\n  t:\n    services:\n      e:\n        image: ghcr.io/hatchet-dev/hatchet\n          /hatchet-lite:v0.107.0\n' > "${TREE}/.github/workflows/split.yml"
+assert_exit "a path folded away from the name fails" 1 run_check
+assert_last_output_contains "the folded line is named" ".github/workflows/split.yml:6 names the engine as /hatchet-lite, ${WANT}"
+
+for quoted in "\"${IMG}:v0.107.0\"" "'${IMG}:v0.107.0'"; do
+  every_tag v0.107.0
+  printf 'jobs:\n  t:\n    steps:\n      - run: docker pull %s\n' "${quoted}" > "${TREE}/.github/workflows/pull.yml"
+  assert_exit "a run: line that pulls ${quoted} passes" 0 run_check
+done
+
+# docker:// is GitHub's form for a container action or step: allowed under .github/ only.
+every_tag v0.107.0
+mkdir -p "${TREE}/.github/actions/engine"
+printf 'runs:\n  using: docker\n  image: docker://%s:v0.107.0\n' "${IMG}" > "${TREE}/.github/actions/engine/action.yml"
+assert_exit "a docker action on the pinned image passes" 0 run_check
+
+every_tag v0.107.0
+printf '      - uses: docker://%s:v0.107.0\n' "${IMG}" >> "${CI}"
+assert_exit "a docker:// step on the pinned image passes" 0 run_check
+
+every_tag v0.107.0
+sed -i.bak "s|${IMG}|docker://${IMG}|" "${COMPOSE}" && rm "${COMPOSE}.bak"
+assert_exit "docker:// in compose.yaml fails" 1 run_check
+assert_last_output_contains "the compose scheme is named" "infra/hatchet/compose.yaml:4 names the engine as docker://${IMG}, ${WANT}"
+
+every_tag v0.107.0
+sed -i.bak "s|${IMG}|docker://${IMG}|" "${FLY}" && rm "${FLY}.bak"
+assert_exit "docker:// in fly.toml fails" 1 run_check
+assert_last_output_contains "the fly.toml scheme is named" "infra/hatchet/fly/fly.toml:3 names the engine as docker://${IMG}, ${WANT}"
+
+every_tag v0.107.0
+fly_body "[build]\n  image='${IMG}:v0.107.0'\n"
+assert_exit "a fly.toml image line with no spaces passes" 0 run_check
+
+# A backslash and a line break join two lines into one word; leading spaces on the next line go with them.
+PULLED="${IMG}:v0.107.0"
+JOINED="evil.example/${IMG}"
+run_block() {
+  every_tag v0.107.0
+  { printf 'jobs:\n  t:\n    steps:\n      - run: |\n'; printf '%s\n' "$@"; } > "${TREE}/.github/workflows/pull.yml"
+}
+run_block '          docker pull evil.example/\' "          ${PULLED}"
+assert_exit "a run: continuation that joins another path to the image fails" 1 run_check
+assert_last_output_contains "the joined path is named" "names the engine as ${JOINED}, ${WANT}"
+run_block '          docker pull evil.example/\' "              ${PULLED}"
+assert_exit "an indented run: continuation is two words in bash, and the image is at a word start, so it passes" 0 run_check
+run_block '          cat > Dockerfile <<DF' '          FROM evil.example/\' "          ${PULLED}" '          DF'
+assert_exit "a Dockerfile heredoc continuation that joins another path fails" 1 run_check
+assert_last_output_contains "the heredoc join is named" "names the engine as ${JOINED}, ${WANT}"
+every_tag v0.107.0
+printf '%s\n' 'jobs:' '  t:' '    steps:' "      - run: \"docker pull evil.example/\\\\\\r\\n${PULLED}\"" > "${TREE}/.github/workflows/pull.yml"
+assert_exit "a CRLF continuation that joins another path fails" 1 run_check
+assert_last_output_contains "the CRLF join is named" "names the engine as ${JOINED}, ${WANT}"
+run_block '          docker pull \' "          ${PULLED}"
+assert_exit "a continuation after a space reads the right path" 0 run_check
+run_block '          docker pull\' "              ${PULLED}"
+assert_exit "docker pull, a continuation and an indented image pass" 0 run_check
+run_block '          docker pull evil.example/\' '          x/\' "          ${PULLED}"
+assert_exit "two continuations in a row join every line" 1 run_check
+assert_last_output_contains "the doubly joined path is named" "names the engine as evil.example/x/${IMG}, ${WANT}"
+
+# An expression can build the path at run time; a reference inside one cannot be read.
+every_tag v0.107.0
+printf '%s\n' 'jobs:' '  t:' '    container:' "      image: \"\${{ format('{1}{0}', '${PULLED}', 'evil.example/') }}\"" > "${TREE}/.github/workflows/pull.yml"
+assert_exit "a reference inside a \${{ }} expression fails" 1 run_check
+assert_last_output_contains "the expression line is named as unreadable" ".github/workflows/pull.yml:4 names hatchet-lite in a layout this gate cannot read"
+every_tag v0.107.0
+printf '%s\n' 'jobs:' '  t:' '    steps:' "      - run: echo \"\${{ github.sha }}\" && docker pull ${PULLED}" > "${TREE}/.github/workflows/pull.yml"
+assert_exit "a reference after an unrelated expression on its line passes" 0 run_check
+every_tag v0.107.0
+printf '%s\n' 'jobs:' '  t:' '    steps:' "      - run: echo \"\${{ github.sha }}\" && docker pull ${PULLED} \"\${{ github.ref }}\"" > "${TREE}/.github/workflows/pull.yml"
+assert_exit "a reference between two closed expressions passes" 0 run_check
+for literal in "'}}'" "'\${{ }}'" "'it''s }}'"; do
+  every_tag v0.107.0
+  printf '%s\n' 'jobs:' '  t:' '    container:' "      image: \"\${{ format('{2}{1}', ${literal}, '${PULLED}', 'evil.example/') }}\"" > "${TREE}/.github/workflows/pull.yml"
+  assert_exit "a reference after the string ${literal} inside an expression fails" 1 run_check
+  assert_last_output_contains "the ${literal} line is named as unreadable" ".github/workflows/pull.yml:4 names hatchet-lite in a layout this gate cannot read"
+done
+every_tag v0.107.0
+printf '%s\n' 'jobs:' '  t:' '    container:' "      image: \"\${{ format('{2}{1}', '}}', '${PULLED}', 'evil.example/') }}\"" > "${WEEKLY}"
+assert_exit "the same expression in newest-engine.yml fails" 1 run_check
+every_tag v0.107.0
+printf '%s\n' 'jobs:' '  t:' '    steps:' "      - run: docker pull \${{ ${PULLED}" > "${TREE}/.github/workflows/pull.yml"
+assert_exit "a reference after an unclosed \${{ fails" 1 run_check
+every_tag v0.107.0
+printf '%s\n' 'jobs:' '  test:' '    steps:' "      - run: echo \${{ github.sha }} && docker pull ${IMG}:${RT}" > "${WEEKLY}"
+assert_exit "the run-time tag after another expression on its line still passes" 0 run_check
+
+# None of these starts a word: only a space, tab or line break does.
+for glue in , '(' '[' '{' '>' '|' ';' '&' '`' @ '#' : "'" '$' '='; do
+  run_block "          docker pull x${glue}${PULLED}"
+  assert_exit "a run: line with x${glue} before the path fails" 1 run_check
+  assert_last_output_contains "the x${glue} path is named" "names the engine as x${glue}${IMG}, ${WANT}"
+done
+run_block "          docker pull \"\"${PULLED}"
+assert_exit "two opening quotes before the path fail" 1 run_check
+run_block "          docker pull docker://\"${PULLED}"
+assert_exit "a quote after docker:// fails" 1 run_check
+assert_last_output_contains "a failure under .github/ says where the path must start" "the registry path must start after a space or an opening quote"
 
 assert_exit "an unknown argument fails" 1 bash "${CHECK}" --nope
 

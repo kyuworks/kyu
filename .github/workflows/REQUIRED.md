@@ -42,16 +42,28 @@ file under `.github/` (workflows and actions) with the `yaml` package and checks
 every string that names `/hatchet-lite`, in any layout, including `run:` text.
 It fails a file it cannot read, and it fails the PR and names each file whose
 tag differs from compose.yaml; it also fails `latest`, an image with no tag, a
-file that names two tags, and a reference whose tag it cannot read. Its only
-exemption is the tag `${{ needs.pick.outputs.tag }}` in `newest-engine.yml`; that
-expression anywhere else, any other expression there, or a literal tag there that
-differs from compose.yaml still fails. It also fails a digest after a tag (Docker pulls by the
+file that names two tags, and a reference whose tag it cannot read. Every
+reference, compose.yaml's included, must also sit at the registry path
+`ghcr.io/hatchet-dev/hatchet` exactly (`ENGINE_PATH` in
+`check-engine-image-tag.mjs`), so moving the engine to another registry is a
+deliberate edit to the gate; under `.github/` the path is the text after the last
+space, tab or line break (a backslash and its line break are
+removed first, as a shell joins the lines; indentation on the next line stays and
+starts a word), less one opening quote and one `docker://`.
+A reference inside a `${{ }}` expression, which can build the path, fails as
+unreadable; the gate reads text, not what a shell computes, so indirection such as
+`$(printf ...)` is not caught. Its only
+exemption is the tag `${{ needs.pick.outputs.tag }}` in `newest-engine.yml`, whose
+registry path is still checked; that expression anywhere else, any other expression
+there, or a literal tag there that differs from compose.yaml still fails. It also fails a digest after a tag (Docker pulls by the
 digest, so the tag is not what runs), and `hatchet-lite:<tag>` or `hatchet-lite@<digest>` written with
 no registry path before the name or in upper case. A name that merely ends in `hatchet-lite`, and
 `hatchet-lite:<port>` with no registry path (a host and port), are not references. `fly.toml` names
 the engine once, on the line after `[build]`, as `image = '<registry>/hatchet-lite:<tag>'`; `[build]`
 holds only `image`; outside whole-line comments no other line names `build`, `image` or `hatchet-lite`,
-or holds an escape, a multi-line string or a trailing comment. Each run's "Wait for the
+or holds an escape or a multi-line string. On a line that names one of them or holds a backslash,
+`'''` or `"""`, `[build]` and the image line included, a comment must be on its own line; other
+lines may carry a trailing comment, such as `primary_region = 'syd' # region`. Each run's "Wait for the
 engine" step prints the engine's version.
 
 `Build` is not required. It `needs:` the others, so a failed sibling skips it,
