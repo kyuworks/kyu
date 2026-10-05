@@ -83,7 +83,7 @@ assert_last_output_contains "compose.yaml must pin a release" "infra/hatchet/com
 every_tag v0.107.0
 printf '      other:\n        image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.106.0\n' >> "${CI}"
 assert_exit "a workflow with two different hatchet-lite images fails" 1 run_check
-assert_last_output_contains "both tags are named" ".github/workflows/ci.yml pins more than one hatchet-lite tag: v0.106.0 v0.107.0"
+assert_last_output_contains "both tags are named" ".github/workflows/ci.yml pins more than one hatchet-lite tag: v0.106.0 (line 10), v0.107.0 (line 6)"
 
 every_tag v0.107.0
 workflow_with_tag v0.106.0 "${TREE}/.github/workflows/engine-latest.yml"
@@ -122,12 +122,12 @@ assert_last_output_contains "the untagged third workflow is named" ".github/work
 every_tag v0.107.0
 printf '    container: %s:latest\n' "${IMG}" >> "${CI}"
 assert_exit "a container: short form on latest in ci.yml fails" 1 run_check
-assert_last_output_contains "ci.yml names both tags" ".github/workflows/ci.yml pins more than one hatchet-lite tag: latest v0.107.0"
+assert_last_output_contains "ci.yml names both tags" ".github/workflows/ci.yml pins more than one hatchet-lite tag: latest (line 9), v0.107.0 (line 6)"
 
 every_tag v0.107.0
 printf '      e: { image: %s:latest }\n' "${IMG}" >> "${NEWEST}"
 assert_exit "a flow mapping image on latest fails" 1 run_check
-assert_last_output_contains "newest-client.yml is named for the flow mapping" ".github/workflows/newest-client.yml pins more than one hatchet-lite tag: latest v0.107.0"
+assert_last_output_contains "newest-client.yml is named for the flow mapping" ".github/workflows/newest-client.yml pins more than one hatchet-lite tag: latest (line 9), v0.107.0 (line 6)"
 
 every_tag v0.107.0
 printf 'jobs:\n  t:\n    strategy:\n      matrix:\n        engine: [%s:latest]\n' "${IMG}" > "${TREE}/.github/workflows/matrix.yml"
@@ -162,6 +162,34 @@ assert_exit "a workflow tag followed by a digest compares by its tag" 0 run_chec
 every_tag v0.107.0
 printf '# was %s:latest\n' "${IMG}" >> "${CI}"
 assert_exit "a comment that names latest is ignored" 0 run_check
+
+every_tag v0.107.0
+printf 'jobs:\n  t:\n    services:\n      e:\n        image: %s:v0.107.0${{ matrix.suffix }}\n' "${IMG}" > "${TREE}/.github/workflows/suffix.yml"
+assert_exit "a matrix suffix after the tag in a third workflow fails" 1 run_check
+assert_last_output_contains "the third workflow line is named" ".github/workflows/suffix.yml:5 names hatchet-lite in a layout this gate cannot read"
+
+every_tag v0.107.0
+sed -i.bak 's|hatchet-lite:v0.107.0|hatchet-lite:v0.107.0${{ matrix.suffix }}|' "${CI}" && rm "${CI}.bak"
+assert_exit "a matrix suffix after the tag in ci.yml fails" 1 run_check
+assert_last_output_contains "the ci.yml image line is named" ".github/workflows/ci.yml:6 names hatchet-lite in a layout this gate cannot read"
+
+every_tag v0.107.0
+printf 'jobs:\n  t:\n    steps:\n      - run: docker pull %s:v0.107.0$SUFFIX\n' "${IMG}" > "${TREE}/.github/workflows/pull.yml"
+assert_exit "a shell suffix after the tag in run: text fails" 1 run_check
+assert_last_output_contains "the run: line is named" ".github/workflows/pull.yml:4 names hatchet-lite in a layout this gate cannot read"
+
+for bad in v0.107.0-rc1 v0.107.01; do
+  every_tag v0.107.0
+  workflow_with_tag "${bad}" "${CI}"
+  assert_exit "a ${bad} tag fails" 1 run_check
+  assert_last_output_contains "the ${bad} tag is named" ".github/workflows/ci.yml pins hatchet-lite:${bad}"
+done
+
+for good in "\"${IMG}:v0.107.0\"" "'${IMG}:v0.107.0'" "[${IMG}:v0.107.0]" "{ image: ${IMG}:v0.107.0 }" "{image: ${IMG}:v0.107.0}" "${IMG}:v0.107.0 # note"; do
+  every_tag v0.107.0
+  printf 'x: %s\n' "${good}" >> "${CI}"
+  assert_exit "a reference written ${good} passes" 0 run_check
+done
 
 assert_exit "an unknown argument fails" 1 bash "${CHECK}" --nope
 

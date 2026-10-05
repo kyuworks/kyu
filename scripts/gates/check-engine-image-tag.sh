@@ -42,7 +42,11 @@ reference_tags() {
     while ((i = index(s, "/hatchet-lite")) > 0) {
       r = substr(s, i + 13)
       if (substr(r, 1, 1) == ":") {
-        if (match(r, /^:[A-Za-z0-9._-]+/)) t = substr(r, 2, RLENGTH - 1); else t = "(unreadable)"
+        if (match(r, /^:[A-Za-z0-9._-]+/)) {
+          t = substr(r, 2, RLENGTH - 1)
+          n = substr(r, RLENGTH + 1, 1)
+          if (n != "" && index(" \t\"\047@,]}#", n) == 0) t = "(unreadable)"
+        } else t = "(unreadable)"
       } else if (r ~ /^[A-Za-z0-9_.-]/) t = "(unreadable)"
       else t = "(none)"
       print t
@@ -72,7 +76,7 @@ one_engine_tag() {
         echo "FAIL: ${file}:${n} names hatchet-lite in a layout this gate cannot read" >&2
         bad=1
       fi
-      refs="${refs}${ref}"$'\n'
+      refs="${refs}${ref}"$'\t'"${n}"$'\n'
       [ -n "${first}" ] || first="${n}"
     done
   done < <(reference_lines "${ROOT_DIR}/${file}")
@@ -81,12 +85,12 @@ one_engine_tag() {
     return 1
   fi
   [ "${bad}" -eq 0 ] || return 1
-  tags="$(printf '%s' "${refs}" | sort -u)"
+  tags="$(printf '%s' "${refs}" | awk -F'\t' '!seen[$1]++' | sort)"
   if [ "$(printf '%s\n' "${tags}" | wc -l | tr -d ' ')" != "1" ]; then
-    echo "FAIL: ${file} pins more than one hatchet-lite tag: $(printf '%s' "${tags}" | tr '\n' ' ')" >&2
+    echo "FAIL: ${file} pins more than one hatchet-lite tag: $(printf '%s\n' "${tags}" | awk -F'\t' '{ printf "%s%s (line %s)", sep, $1, $2; sep = ", " }')" >&2
     return 1
   fi
-  printf '%s %s' "${tags}" "${first}"
+  printf '%s %s' "${tags%%$'\t'*}" "${first}"
 }
 
 status=0
