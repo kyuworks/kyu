@@ -31,9 +31,12 @@ Both integration jobs, and `newest-client.yml`, run the `hatchet-lite` tag that
 `infra/hatchet/compose.yaml` pins by default, the same tag as
 `infra/hatchet/fly/fly.toml`, never `latest`. An engine upgrade changes that one
 tag in all four files in one pull request.
-`scripts/gates/check-engine-image-tag.sh` (in the Lint job) fails the PR and
-names each file whose tag differs from compose.yaml; it also fails `latest`, an
-image with no tag, or a file that names two tags. Each run's "Wait for the
+`scripts/gates/check-engine-image-tag.sh` (in the Lint job, and in the commit
+hook when compose.yaml or fly.toml changes) reads every non-comment line under
+`.github/` (workflows and actions) that names `/hatchet-lite`, in any layout,
+including `run:` text. It fails the PR and names each file whose tag differs
+from compose.yaml; it also fails `latest`, an image with no tag, a file that
+names two tags, and a line whose tag it cannot read. Each run's "Wait for the
 engine" step prints the engine's version.
 
 `Build` is not required. It `needs:` the others, so a failed sibling skips it,

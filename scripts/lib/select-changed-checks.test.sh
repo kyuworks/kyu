@@ -134,6 +134,17 @@ assert_output_contains "changed .mjs selects its colocated .test.sh" \
   "selftest:scripts/lib/select-changed-checks.test.sh" \
   run_select "${REPO}" "HEAD~1...HEAD"
 
+# --- A change to the engine image tag in compose or Fly selects the gates ---
+for engine_file in infra/hatchet/compose.yaml infra/hatchet/fly/fly.toml; do
+  mkdir -p "${REPO}/$(dirname "${engine_file}")"
+  printf '# engine\n' >> "${REPO}/${engine_file}"
+  git -C "${REPO}" add "${engine_file}"
+  git -C "${REPO}" commit -qm "touch ${engine_file}"
+  assert_output_contains "a ${engine_file} change selects the gates" \
+    $'gates\tbash scripts/verify-gates.sh' \
+    run_select "${REPO}" "HEAD~1...HEAD"
+done
+
 # --- SELECT_CHANGED_ROOT is the only override; a stray ROOT_DIR is inert
 # (#review: renamed so a caller's own ROOT_DIR cannot silently retarget the
 # selector at an unrelated directory and select nothing). An empty decoy repo

@@ -104,12 +104,64 @@ done
 every_tag v0.107.0
 printf 'services:\n  hatchet-lite:\n    image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.107.0\n' > "${COMPOSE}"
 assert_exit "compose.yaml without the KYU_HATCHET_IMAGE_TAG default fails" 1 run_check
-assert_last_output_contains "the expected compose shape is named" "no hatchet-lite image tag found in infra/hatchet/compose.yaml"
+assert_last_output_contains "the expected compose shape is named" "infra/hatchet/compose.yaml:3 names hatchet-lite in a layout this gate cannot read"
 
 every_tag v0.107.0
 printf 'jobs:\n  t:\n    runs-on: ubuntu-latest\n' > "${CI}"
 assert_exit "ci.yml with no hatchet-lite image fails" 1 run_check
 assert_last_output_contains "the empty workflow is named" "no hatchet-lite image tag found in .github/workflows/ci.yml"
+
+IMG=ghcr.io/hatchet-dev/hatchet/hatchet-lite
+
+every_tag v0.107.0
+mkdir -p "${TREE}/.github/workflows"
+printf 'jobs:\n  t:\n    services:\n      e:\n        image: %s\n' "${IMG}" > "${TREE}/.github/workflows/third.yml"
+assert_exit "an untagged image in a third workflow fails" 1 run_check
+assert_last_output_contains "the untagged third workflow is named" ".github/workflows/third.yml pins hatchet-lite:(none)"
+
+every_tag v0.107.0
+printf '    container: %s:latest\n' "${IMG}" >> "${CI}"
+assert_exit "a container: short form on latest in ci.yml fails" 1 run_check
+assert_last_output_contains "ci.yml names both tags" ".github/workflows/ci.yml pins more than one hatchet-lite tag: latest v0.107.0"
+
+every_tag v0.107.0
+printf '      e: { image: %s:latest }\n' "${IMG}" >> "${NEWEST}"
+assert_exit "a flow mapping image on latest fails" 1 run_check
+assert_last_output_contains "newest-client.yml is named for the flow mapping" ".github/workflows/newest-client.yml pins more than one hatchet-lite tag: latest v0.107.0"
+
+every_tag v0.107.0
+printf 'jobs:\n  t:\n    strategy:\n      matrix:\n        engine: [%s:latest]\n' "${IMG}" > "${TREE}/.github/workflows/matrix.yml"
+assert_exit "a matrix value on latest fails" 1 run_check
+assert_last_output_contains "the matrix workflow is named" ".github/workflows/matrix.yml pins hatchet-lite:latest"
+
+every_tag v0.107.0
+printf '  second:\n    image: %s:latest\n' "${IMG}" >> "${COMPOSE}"
+assert_exit "a second literal compose service fails" 1 run_check
+assert_last_output_contains "compose.yaml and the line are named" "infra/hatchet/compose.yaml:6 names hatchet-lite in a layout this gate cannot read"
+
+every_tag v0.107.0
+mkdir -p "${TREE}/.github/actions/engine"
+printf 'runs:\n  using: docker\n  image: docker://%s:latest\n' "${IMG}" > "${TREE}/.github/actions/engine/action.yml"
+assert_exit "a docker action on latest fails" 1 run_check
+assert_last_output_contains "the action is named" ".github/actions/engine/action.yml pins hatchet-lite:latest"
+
+every_tag v0.107.0
+printf 'jobs:\n  t:\n    steps:\n      - run: docker pull %s:latest\n' "${IMG}" > "${TREE}/.github/workflows/pull.yaml"
+assert_exit "a run: script that pulls latest in a .yaml workflow fails" 1 run_check
+assert_last_output_contains "the .yaml workflow is named" ".github/workflows/pull.yaml pins hatchet-lite:latest"
+
+every_tag v0.107.0
+printf 'jobs:\n  t:\n    services:\n      e:\n        image: %s:${{ matrix.tag }}\n' "${IMG}" > "${TREE}/.github/workflows/dyn.yml"
+assert_exit "an image tag the gate cannot read fails" 1 run_check
+assert_last_output_contains "the unreadable line is named" ".github/workflows/dyn.yml:5 names hatchet-lite in a layout this gate cannot read"
+
+every_tag v0.107.0
+sed -i.bak "s|hatchet-lite:v0.107.0|hatchet-lite:v0.107.0@sha256:0123456789abcdef|" "${CI}" && rm "${CI}.bak"
+assert_exit "a workflow tag followed by a digest compares by its tag" 0 run_check
+
+every_tag v0.107.0
+printf '# was %s:latest\n' "${IMG}" >> "${CI}"
+assert_exit "a comment that names latest is ignored" 0 run_check
 
 assert_exit "an unknown argument fails" 1 bash "${CHECK}" --nope
 
