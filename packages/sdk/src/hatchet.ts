@@ -1,7 +1,7 @@
 // The one import site for the engine. The package has no `exports` map, so
 // `@hatchet-dev/typescript-sdk/v1` does not resolve under NodeNext; the file
-// path below does. The root barrel loads the removed v0 modules and prints
-// two `HATCHET_V0_REMOVED` deprecation warnings per process — never import it.
+// path below does. The root barrel also loads the legacy workflow and step
+// modules and the admin client, none of which this wrapper uses; import by path.
 import { V1TaskStatus } from '@hatchet-dev/typescript-sdk/clients/rest/generated/data-contracts.js'
 import {
   ConcurrencyLimitStrategy,
