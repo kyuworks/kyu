@@ -161,6 +161,16 @@ assert_exit "an entry is normalised before it is compared with the references" 0
 write_case refnorm all "packages:\n  - 'packages/*'\n"
 printf '{ "files": [], "references": [{ "path": "./packages/schemas" }, { "path": "packages/sdk/../sdk" }] }\n' > "${CASE}/tsconfig.json"
 assert_exit "a reference is normalised before it is compared with the entries" 0 run_case
+write_case slashboth all "packages:\n  - packages/schemas/\n  - packages/sdk/\n"
+printf '{ "files": [], "references": [{ "path": "packages/schemas/" }, { "path": "packages/sdk/" }] }\n' > "${CASE}/tsconfig.json"
+assert_exit "an entry and a reference that both end in a slash match" 0 run_case
+write_case slashref all "packages:\n  - packages/schemas\n  - packages/sdk\n"
+printf '{ "files": [], "references": [{ "path": "packages/schemas/" }, { "path": "packages/sdk//" }] }\n' > "${CASE}/tsconfig.json"
+assert_exit "a reference that ends in a slash matches an entry that does not" 0 run_case
+write_case slashes all "packages:\n  - packages/schemas//\n  - packages/sdk\n"
+assert_exit "a path with two trailing slashes names the same directory" 0 run_case
+write_case dotslashes all "packages:\n  - .//\n  - 'packages/*'\n"
+assert_exit "the workspace root entry .// names no package" 0 run_case
 
 # An entry outside the repository root is read the way pnpm reads it, relative to the root.
 write_case outside all "packages:\n  - 'packages/*'\n  - '../outside/*'\n"

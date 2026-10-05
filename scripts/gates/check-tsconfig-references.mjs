@@ -19,16 +19,19 @@ const label = path.basename(workspaceFile)
 const failures = []
 const fail = (msg) => failures.push(`FAIL: ${msg}`)
 
-// The directories one packages: entry names, or a reason the gate cannot read it. Like pnpm, one
-// trailing slash and a leading ./ change nothing, and . is the root, which no reference names.
+// One spelling for a directory path, used for entries and for references: normalised, no trailing slash.
+const cleanPath = (value) => path.normalize(value).replace(/(?<=.)\/+$/, '')
+
+// The directories one packages: entry names, or a reason the gate cannot read it. Like pnpm, trailing
+// slashes and a leading ./ change nothing, and . is the root, which no reference names.
 function entryDirs(entry) {
   if (entry === '') return 'has an empty packages: entry'
   if (entry.startsWith('!')) return 'has a packages: entry that starts with !; the gate does not support exclusions'
   if (path.isAbsolute(entry)) return 'has a packages: entry that is an absolute path; write it relative to the repository root'
-  const trimmed = entry.endsWith('/') ? entry.slice(0, -1) : entry
+  const trimmed = cleanPath(entry)
   const base = trimmed.endsWith('/*') ? trimmed.slice(0, -2) : trimmed
   if (GLOB_CHARACTER.test(base)) return 'has a packages: entry the gate cannot expand; write <dir>/* or a path'
-  if (base === trimmed) return path.normalize(trimmed) === '.' ? [] : [path.normalize(trimmed)]
+  if (base === trimmed) return trimmed === '.' ? [] : [trimmed]
   const baseDir = path.join(root, base)
   if (!existsSync(baseDir) || !statSync(baseDir).isDirectory()) return []
   return readdirSync(baseDir).sort().map((name) => path.join(base, name))
@@ -59,7 +62,7 @@ if (failures.length > 0) {
   process.exit(1)
 }
 const tsconfig = JSON.parse(readFileSync(tsconfigFile, 'utf8'))
-const refs = new Set((tsconfig.references ?? []).map((ref) => path.normalize(ref.path)))
+const refs = new Set((tsconfig.references ?? []).map((ref) => cleanPath(ref.path)))
 const missing = dirs.filter((dir) => existsSync(path.join(root, dir, 'tsconfig.json')) && !refs.has(dir))
 if (missing.length > 0) {
   console.error(`FAIL: workspace package(s) with a tsconfig.json are missing from ${tsconfigFile} references:`)
