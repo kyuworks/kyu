@@ -14,6 +14,8 @@ one it cannot read. A matrix job, a job that calls a reusable workflow, or a job
 `name:` holds `${{` does not count: GitHub builds its check names at run time. `release.yml` runs on tags
 and does not count.
 
+The same gate fails when a required name is the check name of more than one job in any workflow; when the job that supplies it has `if:`, `needs:` or `continue-on-error:`; or when its workflow's `pull_request` trigger holds `branches`, `branches-ignore`, `paths`, `paths-ignore` or any key but `types`, or a `types` without `opened`, `synchronize` and `reopened`. GitHub reports a job skipped by a condition, or by a failed job it needs, as passing; a workflow its trigger leaves out keeps the check pending and blocks every merge.
+
 | Job id | Check name | What it runs |
 | --- | --- | --- |
 | `lint` | Lint | `pnpm format:check`, `scripts/verify-gates.sh --range <base>...HEAD`, `pnpm lint` |
@@ -23,8 +25,7 @@ and does not count.
 | `self-tests` | Gate Self Tests | `scripts/verify-self-tests.sh` — every `*.test.sh` under `scripts/` and `.agents/skills/` |
 | `ship-loop` (in `ship-loop.yml`) | Ship loop | `scripts/gates/check-agent-ship-loop.sh` on the pull request body |
 
-Every one of these runs on every pull request. None is path-filtered: a
-skipped required check counts as passing, which would let a red job merge.
+Every one of these runs on every pull request: none has a condition, none waits on another job, and no trigger filter can leave one out. `ship-loop.yml` adds `edited` to the three default types so it re-runs when the body changes.
 
 Shard 1 runs the files listed in the suite's `vitest.integration.config.ts`;
 shard 2 runs every other file. `scripts/gates/check-integration-shards.sh`

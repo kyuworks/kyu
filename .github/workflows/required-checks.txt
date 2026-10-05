@@ -1,8 +1,10 @@
 # Required GitHub status-check names. Each must be a job `name:` in a workflow
 # that runs on pull_request (ci.yml, ship-loop.yml).
 # scripts/gates/check-required-ci-jobs.sh fails a PR when this list drifts.
-# GitHub treats a skipped required check as passing, so nothing here may be
-# path-filtered or conditional on a pull request.
+# GitHub treats a skipped required check as passing, and a workflow its trigger
+# leaves out keeps the check pending. So the one job that supplies each name has
+# no if:, needs: or continue-on-error:, and its pull_request trigger holds only
+# types:, with opened, synchronize and reopened. The gate enforces this.
 Lint
 Type Check
 Unit Tests

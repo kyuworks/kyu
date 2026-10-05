@@ -2,8 +2,8 @@
 # check-required-ci-jobs.sh — Required CI job names gate
 #
 # Ensures every name in the canonical required-checks list is the check name of
-# a job in a workflow that runs on pull_request. A rename or a dropped job fails
-# CI so required checks cannot drift from the ruleset. Extra jobs are allowed.
+# exactly one job, in a workflow that runs on pull_request, that GitHub cannot
+# skip or leave out. A rename or a dropped job fails CI. Extra jobs are allowed.
 #
 # The rules are in check-required-ci-jobs.mjs, which reads every workflow with
 # the `yaml` package (workflow-yaml.mjs) and fails a file it cannot read. The
