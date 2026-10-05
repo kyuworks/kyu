@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit tests for select-changed-checks.mjs (#30).
+# Unit tests for select-changed-checks.mjs (#30, #55).
 # Run: bash scripts/lib/select-changed-checks.test.sh
 set -uo pipefail
 # git exports these when it runs a hook (this suite may run from the
@@ -150,6 +150,50 @@ assert_output_contains "a shared gate module selects the suite of the gate that 
   "selftest:scripts/gates/check-user.test.sh" run_select "${REPO}" "HEAD~1...HEAD"
 assert_output_lacks "a shared gate module does not select a gate that does not import it" \
   "selftest:scripts/gates/check-other.test.sh" run_select "${REPO}" "HEAD~1...HEAD"
+
+printf "import { shared } from \"./shared-reader.mjs\"\n" > "${REPO}/scripts/gates/check-double.mjs"
+printf '#!/usr/bin/env bash\necho double-selftest\n' > "${REPO}/scripts/gates/check-double.test.sh"
+git -C "${REPO}" add scripts/gates
+git -C "${REPO}" commit -qm "add a gate that imports with double quotes"
+printf '// touched again\n' >> "${REPO}/scripts/gates/shared-reader.mjs"
+git -C "${REPO}" add scripts/gates/shared-reader.mjs
+git -C "${REPO}" commit -qm "touch shared reader again"
+assert_output_contains "a shared gate module selects a gate that imports it in double quotes" \
+  "selftest:scripts/gates/check-double.test.sh" run_select "${REPO}" "HEAD~1...HEAD"
+
+# --- A sourced shell helper with no suite of its own selects the suite of each script that sources it (#55) ---
+mkdir -p "${REPO}/.agents/skills/demo" "${REPO}/infra/demo"
+printf '# helper\nHELPER=1\n' > "${REPO}/scripts/lib/helper.sh"
+printf '#!/usr/bin/env bash\nsource "${SCRIPT_DIR}/../lib/helper.sh"\n' > "${REPO}/scripts/gates/check-sourcer.sh"
+printf '#!/usr/bin/env bash\necho sourcer-selftest\n' > "${REPO}/scripts/gates/check-sourcer.test.sh"
+printf '#!/usr/bin/env bash\nsource "$(dirname "${BASH_SOURCE[0]}")/../lib/helper.sh"\n' > "${REPO}/scripts/gates/check-direct.test.sh"
+printf '#!/usr/bin/env bash\n  . "${DIR}/scripts/lib/helper.sh"; echo dot\n' > "${REPO}/.agents/skills/demo/run.test.sh"
+printf '#!/usr/bin/env bash\nsource ../../scripts/lib/helper.sh\n' > "${REPO}/infra/demo/deploy.test.sh"
+printf '#!/usr/bin/env bash\n# must source scripts/lib/helper.sh\necho "does not source scripts/lib/helper.sh"\nsource "${D}/other-helper.sh"\n' > "${REPO}/scripts/gates/check-mention.sh"
+printf '#!/usr/bin/env bash\necho mention-selftest\n' > "${REPO}/scripts/gates/check-mention.test.sh"
+printf '#!/usr/bin/env bash\nsource "${D}/helper.sh"\n' > "${REPO}/scripts/gates/check-nosuite.sh"
+git -C "${REPO}" add -A
+git -C "${REPO}" commit -qm "add a sourced helper"
+printf '# touched\n' >> "${REPO}/scripts/lib/helper.sh"
+git -C "${REPO}" add scripts/lib/helper.sh
+git -C "${REPO}" commit -qm "touch the helper"
+for suite in scripts/gates/check-sourcer.test.sh scripts/gates/check-direct.test.sh .agents/skills/demo/run.test.sh infra/demo/deploy.test.sh; do
+  assert_output_contains "a changed sourced helper selects ${suite}" \
+    $'selftest:'"${suite}"$'\tbash scripts/lib/run-isolated-selftest.sh '"${suite}" run_select "${REPO}" "HEAD~1...HEAD"
+done
+assert_output_lacks "a script that only mentions the helper is not selected" \
+  "check-mention" run_select "${REPO}" "HEAD~1...HEAD"
+assert_output_lacks "a sourcing script with no suite adds no step" \
+  "check-nosuite" run_select "${REPO}" "HEAD~1...HEAD"
+
+printf '#!/usr/bin/env bash\necho helper-selftest\n' > "${REPO}/scripts/lib/helper.test.sh"
+printf '# touched again\n' >> "${REPO}/scripts/lib/helper.sh"
+git -C "${REPO}" add scripts/lib
+git -C "${REPO}" commit -qm "give the helper its own suite"
+assert_output_contains "a helper with its own suite selects that suite" \
+  "selftest:scripts/lib/helper.test.sh" run_select "${REPO}" "HEAD~1...HEAD"
+assert_output_lacks "a helper with its own suite does not also select its sourcers" \
+  "check-sourcer" run_select "${REPO}" "HEAD~1...HEAD"
 
 # --- A change to the engine image tag in compose or Fly selects the gates ---
 for engine_file in infra/hatchet/compose.yaml infra/hatchet/fly/fly.toml; do
