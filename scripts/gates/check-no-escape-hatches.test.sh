@@ -36,4 +36,10 @@ assert_output_contains "failure names the package-root file" \
   "examples/shop/vitest.integration.setup.ts" \
   env ROOT_DIR="${WORK}/example-root-dirty" bash "${CHECK}"
 
+# --- A .cts file is scanned like a .ts file (#45) ---
+mkdir -p "${WORK}/cts-dirty/packages/c/src"
+printf 'export const c = 1 as any\n' > "${WORK}/cts-dirty/packages/c/src/c.cts"
+assert_exit "escape hatch in a .cts source file fails" 1 env ROOT_DIR="${WORK}/cts-dirty" bash "${CHECK}"
+assert_output_contains "failure names the .cts file" "packages/c/src/c.cts" env ROOT_DIR="${WORK}/cts-dirty" bash "${CHECK}"
+
 gate_test_finish

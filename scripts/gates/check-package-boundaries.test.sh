@@ -129,4 +129,22 @@ assert_exit "sdk src/hatchet.ts, its test and built dist output pass" 0 env ROOT
 sdk_case sdk-mention src/consume/worker.ts "// Wraps @hatchet-dev/typescript-sdk through ../hatchet.js.\nexport const engine = '@hatchet-dev/typescript-sdk'\n"
 assert_exit "sdk comment or string naming the client passes" 0 env ROOT_DIR="${WORK}/sdk-mention" bash "${CHECK}"
 
+# --- A .cts file is scanned by all four checks like a .ts file (#45) ---
+mkdir -p "${WORK}/cts-relative/packages/a/src" "${WORK}/cts-relative/packages/b/src"
+printf "export const x = 1\n" > "${WORK}/cts-relative/packages/a/src/x.ts"
+printf "import { x } from '../../a/src/x.js'\nexport const z = x\n" > "${WORK}/cts-relative/packages/b/src/z.cts"
+assert_exit "relative import out of the package in a .cts file fails" 1 env ROOT_DIR="${WORK}/cts-relative" bash "${CHECK}"
+assert_last_output_contains "relative failure names the .cts file" "packages/b/src/z.cts"
+mkdir -p "${WORK}/cts-deep/packages/b/src"
+printf "import { x } from '@kyuworks/a/src/x.js'\nexport const z = x\n" > "${WORK}/cts-deep/packages/b/src/z.cts"
+assert_exit "deep import in a .cts file fails" 1 env ROOT_DIR="${WORK}/cts-deep" bash "${CHECK}"
+assert_last_output_contains "deep failure names the .cts file" "packages/b/src/z.cts"
+mkdir -p "${WORK}/cts-example/examples/shop/src"
+printf "import { Hatchet } from '@hatchet-dev/typescript-sdk'\nexport const h = Hatchet\n" > "${WORK}/cts-example/examples/shop/src/index.cts"
+assert_exit "a banned import in an example's .cts file fails" 1 env ROOT_DIR="${WORK}/cts-example" bash "${CHECK}"
+assert_last_output_contains "example failure names the .cts file" "examples/shop/src/index.cts"
+sdk_case sdk-cts src/consume/worker.cts "import { HatchetClient } from '@hatchet-dev/typescript-sdk/v1/index.js'\nexport const h = HatchetClient\n"
+assert_exit "sdk .cts file importing the client fails" 1 env ROOT_DIR="${WORK}/sdk-cts" bash "${CHECK}"
+assert_last_output_contains "sdk failure names the .cts file" "packages/sdk/src/consume/worker.cts:1:"
+
 gate_test_finish

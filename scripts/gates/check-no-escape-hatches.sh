@@ -19,11 +19,11 @@ PATTERN='as any\b|as unknown as\b|@ts-ignore|@ts-expect-error|eslint-disable|oxl
 HITS=""
 if [ -d packages ]; then
   HITS="${HITS}
-$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --exclude='*.test.ts' --exclude='*.test.tsx' --exclude-dir=node_modules --exclude-dir=dist "${PATTERN}" packages/*/src 2>/dev/null || true)"
+$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --include='*.cts' --exclude='*.test.ts' --exclude='*.test.tsx' --exclude-dir=node_modules --exclude-dir=dist "${PATTERN}" packages/*/src 2>/dev/null || true)"
 fi
 if [ -d examples ]; then
   HITS="${HITS}
-$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --exclude='*.test.ts' --exclude='*.test.tsx' --exclude-dir=node_modules --exclude-dir=dist "${PATTERN}" examples/*/ 2>/dev/null || true)"
+$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --include='*.cts' --exclude='*.test.ts' --exclude='*.test.tsx' --exclude-dir=node_modules --exclude-dir=dist "${PATTERN}" examples/*/ 2>/dev/null || true)"
 fi
 HITS="$(printf '%s' "${HITS}" | sed '/^$/d')"
 if [ -n "${HITS}" ]; then

@@ -54,14 +54,14 @@ check_relative_escapes() {
           esac
           ;;
       esac
-    done < <(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --exclude-dir=node_modules --exclude-dir=dist "from ['\"]\.\./" "${dir}/src" 2>/dev/null || true)
+    done < <(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --include='*.cts' --exclude-dir=node_modules --exclude-dir=dist "from ['\"]\.\./" "${dir}/src" 2>/dev/null || true)
   done
 }
 
 check_deep_imports() {
   local glob="$1"
   local deep
-  deep="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --exclude-dir=node_modules --exclude-dir=dist "from ['\"]@kyuworks/[a-z0-9-]+/(src|dist)/" ${glob}src 2>/dev/null || true)"
+  deep="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --include='*.cts' --exclude-dir=node_modules --exclude-dir=dist "from ['\"]@kyuworks/[a-z0-9-]+/(src|dist)/" ${glob}src 2>/dev/null || true)"
   if [ -n "${deep}" ]; then
     printf '%s\n' "${deep}" | sed 's/^/FAIL: deep import past the exports map: /' >&2
     FAIL=1
@@ -78,7 +78,7 @@ if [ -d examples ]; then
   # side-effect `import '...'`, dynamic `import('...')`, or `require('...')`.
   MODSPEC="@hatchet-dev/[^'\"]*|@kyuworks/schemas([^'\"]*)?"
   BANNED_PATTERN="(from|import)[[:space:]]+['\"](${MODSPEC})['\"]|(import|require)[[:space:]]*\([[:space:]]*['\"](${MODSPEC})['\"]"
-  BANNED="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --exclude-dir=node_modules --exclude-dir=dist "${BANNED_PATTERN}" examples/*/ 2>/dev/null || true)"
+  BANNED="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --include='*.cts' --exclude-dir=node_modules --exclude-dir=dist "${BANNED_PATTERN}" examples/*/ 2>/dev/null || true)"
   if [ -n "${BANNED}" ]; then
     printf '%s\n' "${BANNED}" | sed 's/^/FAIL: examples consume @kyuworks\/sdk only: /' >&2
     FAIL=1
@@ -114,7 +114,7 @@ if [ -d packages/sdk ]; then
   # Allowed by full path, not basename; dist/ and node_modules/ are skipped.
   ENGINE_SPEC="@hatchet-dev/[^'\"]*"
   ENGINE_PATTERN="(from|import)[[:space:]]+['\"](${ENGINE_SPEC})['\"]|(import|require)[[:space:]]*\([[:space:]]*['\"](${ENGINE_SPEC})['\"]"
-  ENGINE_HITS="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --exclude-dir=node_modules --exclude-dir=dist "${ENGINE_PATTERN}" packages/sdk 2>/dev/null | sed -E '/^packages\/sdk\/src\/hatchet(\.test)?\.ts:/d' || true)"
+  ENGINE_HITS="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --include='*.cts' --exclude-dir=node_modules --exclude-dir=dist "${ENGINE_PATTERN}" packages/sdk 2>/dev/null | sed -E '/^packages\/sdk\/src\/hatchet(\.test)?\.ts:/d' || true)"
   if [ -n "${ENGINE_HITS}" ]; then
     printf '%s\n' "${ENGINE_HITS}" | sed 's/^/FAIL: packages\/sdk imports @hatchet-dev\/ in src\/hatchet.ts only: /' >&2
     FAIL=1
