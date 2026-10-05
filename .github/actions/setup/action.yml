@@ -36,8 +36,8 @@ runs:
           packages/*/node_modules
         key: ${{ runner.os }}-node24-pnpm11.24-nm-${{ hashFiles('pnpm-lock.yaml') }}
 
-    # Every install verifies the lockfile against minimumReleaseAge. No job
-    # opts out — scripts/gates/check-supply-chain-verify.sh enforces that.
+    # Every install verifies the lockfile against minimumReleaseAge. Only
+    # newest-client.yml lifts it, in its own checkout and outside this action.
     - name: Install dependencies
       if: inputs.install == 'true'
       shell: bash

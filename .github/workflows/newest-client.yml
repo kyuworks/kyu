@@ -1,0 +1,164 @@
+name: Newest Hatchet client
+
+# A consumer's fresh install takes the newest client inside @kyuworks/sdk's caret range;
+# CI tests only the lockfile's. This tests the newest one. Not a pull-request check (REQUIRED.md).
+on:
+  schedule:
+    - cron: '41 6 * * 1' # Mondays, 06:41 UTC
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Run even when the newest version is the lockfile's
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# This workflow installs code younger than the release-age rule, so it gets no cache access.
+cache-mode: none
+
+env:
+  FORCE_COLOR: '1'
+
+jobs:
+  resolve:
+    name: Pick the client version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      newest: ${{ steps.pick.outputs.newest }}
+      test: ${{ steps.pick.outputs.test }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          install: 'false'
+          build: 'false'
+      - name: Newest stable version inside the SDK's range
+        id: pick
+        env:
+          FORCE_RUN: ${{ inputs.force }}
+        run: |
+          if [ "${FORCE_RUN}" = "true" ]; then set -- --force; fi
+          bash scripts/newest-hatchet-client.sh "$@" > "${RUNNER_TEMP}/pick.txt"
+          cat "${RUNNER_TEMP}/pick.txt" >> "${GITHUB_OUTPUT}"
+          { echo '### Hatchet client'; sed 's/^/- /' "${RUNNER_TEMP}/pick.txt"; } >> "${GITHUB_STEP_SUMMARY}"
+      - name: Nothing new to test
+        if: steps.pick.outputs.test == 'no'
+        env:
+          NEWEST: ${{ steps.pick.outputs.newest }}
+        run: echo "The newest client in range is the lockfile's (${NEWEST}). Nothing new to test." | tee -a "${GITHUB_STEP_SUMMARY}"
+
+  test:
+    name: Hatchet client ${{ needs.resolve.outputs.newest }} (${{ matrix.shard }}/2)
+    needs: resolve
+    if: needs.resolve.outputs.test == 'yes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['1', '2']
+    env:
+      KYU_TEST_DATABASE_URL: postgresql://hatchet:hatchet@localhost:5432/kyu_test
+      KYU_TEST_POOLER_DATABASE_URL: postgresql://hatchet:hatchet@127.0.0.1:6432/kyu_test
+      KYU_INTEGRATION_SHARD: ${{ matrix.shard }}
+      CLIENT_VERSION: ${{ needs.resolve.outputs.newest }}
+    # Same services as ci.yml's engine-services; change both together.
+    services:
+      postgres:
+        image: postgres:15.6
+        env:
+          POSTGRES_USER: hatchet
+          POSTGRES_PASSWORD: hatchet
+          POSTGRES_DB: hatchet
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -d hatchet -U hatchet"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      hatchet-lite:
+        image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:latest
+        env:
+          DATABASE_URL: postgresql://hatchet:hatchet@postgres:5432/hatchet?sslmode=disable
+          SERVER_AUTH_COOKIE_DOMAIN: localhost
+          SERVER_AUTH_COOKIE_INSECURE: 't'
+          SERVER_GRPC_BIND_ADDRESS: 0.0.0.0
+          SERVER_GRPC_INSECURE: 't'
+          SERVER_GRPC_BROADCAST_ADDRESS: localhost:7077
+          SERVER_GRPC_PORT: '7077'
+          SERVER_URL: http://localhost:8888
+          SERVER_AUTH_SET_EMAIL_VERIFIED: 't'
+          SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS: localhost:7077
+        ports:
+          - 8888:8888
+          - 7077:7077
+      pgbouncer:
+        image: edoburu/pgbouncer:v1.25.2-p0
+        env:
+          DB_HOST: postgres
+          DB_USER: hatchet
+          DB_PASSWORD: hatchet
+          AUTH_TYPE: scram-sha-256
+          POOL_MODE: transaction
+          LISTEN_PORT: '6432'
+          MAX_PREPARED_STATEMENTS: '0'
+          SERVER_IDLE_TIMEOUT: '10'
+        ports:
+          - 6432:6432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -p 6432 -U hatchet -d hatchet"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          install: 'false'
+          build: 'false'
+      # This checkout only, never committed. The new client and its new dependencies are younger
+      # than the 7-day rule, and pnpm re-checks ages before every script, so a flag is not enough.
+      - name: Install the newest client
+        run: |
+          if grep -q '^overrides:' pnpm-workspace.yaml; then echo "FAIL: pnpm-workspace.yaml already has overrides:" >&2; exit 1; fi
+          sed -i 's/^minimumReleaseAge: .*/minimumReleaseAge: 0/' pnpm-workspace.yaml
+          grep -qx 'minimumReleaseAge: 0' pnpm-workspace.yaml || { echo "FAIL: minimumReleaseAge not found" >&2; exit 1; }
+          printf "overrides:\n  '@hatchet-dev/typescript-sdk': %s\n" "${CLIENT_VERSION}" >> pnpm-workspace.yaml
+          pnpm install --no-frozen-lockfile
+          installed="$(node -p "require('./packages/sdk/node_modules/@hatchet-dev/typescript-sdk/package.json').version")"
+          if [ "${installed}" != "${CLIENT_VERSION}" ]; then echo "FAIL: installed ${installed}, picked ${CLIENT_VERSION}" >&2; exit 1; fi
+          echo "Shard ${KYU_INTEGRATION_SHARD}: testing @hatchet-dev/typescript-sdk ${installed}" >> "${GITHUB_STEP_SUMMARY}"
+      - run: pnpm build
+      - name: Test types and unit tests
+        if: matrix.shard == '1'
+        run: |
+          pnpm typecheck:tests
+          pnpm test
+      - name: Wait for the engine
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8888/api/ready >/dev/null 2>&1; then echo ready; exit 0; fi
+            sleep 2
+          done
+          echo "hatchet-lite never became ready" >&2
+          docker logs "${{ job.services.hatchet-lite.id }}" | tail -50
+          exit 1
+      - name: Mint a worker token
+        run: |
+          TOKEN="$(docker exec "${{ job.services.hatchet-lite.id }}" /hatchet-admin token create --config /config --tenant-id 707d0855-80ab-4e1f-a156-f1c4546cbf52 | tr -d '\r\n')"
+          echo "::add-mask::${TOKEN}"
+          echo "HATCHET_CLIENT_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
+          echo "HATCHET_CLIENT_TLS_STRATEGY=none" >> "$GITHUB_ENV"
+      - run: pnpm --filter @kyuworks/sdk test:integration

@@ -32,6 +32,8 @@ and a skipped required check passes. Require each name above instead.
 
 `Publish packages` in `release.yml` runs only on a `v*` tag. It is not a pull-request check; do not add it to `required-checks.txt` or the ruleset.
 
+`Newest Hatchet client` in `newest-client.yml` runs every Monday at 06:41 UTC and by hand. It is not a pull-request check; do not add it to `required-checks.txt` or the ruleset. `scripts/newest-hatchet-client.sh` finds the newest stable `@hatchet-dev/typescript-sdk` inside the range in `packages/sdk/package.json`. If that is the lockfile's version, the run stops, green. Otherwise, in its own checkout only, it adds a pnpm override for that version and sets `minimumReleaseAge: 0` (the new client and its new dependencies are younger than seven days), then builds and runs the unit tests and both integration shards against the same services as CI. Nothing is committed. The workflow sets `cache-mode: none`, so the week-young code it runs cannot read or write the repository's cache. A red run means the published range admits a client version the SDK fails on: fix the SDK, or narrow the range in the next release. GitHub emails a failed scheduled run only to whoever last changed its `cron` line.
+
 `Ship loop` in `ship-loop.yml` checks the agent ship-loop section of the pull request body. It is a separate workflow so that it re-runs when the body is edited.
 
 ## Branch protection
