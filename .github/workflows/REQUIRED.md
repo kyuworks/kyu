@@ -44,7 +44,11 @@ tag differs from compose.yaml; it also fails `latest`, an image with no tag, a
 file that names two tags, and a reference whose tag it cannot read. Its only
 exemption is the tag `${{ needs.pick.outputs.tag }}` in `newest-engine.yml`; that
 expression anywhere else, any other expression there, or a literal tag there that
-differs from compose.yaml still fails. Each run's "Wait for the
+differs from compose.yaml still fails. It also fails a digest after a tag (Docker pulls by the
+digest, so the tag is not what runs), `hatchet-lite` with no registry path before it, and
+`hatchet-lite` in upper case. `fly.toml` names the engine once, on the line after `[build]`, as
+`image = '<registry>/hatchet-lite:<tag>'`; outside comments no other line names `build`, `image` or
+`hatchet-lite`, or holds an escape or a multi-line string. Each run's "Wait for the
 engine" step prints the engine's version.
 
 `Build` is not required. It `needs:` the others, so a failed sibling skips it,
