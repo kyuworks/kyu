@@ -110,6 +110,22 @@ describe('toEnvelopeMetadata', () => {
   })
 })
 
+describe('sdkVersion', () => {
+  it('mirrors sdkVersion into kyu_sdk_version metadata and back into the handler fields', () => {
+    const envelope: Envelope = envelopeSchema.parse({ ...validEnvelope, sdkVersion: '0.3.0' })
+    const metadata = toEnvelopeMetadata(envelope)
+    expect(metadata['kyu_sdk_version']).toBe('0.3.0')
+    expect(fromEnvelopeMetadata(metadata).sdkVersion).toBe('0.3.0')
+  })
+
+  it('still accepts an envelope and metadata without it, as a 0.2.0 producer writes them', () => {
+    const envelope: Envelope = envelopeSchema.parse(validEnvelope)
+    const metadata = toEnvelopeMetadata(envelope)
+    expect(metadata).not.toHaveProperty('kyu_sdk_version')
+    expect(fromEnvelopeMetadata(metadata)).not.toHaveProperty('sdkVersion')
+  })
+})
+
 describe('fromEnvelopeMetadata', () => {
   it('round-trips through toEnvelopeMetadata', () => {
     const envelope: Envelope = envelopeSchema.parse({

@@ -27,6 +27,8 @@ export const envelopeSchema = z.object({
   correlationId: z.uuidv7(),
   causationId: z.uuidv7().optional(),
   source: z.string().min(1),
+  // Stamped by the SDK's publishEnvelope; tells a consumer which SDK wrote the message. Never routed on.
+  sdkVersion: z.string().min(1).max(64).optional(),
   data: z.record(z.string(), z.json()),
 })
 
@@ -53,6 +55,7 @@ export const envelopeMetadataSchema = z.object({
   correlationId: z.uuidv7(),
   causationId: z.uuidv7().optional(),
   source: z.string().min(1),
+  kyu_sdk_version: z.string().min(1).max(64).optional(),
 })
 
 export type EnvelopeMetadata = z.infer<typeof envelopeMetadataSchema>
@@ -70,6 +73,7 @@ export function toEnvelopeMetadata<TData extends MessageDataShape>(envelope: Env
   if (envelope.orgUnitId !== undefined) metadata['orgUnitId'] = envelope.orgUnitId
   if (envelope.actorUserId !== undefined) metadata['actorUserId'] = envelope.actorUserId
   if (envelope.causationId !== undefined) metadata['causationId'] = envelope.causationId
+  if (envelope.sdkVersion !== undefined) metadata['kyu_sdk_version'] = envelope.sdkVersion
   return metadata
 }
 
@@ -95,5 +99,6 @@ export function fromEnvelopeMetadata(record: Record<string, string>): EnvelopeMe
   if (parsed.orgUnitId !== undefined) fields.orgUnitId = parsed.orgUnitId
   if (parsed.actorUserId !== undefined) fields.actorUserId = parsed.actorUserId
   if (parsed.causationId !== undefined) fields.causationId = parsed.causationId
+  if (parsed.kyu_sdk_version !== undefined) fields.sdkVersion = parsed.kyu_sdk_version
   return fields
 }

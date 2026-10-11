@@ -182,11 +182,14 @@ interface Envelope<T> {
   correlationId: string;  // shared across a whole causal chain
   causationId?: string;   // id of the message this one was caused by
   source: string;         // producing project and component, 'shop.api'
+  sdkVersion?: string;    // @kyuworks/sdk release that wrote it; set by the SDK, absent from 0.2.0 producers
   data: T;                // ids-only unless the schema opts in
 }
 ```
 
 Mapping onto Hatchet: `name` is the event key; `data` and the scalar envelope fields are the event payload; `tenantId`, `correlationId`, `causationId`, `source` and `actorUserId` are duplicated into `additionalMetadata` so CEL filters, concurrency keys and rate-limit keys can read them; `tenantId` is the default `scope`.
+
+`sdkVersion` is the SDK's `SDK_VERSION`, written by `publishEnvelope` over any value the caller set, and mirrored into `additionalMetadata` as `kyu_sdk_version` so the run list can be filtered by it. It is for logs and support only: no subscription, filter or handler may route on it, and a consumer must accept a message without it.
 
 ### 7.2 Naming
 

@@ -3,6 +3,7 @@ import { defineEvent, envelopeSchema } from '@kyuworks/schemas'
 import { Client, DatabaseError } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { SDK_VERSION } from '../version.js'
 import { claimPendingRows } from './outboxRepository.js'
 import { createPublisher, publishEnvelope } from './publish.js'
 
@@ -64,6 +65,7 @@ describe('publish via the outbox', () => {
     expect(row?.name).toBe(envelope.name)
     expect(row?.tenant_id).toBe(envelope.tenantId)
     expect(envelopeSchema.parse(row?.envelope)).toEqual(envelope)
+    expect(envelope.sdkVersion).toBe(SDK_VERSION)
   })
 
   it('publishing the same envelope twice in one transaction rejects with the unique-violation error', async () => {
