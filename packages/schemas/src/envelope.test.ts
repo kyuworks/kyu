@@ -110,6 +110,40 @@ describe('toEnvelopeMetadata', () => {
   })
 })
 
+describe('sdkVersion', () => {
+  it('mirrors sdkVersion into kyu_sdk_version metadata and back into the handler fields', () => {
+    const envelope: Envelope = envelopeSchema.parse({ ...validEnvelope, sdkVersion: '0.3.0' })
+    const metadata = toEnvelopeMetadata(envelope)
+    expect(metadata['kyu_sdk_version']).toBe('0.3.0')
+    expect(fromEnvelopeMetadata(metadata).sdkVersion).toBe('0.3.0')
+  })
+
+  it('still accepts an envelope and metadata without it, as a 0.2.0 producer writes them', () => {
+    const envelope: Envelope = envelopeSchema.parse(validEnvelope)
+    const metadata = toEnvelopeMetadata(envelope)
+    expect(metadata).not.toHaveProperty('kyu_sdk_version')
+    expect(fromEnvelopeMetadata(metadata)).not.toHaveProperty('sdkVersion')
+  })
+
+  it.each(['', 'x'.repeat(65), null, 42])('drops %j from an envelope instead of rejecting it', (bad) => {
+    const parsed = envelopeSchema.safeParse({ ...validEnvelope, sdkVersion: bad })
+    expect(parsed.success).toBe(true)
+    expect(parsed.data?.sdkVersion).toBeUndefined()
+  })
+
+  it.each(['', 'x'.repeat(65), null, 42])('drops %j from engine metadata instead of rejecting it', (bad) => {
+    const metadata = toEnvelopeMetadata(envelopeSchema.parse(validEnvelope))
+    const parsed = envelopeMetadataSchema.safeParse({ ...metadata, kyu_sdk_version: bad })
+    expect(parsed.success).toBe(true)
+    expect(parsed.data?.kyu_sdk_version).toBeUndefined()
+  })
+
+  it.each(['', 'x'.repeat(65)])('fromEnvelopeMetadata leaves sdkVersion out for %j', (bad) => {
+    const metadata = toEnvelopeMetadata(envelopeSchema.parse(validEnvelope))
+    expect(fromEnvelopeMetadata({ ...metadata, kyu_sdk_version: bad })).not.toHaveProperty('sdkVersion')
+  })
+})
+
 describe('fromEnvelopeMetadata', () => {
   it('round-trips through toEnvelopeMetadata', () => {
     const envelope: Envelope = envelopeSchema.parse({

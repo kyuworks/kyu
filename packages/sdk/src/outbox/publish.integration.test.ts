@@ -3,6 +3,7 @@ import { defineEvent, envelopeSchema } from '@kyuworks/schemas'
 import { Client, DatabaseError } from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { SDK_VERSION } from '../version.js'
 import { claimPendingRows } from './outboxRepository.js'
 import { createPublisher, publishEnvelope } from './publish.js'
 
@@ -64,6 +65,7 @@ describe('publish via the outbox', () => {
     expect(row?.name).toBe(envelope.name)
     expect(row?.tenant_id).toBe(envelope.tenantId)
     expect(envelopeSchema.parse(row?.envelope)).toEqual(envelope)
+    expect(envelope.sdkVersion).toBe(SDK_VERSION)
   })
 
   it('publishing the same envelope twice in one transaction rejects with the unique-violation error', async () => {
@@ -105,6 +107,19 @@ describe('publish via the outbox', () => {
     const late = await claimPendingRows(client, { limit: 10, workerId: `w-${randomUUID()}`, staleAfterMs: 0 })
     expect(late.rows.map((row) => row.id)).toEqual([envelope.id])
   }, 10_000)
+
+  it('claims a row whose stored sdkVersion is unusable, with the field dropped', async () => {
+    const publisher = createPublisher({ source: 'outbox-test' })
+    const envelope = await publisher.publish(client, thingHappened, { n: 5 }, { tenantId: null })
+    await client.query(`UPDATE kyu_outbox SET envelope = jsonb_set(envelope, '{sdkVersion}', '""') WHERE id = $1`, [
+      envelope.id,
+    ])
+
+    const claimed = await claimPendingRows(client, { limit: 10, workerId: `w-${randomUUID()}`, staleAfterMs: 0 })
+
+    expect(claimed.rows.map((row) => row.id)).toEqual([envelope.id])
+    expect(claimed.rows[0]?.envelope.sdkVersion).toBeUndefined()
+  })
 
   it('a scheduled publish in a rolled-back transaction leaves no row', async () => {
     const publisher = createPublisher({ source: 'outbox-test' })

@@ -14,6 +14,7 @@ import { createHatchetClient } from '../hatchet.js'
 import type { Worker } from '../hatchet.js'
 import { claimPendingRows } from '../outbox/outboxRepository.js'
 import { createPublisher } from '../outbox/publish.js'
+import { SDK_VERSION } from '../version.js'
 import type { Relay } from './relay.js'
 import { startRelay } from './relay.js'
 import type { PushItem } from './toEvents.js'
@@ -345,6 +346,8 @@ describe('relay against the local engine', () => {
       expect(receivedEnvelope).toEqual(match.envelope)
       expect(result.additionalMetadata['envelopeId']).toBe(match.envelope.id)
       expect(result.additionalMetadata['tenantId']).toBe(match.tenantId)
+      expect(receivedEnvelope.sdkVersion).toBe(SDK_VERSION)
+      expect(result.additionalMetadata['kyu_sdk_version']).toBe(SDK_VERSION)
     } finally {
       await worker?.stop()
     }
@@ -689,5 +692,6 @@ describe('relay + subscribe: a scheduled publish waits for its time', () => {
     const delivered = seen.get(envelope.id)
     expect(delivered?.tenantId).toBe(tenantId)
     expect(delivered?.correlationId).toBe(envelope.id)
+    expect(delivered?.sdkVersion).toBe(SDK_VERSION)
   }, 180_000)
 })

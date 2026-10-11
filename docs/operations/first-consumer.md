@@ -267,6 +267,7 @@ export function pushContactSubscription(kyu: Kyu, pool: Pool): Subscription {
 - `ctx.envelope` — already decoded, with `data` checked against your definition ([`subscribe.ts`](../../packages/sdk/src/consume/subscribe.ts));
 - `ctx.signal` — aborts when the engine cancels this run, including a `cancel_in_progress` cancel. Pass it to your HTTP client so a stale push stops;
 - `ctx.retryCount`, `ctx.runId`, `ctx.logger`, `ctx.metadata`.
+- `ctx.envelope.sdkVersion` — the `@kyuworks/sdk` release that published the message, for your logs. A message from a producer on 0.2.0 or older has none. Do not branch on it.
 
 Throw to retry, up to `retries` with `backoff`. Throw `NonRetryableError` for a condition no retry can fix, such as a 400 or 404 answer that will not change on retry (408 and 429 are retryable), or a record that no longer exists. Either way an exhausted run is a failed run, which is the dead letter.
 

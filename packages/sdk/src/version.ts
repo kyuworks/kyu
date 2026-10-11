@@ -1,3 +1,3 @@
-// Bumped by the release process. The SDK stamps it into every envelope's
-// `source` metadata so a consumer can tell which client wrote a message.
+// Bumped by the release PR with the manifests (check-package-versions.sh). insertOutboxRow stamps it
+// into every envelope's `sdkVersion`, mirrored to engine metadata as `kyu_sdk_version`.
 export const SDK_VERSION = '0.2.0'

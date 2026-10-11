@@ -2,6 +2,7 @@ import { createEnvelope, defineEvent, envelopeSchema } from '@kyuworks/schemas'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import type { Queryable, QueryParam, QueryRows } from '../db/queryable.js'
+import { SDK_VERSION } from '../version.js'
 import { createPublisher, publishEnvelope } from './publish.js'
 
 const orderPlaced = defineEvent({ name: 'shop.order.placed', version: 1, data: z.object({ orderId: z.uuid() }) })
@@ -90,6 +91,27 @@ describe('createPublisher', () => {
 })
 
 describe('publishEnvelope', () => {
+  it('stores and returns the envelope with SDK_VERSION in sdkVersion, replacing a caller value', async () => {
+    const recordedParams: Array<readonly QueryParam[]> = []
+    const db: Queryable = {
+      query(_text: string, params: readonly QueryParam[]): Promise<QueryRows> {
+        recordedParams.push(params)
+        return Promise.resolve({ rows: [], rowCount: 1 })
+      },
+    }
+    const created = await createEnvelope(
+      orderPlaced,
+      { orderId: '018f0000-0000-7000-8000-000000000002' },
+      { tenantId: null, source: 'shop-service' },
+    )
+
+    const returned = await publishEnvelope(db, { ...created, sdkVersion: '0.0.0-caller' })
+
+    const stored = envelopeSchema.parse(JSON.parse(z.string().parse(recordedParams[0]?.[3])))
+    expect(stored.sdkVersion).toBe(SDK_VERSION)
+    expect(returned).toEqual(stored)
+  })
+
   it('rejects an invalid publishAt before touching the database', async () => {
     let calls = 0
     const db: Queryable = {
