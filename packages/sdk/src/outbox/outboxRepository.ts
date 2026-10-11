@@ -1,6 +1,7 @@
 import type { Envelope, EnvelopeData, MessageDataShape } from '@kyuworks/schemas'
 import { z } from 'zod'
 import type { Queryable, RelayQueryable } from '../db/queryable.js'
+import { SDK_VERSION } from '../version.js'
 import type { OutboxRow } from './rows.js'
 import { outboxRowSchema } from './rows.js'
 
@@ -33,15 +34,18 @@ function uuidArrayLiteral(ids: readonly string[]): string {
   return `{${ids.map((id) => JSON.stringify(id)).join(',')}}`
 }
 
+// Returns the envelope as stored: this SDK's version in `sdkVersion`, over any caller value.
 export async function insertOutboxRow<TData extends MessageDataShape = EnvelopeData>(
   db: Queryable,
   envelope: Envelope<TData>,
   publishAt?: Date,
-): Promise<void> {
+): Promise<Envelope<TData>> {
+  const stamped: Envelope<TData> = { ...envelope, sdkVersion: SDK_VERSION }
   await db.query(
     'INSERT INTO kyu_outbox (id, name, tenant_id, envelope, publish_at) VALUES ($1, $2, $3, $4::jsonb, COALESCE($5::timestamptz, now()))',
-    [envelope.id, envelope.name, envelope.tenantId, JSON.stringify(envelope), publishAt ?? null],
+    [stamped.id, stamped.name, stamped.tenantId, JSON.stringify(stamped), publishAt ?? null],
   )
+  return stamped
 }
 
 export interface UnclaimedOutboxRowMatch {

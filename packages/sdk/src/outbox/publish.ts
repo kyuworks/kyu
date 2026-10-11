@@ -13,10 +13,9 @@ import type { Queryable } from '../db/queryable.js'
 import { insertOutboxRow } from './outboxRepository.js'
 import { isTenantPaused, pauseTenant, resumeTenant } from './tenantPause.js'
 import type { KyuTenants } from './tenantPause.js'
-import { SDK_VERSION } from '../version.js'
 
-// Interior: takes the already-validated envelope and returns it as stored, with this SDK's
-// version in `sdkVersion` over any caller value. No ON CONFLICT: a repeated id raises, on purpose.
+// Interior: takes the already-validated envelope and returns it as stored (insertOutboxRow stamps
+// `sdkVersion`). No ON CONFLICT: a repeated id raises, on purpose.
 export async function publishEnvelope<TData extends MessageDataShape = EnvelopeData>(
   tx: Queryable,
   envelope: Envelope<TData>,
@@ -25,9 +24,7 @@ export async function publishEnvelope<TData extends MessageDataShape = EnvelopeD
   if (publishAt !== undefined && Number.isNaN(publishAt.getTime())) {
     throw new RangeError('publishAt must be a valid Date')
   }
-  const stamped: Envelope<TData> = { ...envelope, sdkVersion: SDK_VERSION }
-  await insertOutboxRow(tx, stamped, publishAt)
-  return stamped
+  return insertOutboxRow(tx, envelope, publishAt)
 }
 
 export type PublisherOptions = Omit<CreateEnvelopeOptions, 'source'> & {

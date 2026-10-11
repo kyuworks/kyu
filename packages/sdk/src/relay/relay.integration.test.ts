@@ -14,9 +14,9 @@ import { createHatchetClient } from '../hatchet.js'
 import type { Worker } from '../hatchet.js'
 import { claimPendingRows } from '../outbox/outboxRepository.js'
 import { createPublisher } from '../outbox/publish.js'
+import { SDK_VERSION } from '../version.js'
 import type { Relay } from './relay.js'
 import { startRelay } from './relay.js'
-import { SDK_VERSION } from '../version.js'
 import type { PushItem } from './toEvents.js'
 
 // Namespace is randomized per run so parallel worktrees sharing one engine

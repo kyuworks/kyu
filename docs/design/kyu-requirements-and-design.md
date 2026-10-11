@@ -189,7 +189,7 @@ interface Envelope<T> {
 
 Mapping onto Hatchet: `name` is the event key; `data` and the scalar envelope fields are the event payload; `tenantId`, `correlationId`, `causationId`, `source` and `actorUserId` are duplicated into `additionalMetadata` so CEL filters, concurrency keys and rate-limit keys can read them; `tenantId` is the default `scope`.
 
-`sdkVersion` is the SDK's `SDK_VERSION`, written by `publishEnvelope` over any value the caller set, and mirrored into `additionalMetadata` as `kyu_sdk_version` so the run list can be filtered by it. It is for logs and support only: no subscription, filter or handler may route on it, and a consumer must accept a message without it.
+`sdkVersion` is the SDK's `SDK_VERSION`, written by `insertOutboxRow` (so by `publish()`, scheduled ticks and any direct caller) over any value the caller set, and mirrored into `additionalMetadata` as `kyu_sdk_version` so the run list can be filtered by it. It is for logs and support only: no subscription, filter or handler may route on it, and a consumer must accept a message without it. On every read path (consume, outbox read, metadata decode) a value that is not a string of 1 to 64 characters is dropped, never a rejection.
 
 ### 7.2 Naming
 

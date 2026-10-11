@@ -1,7 +1,11 @@
+import { createEnvelope, defineEvent } from '@kyuworks/schemas'
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import type { Queryable, QueryParam, QueryRows, RelayQueryable } from '../db/queryable.js'
+import { SDK_VERSION } from '../version.js'
 import {
   claimPendingRows,
+  insertOutboxRow,
   markPublished,
   pruneCancelled,
   prunePublished,
@@ -9,6 +13,8 @@ import {
   recordPublishFailure,
   releaseClaims,
 } from './outboxRepository.js'
+
+const orderPlaced = defineEvent({ name: 'shop.order.placed', version: 1, data: z.object({ orderId: z.uuid() }) })
 
 interface RecordingQueryable extends Queryable {
   readonly calls: number
@@ -243,5 +249,28 @@ describe('prune functions', () => {
     await expect(pruneRetired(db, { retiredBefore: before, limit: 1.5 })).rejects.toThrow(RangeError)
     await expect(pruneCancelled(db, { cancelledBefore: before, limit: -1 })).rejects.toThrow(RangeError)
     expect(db.captured).toEqual([])
+  })
+})
+
+describe('insertOutboxRow', () => {
+  it('stores SDK_VERSION in sdkVersion over a caller value and returns the stored envelope', async () => {
+    const recordedParams: Array<readonly QueryParam[]> = []
+    const db: Queryable = {
+      query(_text: string, params: readonly QueryParam[]): Promise<QueryRows> {
+        recordedParams.push(params)
+        return Promise.resolve({ rows: [], rowCount: 1 })
+      },
+    }
+    const created = await createEnvelope(
+      orderPlaced,
+      { orderId: '018f0000-0000-7000-8000-000000000002' },
+      { tenantId: null, source: 'shop-service' },
+    )
+
+    const returned = await insertOutboxRow(db, { ...created, sdkVersion: 'forged' })
+
+    const stored = z.object({ sdkVersion: z.string() }).parse(JSON.parse(z.string().parse(recordedParams[0]?.[3])))
+    expect(stored.sdkVersion).toBe(SDK_VERSION)
+    expect(returned.sdkVersion).toBe(SDK_VERSION)
   })
 })

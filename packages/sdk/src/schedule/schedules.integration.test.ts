@@ -7,6 +7,7 @@ import { createKyu } from '../createKyu.js'
 import type { Kyu } from '../createKyu.js'
 import { createHatchetClient } from '../hatchet.js'
 import type { KyuWorker } from '../consume/worker.js'
+import { SDK_VERSION } from '../version.js'
 
 // Namespaced per run so parallel worktrees sharing one engine do not see
 // each other's cron ticks (relay.integration.test.ts's own convention). A
@@ -73,7 +74,7 @@ describe('kyu.schedules: a cron tick publishes through the outbox', () => {
     expect(found).toBe(true)
 
     const result = await client.query(
-      "SELECT id, tenant_id, envelope->>'correlationId' AS correlation_id FROM kyu_outbox WHERE name = $1",
+      "SELECT id, tenant_id, envelope->>'correlationId' AS correlation_id, envelope->>'sdkVersion' AS sdk_version FROM kyu_outbox WHERE name = $1",
       [ticked.name],
     )
     expect(result.rows).toHaveLength(1)
@@ -84,6 +85,7 @@ describe('kyu.schedules: a cron tick publishes through the outbox', () => {
     // The runner does not pass a correlationId to createEnvelope, so it
     // defaults to the envelope's own fresh id, not null.
     expect(row?.correlation_id).toBe(row?.id)
+    expect(row?.sdk_version).toBe(SDK_VERSION)
 
     await kyu.schedules.remove(scheduleName)
     const remaining = await kyu.schedules.list()

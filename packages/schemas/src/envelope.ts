@@ -15,6 +15,9 @@ export const messageVersionSchema = z.number().int().positive()
 
 export const messageKindSchema = z.enum(['event', 'command'])
 
+// Informational only: a value that is not a 1 to 64 character string is dropped on read, never a rejection.
+const sdkVersionSchema = z.string().min(1).max(64).optional().catch(undefined)
+
 export const envelopeSchema = z.object({
   id: z.uuidv7(),
   name: messageNameSchema,
@@ -27,8 +30,8 @@ export const envelopeSchema = z.object({
   correlationId: z.uuidv7(),
   causationId: z.uuidv7().optional(),
   source: z.string().min(1),
-  // Stamped by the SDK's publishEnvelope; tells a consumer which SDK wrote the message. Never routed on.
-  sdkVersion: z.string().min(1).max(64).optional(),
+  // Stamped by the SDK's insertOutboxRow; tells a consumer which SDK wrote the message. Never routed on.
+  sdkVersion: sdkVersionSchema,
   data: z.record(z.string(), z.json()),
 })
 
@@ -55,7 +58,7 @@ export const envelopeMetadataSchema = z.object({
   correlationId: z.uuidv7(),
   causationId: z.uuidv7().optional(),
   source: z.string().min(1),
-  kyu_sdk_version: z.string().min(1).max(64).optional(),
+  kyu_sdk_version: sdkVersionSchema,
 })
 
 export type EnvelopeMetadata = z.infer<typeof envelopeMetadataSchema>

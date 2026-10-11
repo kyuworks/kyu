@@ -108,6 +108,19 @@ describe('publish via the outbox', () => {
     expect(late.rows.map((row) => row.id)).toEqual([envelope.id])
   }, 10_000)
 
+  it('claims a row whose stored sdkVersion is unusable, with the field dropped', async () => {
+    const publisher = createPublisher({ source: 'outbox-test' })
+    const envelope = await publisher.publish(client, thingHappened, { n: 5 }, { tenantId: null })
+    await client.query(`UPDATE kyu_outbox SET envelope = jsonb_set(envelope, '{sdkVersion}', '""') WHERE id = $1`, [
+      envelope.id,
+    ])
+
+    const claimed = await claimPendingRows(client, { limit: 10, workerId: `w-${randomUUID()}`, staleAfterMs: 0 })
+
+    expect(claimed.rows.map((row) => row.id)).toEqual([envelope.id])
+    expect(claimed.rows[0]?.envelope.sdkVersion).toBeUndefined()
+  })
+
   it('a scheduled publish in a rolled-back transaction leaves no row', async () => {
     const publisher = createPublisher({ source: 'outbox-test' })
 
