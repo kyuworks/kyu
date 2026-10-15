@@ -1,17 +1,17 @@
 import type { Envelope } from './envelope.js'
-import { envelopeSchema } from './envelope.js'
+import { envelopeReadSchema } from './envelope.js'
 
 /** Input from a wire or a database column. The only type that may enter a parse function. */
 export type Unparsed = {} | null | undefined
 
 export function parseEnvelope(input: Unparsed): Envelope {
-  return envelopeSchema.parse(input)
+  return envelopeReadSchema.parse(input)
 }
 
 export function parseEnvelopeSafe(
   input: Unparsed,
 ): { ok: true; envelope: Envelope } | { ok: false; issues: ReadonlyArray<{ path: string; message: string }> } {
-  const result = envelopeSchema.safeParse(input)
+  const result = envelopeReadSchema.safeParse(input)
   if (!result.success) {
     return {
       ok: false,

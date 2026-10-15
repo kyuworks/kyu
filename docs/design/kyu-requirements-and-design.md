@@ -2,13 +2,13 @@
 
 The company message bus, built on self-hosted Hatchet.
 
-|                |                                         |
-| -------------- | --------------------------------------- |
-| Status         | Draft v0.2 for review                   |
-| Author         | Matt Demler (drafted with Claude)       |
-| Date           | 16 September 2026                       |
-| Decision owner | Matt                                    |
-| Reviewers      | Product reviewer, architecture reviewer |
+| | |
+|---|---|
+| Status | Draft v0.2 for review |
+| Author | Matt Demler (drafted with Claude) |
+| Date | 16 September 2026 |
+| Decision owner | Matt |
+| Reviewers | Product reviewer, architecture reviewer |
 
 ## 1. Purpose
 
@@ -42,14 +42,14 @@ Because every queue is private to its project, no project can subscribe to anoth
 
 ### 2.3 Terminology
 
-| Term            | Meaning                                                                                                       |
-| --------------- | ------------------------------------------------------------------------------------------------------------- |
-| Producer        | A project that writes events or commands to the bus                                                           |
-| Consumer        | A project that runs a Hatchet worker subscribing to bus messages                                              |
-| Bus tenant      | A Hatchet tenant. One per company project. Not a business tenant                                              |
-| Business tenant | A customer organisation in the producer's own model. Carried as message metadata                              |
-| Envelope        | The company-standard wrapper around every message                                                             |
-| Outbox          | A table in the producer's own database where messages are written transactionally before the relay ships them |
+| Term | Meaning |
+|---|---|
+| Producer | A project that writes events or commands to the bus |
+| Consumer | A project that runs a Hatchet worker subscribing to bus messages |
+| Bus tenant | A Hatchet tenant. One per company project. Not a business tenant |
+| Business tenant | A customer organisation in the producer's own model. Carried as message metadata |
+| Envelope | The company-standard wrapper around every message |
+| Outbox | A table in the producer's own database where messages are written transactionally before the relay ships them |
 
 ## 3. Goals and non-goals
 
@@ -75,43 +75,43 @@ Priority uses MoSCoW: M must, S should, C could.
 
 ### 4.1 Functional
 
-| ID  | Requirement                                                                                                                    | Pri |
-| --- | ------------------------------------------------------------------------------------------------------------------------------ | --- |
-| F1  | A producer can publish an event by name with a typed payload; all subscribers of that name receive it                          | M   |
-| F2  | A producer can send a command by name; exactly one handler processes it                                                        | M   |
-| F3  | Publishing is atomic with the producer's database transaction: rolled back with it, never lost after commit                    | M   |
-| F4  | A consumer subscribes by declaring a handler for a message name, with no change to the producer                                | M   |
-| F5  | A subscriber can filter which instances of an event it receives by a payload expression                                        | S   |
-| F6  | Delivery is at-least-once; the envelope carries a stable id so consumers can deduplicate                                       | M   |
-| F7  | Failed handlers retry with exponential backoff; a handler can mark an error as non-retryable                                   | M   |
-| F8  | After retries are exhausted the run is marked failed, is alertable, and can be replayed from the UI                            | M   |
-| F9  | Consumers can request per-key serialisation (FIFO per order id, per customer id)                                               | M   |
-| F10 | Consumers can request coalescing: "only the newest run for this key matters" and "drop if one is already running for this key" | M   |
-| F11 | Messages can be delivered after a delay, and handlers can be scheduled by cron                                                 | M   |
-| F12 | A long-running handler can sleep durably and wait durably for a correlated future event, surviving restarts                    | M   |
-| F13 | Handlers can be prioritised (interactive ahead of bulk)                                                                        | S   |
-| F14 | Handlers can be rate limited by a key (per business tenant, per external platform)                                             | M   |
-| F15 | External systems can push events into the bus over an authenticated HTTP webhook                                               | S   |
-| F16 | Every message carries business-tenant identity; consumers receive it and scope their own data access with it                   | M   |
-| F17 | Payloads carry identifiers, not entity snapshots, unless a schema explicitly opts in                                           | M   |
-| F18 | Message schemas are versioned and validated at publish and at consume                                                          | S   |
-| F19 | A message carries correlation and causation ids so a chain of work can be traced end to end                                    | S   |
-| F20 | Consumers can fan out to child work and wait for all children                                                                  | C   |
+| ID | Requirement | Pri |
+|---|---|---|
+| F1 | A producer can publish an event by name with a typed payload; all subscribers of that name receive it | M |
+| F2 | A producer can send a command by name; exactly one handler processes it | M |
+| F3 | Publishing is atomic with the producer's database transaction: rolled back with it, never lost after commit | M |
+| F4 | A consumer subscribes by declaring a handler for a message name, with no change to the producer | M |
+| F5 | A subscriber can filter which instances of an event it receives by a payload expression | S |
+| F6 | Delivery is at-least-once; the envelope carries a stable id so consumers can deduplicate | M |
+| F7 | Failed handlers retry with exponential backoff; a handler can mark an error as non-retryable | M |
+| F8 | After retries are exhausted the run is marked failed, is alertable, and can be replayed from the UI | M |
+| F9 | Consumers can request per-key serialisation (FIFO per order id, per customer id) | M |
+| F10 | Consumers can request coalescing: "only the newest run for this key matters" and "drop if one is already running for this key" | M |
+| F11 | Messages can be delivered after a delay, and handlers can be scheduled by cron | M |
+| F12 | A long-running handler can sleep durably and wait durably for a correlated future event, surviving restarts | M |
+| F13 | Handlers can be prioritised (interactive ahead of bulk) | S |
+| F14 | Handlers can be rate limited by a key (per business tenant, per external platform) | M |
+| F15 | External systems can push events into the bus over an authenticated HTTP webhook | S |
+| F16 | Every message carries business-tenant identity; consumers receive it and scope their own data access with it | M |
+| F17 | Payloads carry identifiers, not entity snapshots, unless a schema explicitly opts in | M |
+| F18 | Message schemas are versioned and validated at publish and at consume | S |
+| F19 | A message carries correlation and causation ids so a chain of work can be traced end to end | S |
+| F20 | Consumers can fan out to child work and wait for all children | C |
 
 ### 4.2 Non-functional
 
-| ID  | Requirement                                                                                                                                                                                                                                                                    | Pri |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --- |
-| N1  | Self-hosted on infrastructure the company already runs (Fly.io, managed Postgres); no new datastore family, except RabbitMQ as the engine's internal queue in deployed environments (amended 2026-09-25, [ADR](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md)) | M   |
-| N2  | Open-source, permissive licence with no per-run cost                                                                                                                                                                                                                           | M   |
-| N3  | Producer side stays available when the bus is down: the outbox absorbs the backlog and drains when the bus returns                                                                                                                                                             | M   |
-| N4  | Throughput target for release one: 10 messages/second sustained, 100/second burst. The first consumer's current load is well under this                                                                                                                                        | M   |
-| N5  | End-to-end latency from commit to handler start under five seconds at p95 for undelayed messages                                                                                                                                                                               | S   |
-| N6  | Run history retained at least 30 days in production, configurable                                                                                                                                                                                                              | S   |
-| N7  | Secrets held in 1Password and injected at runtime, never in files                                                                                                                                                                                                              | M   |
-| N8  | Worker-to-engine traffic stays on the private network with TLS                                                                                                                                                                                                                 | M   |
-| N9  | Upgrades are runbook-driven with a tested database backup first                                                                                                                                                                                                                | M   |
-| N10 | Failure alerts reach the team without anyone watching a dashboard                                                                                                                                                                                                              | M   |
+| ID | Requirement | Pri |
+|---|---|---|
+| N1 | Self-hosted on infrastructure the company already runs (Fly.io, managed Postgres); no new datastore family, except RabbitMQ as the engine's internal queue in deployed environments (amended 2026-09-25, [ADR](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md)) | M |
+| N2 | Open-source, permissive licence with no per-run cost | M |
+| N3 | Producer side stays available when the bus is down: the outbox absorbs the backlog and drains when the bus returns | M |
+| N4 | Throughput target for release one: 10 messages/second sustained, 100/second burst. The first consumer's current load is well under this | M |
+| N5 | End-to-end latency from commit to handler start under five seconds at p95 for undelayed messages | S |
+| N6 | Run history retained at least 30 days in production, configurable | S |
+| N7 | Secrets held in 1Password and injected at runtime, never in files | M |
+| N8 | Worker-to-engine traffic stays on the private network with TLS | M |
+| N9 | Upgrades are runbook-driven with a tested database backup first | M |
+| N10 | Failure alerts reach the team without anyone watching a dashboard | M |
 
 ## 5. Engine decision
 
@@ -123,13 +123,13 @@ Traceability from requirement to Hatchet feature is in Appendix B.
 
 Known gaps, and how they are covered:
 
-| Gap                                                                                                                                                                      | Cover                                                                                                                                                                                                                 |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No transactional outbox                                                                                                                                                  | Built in the SDK (section 8)                                                                                                                                                                                          |
+| Gap | Cover |
+|---|---|
+| No transactional outbox | Built in the SDK (section 8) |
 | No producer-side idempotency key on event push (confirmed absent in engine SDK v1.33.1, [ADR](../architecture/adr/20260925-handlers-may-emit-straight-to-the-engine.md)) | Envelope id plus consumer-side dedup; for runs, the engine's per-workflow idempotency key on the envelope id (proposed, pending a probe); content-hash staleness checks in handlers where a consumer already has them |
-| No separate dead-letter queue                                                                                                                                            | Failed runs are the dead letter; alert on them and replay from the UI                                                                                                                                                 |
-| Priority is only within one workflow                                                                                                                                     | Acceptable; use separate workflows for lanes that must not compete                                                                                                                                                    |
-| Hatchet Lite is documented for development and low volume                                                                                                                | Adequate for release one; the Compose or Helm topology is the upgrade path with no code change                                                                                                                        |
+| No separate dead-letter queue | Failed runs are the dead letter; alert on them and replay from the UI |
+| Priority is only within one workflow | Acceptable; use separate workflows for lanes that must not compete |
+| Hatchet Lite is documented for development and low volume | Adequate for release one; the Compose or Helm topology is the upgrade path with no code change |
 
 ## 6. Architecture
 
@@ -171,21 +171,21 @@ Every message on the bus, event or command, is an envelope:
 
 ```ts
 interface Envelope<T> {
-  id: string // UUIDv7, assigned by the producer at write time
-  name: string // 'shop.order.placed'
-  version: number // schema version of `data`, starts at 1
-  kind: 'event' | 'command'
-  occurredAt: string // ISO 8601, producer clock
-  tenantId: string | null // business tenant; null for global/system messages
-  orgUnitId?: string // a sub-division of the business tenant, when the producer has one
-  actorUserId?: string // who caused it, when a user did
-  correlationId: string // shared across a whole causal chain
-  causationId?: string // id of the message this one was caused by
-  source: string // producing project and component, 'shop.api'
-  sdkVersion?: string // @kyuworks/sdk release that wrote it; set by the SDK, absent from 0.2.0 producers
-  traceparent?: string // W3C trace context of the publishing span, when the publisher passes it
-  tracestate?: string // W3C vendor state that goes with traceparent
-  data: T // ids-only unless the schema opts in
+  id: string;             // UUIDv7, assigned by the producer at write time
+  name: string;           // 'shop.order.placed'
+  version: number;        // schema version of `data`, starts at 1
+  kind: 'event' | 'command';
+  occurredAt: string;     // ISO 8601, producer clock
+  tenantId: string | null; // business tenant; null for global/system messages
+  orgUnitId?: string;     // a sub-division of the business tenant, when the producer has one
+  actorUserId?: string;   // who caused it, when a user did
+  correlationId: string;  // shared across a whole causal chain
+  causationId?: string;   // id of the message this one was caused by
+  source: string;         // producing project and component, 'shop.api'
+  sdkVersion?: string;    // @kyuworks/sdk release that wrote it; set by the SDK, absent from 0.2.0 producers
+  traceparent?: string;   // W3C trace context of the publishing span, when the publisher passes it
+  tracestate?: string;    // W3C vendor state that goes with traceparent
+  data: T;                // ids-only unless the schema opts in
 }
 ```
 
@@ -193,7 +193,7 @@ Mapping onto Hatchet: `name` is the event key; `data` and the scalar envelope fi
 
 `sdkVersion` is the SDK's `SDK_VERSION`, written by `insertOutboxRow` (so by `publish()`, scheduled ticks and any direct caller) over any value the caller set, and mirrored into `additionalMetadata` as `kyu_sdk_version` so the run list can be filtered by it. It is for logs and support only: no subscription, filter or handler may route on it, and a consumer must accept a message without it. On every read path (consume, outbox read, metadata decode) a value that is not a string of 1 to 64 characters is dropped, never a rejection.
 
-`traceparent` and `tracestate` carry the [W3C trace context](https://www.w3.org/TR/trace-context/) of the span that published the message. The publisher passes them to `publish()`. The SDK does not read the active span itself and does not depend on `@opentelemetry/api`. `createEnvelope` refuses each of these with an `EnvelopeOptionsError` that names the field: a `traceparent` that is not version `00` with a trace id and parent id that are not all zeros (§3.2.2); a `tracestate` that is not 1 to 32 `key=value` members within 512 characters (§3.3.1; the 512 is Kyu's own writer cap, not a W3C validity limit, because §3.3.1.5 only says vendors SHOULD propagate at least that much); and a `tracestate` with members but no `traceparent`. A `tracestate` with no member at all (`""`, white space, or only commas) is valid W3C and is treated as absent, because an OpenTelemetry propagator injects an empty one when the incoming request had none. On every read path a value that breaks those rules is dropped, never a rejection, as for `sdkVersion`, and a `tracestate` is dropped whenever its `traceparent` is absent or was dropped (§3.3). `traceparent` is copied into `additionalMetadata` as `kyu_traceparent` so the run list can be filtered by trace. `tracestate` is not copied. The engine (hatchet-lite v0.107.0) writes its own bare `traceparent` key into every run's metadata with an engine-generated trace id, so the bare key seen in the dashboard is the engine's, not the producer's; `kyu_traceparent` is ours. The key has the `kyu_` prefix because the engine SDK's OpenTelemetry instrumentor reads a bare `traceparent` key and would make the run's span a child of the producer's. A consumer span links to the producer's context and does not descend from it, because the handler runs in another process at another time ([OpenTelemetry messaging spans](https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/)). A message that a handler publishes carries the handler's own span context, not `ctx.envelope.traceparent`. `causationId` already records the chain.
+`traceparent` and `tracestate` carry the [W3C trace context](https://www.w3.org/TR/trace-context/) of the span that published the message. The publisher passes them to `publish()`. The SDK does not read the active span itself and does not depend on `@opentelemetry/api`. `createEnvelope` refuses each of these with an `EnvelopeOptionsError` that names the field: a `traceparent` that is not version `00` with a trace id and parent id that are not all zeros (§3.2.2); a `tracestate` that is not 1 to 32 `key=value` members within 512 characters (§3.3.1; the 512 is Kyu's own writer cap, not a W3C validity limit, because §3.3.1.5 only says vendors SHOULD propagate at least that much); and a `tracestate` with members but no `traceparent`. A `tracestate` with no member at all (`""`, white space, or only commas) is valid W3C and is treated as absent, because an OpenTelemetry propagator injects an empty one when the incoming header had no valid member. On every read path a value that breaks those rules is dropped, never a rejection, as for `sdkVersion`, and a `tracestate` is dropped whenever its `traceparent` is absent or was dropped (§3.3). `traceparent` is copied into `additionalMetadata` as `kyu_traceparent` so the run list can be filtered by trace. `tracestate` is not copied. The engine (hatchet-lite v0.107.0) writes its own bare `traceparent` key into every run's metadata with an engine-generated trace id, so the bare key seen in the dashboard is the engine's, not the producer's; `kyu_traceparent` is ours. The key has the `kyu_` prefix because the engine SDK's OpenTelemetry instrumentor reads a bare `traceparent` key and would make the run's span a child of the producer's. A consumer span links to the producer's context and does not descend from it, because the handler runs in another process at another time ([OpenTelemetry messaging spans](https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/)). A message that a handler publishes carries the handler's own span context, not `ctx.envelope.traceparent`. `causationId` already records the chain.
 
 ### 7.2 Naming
 
@@ -348,12 +348,12 @@ Delivery is at-least-once end to end. Every handler is idempotent by one of two 
 
 Declared per subscription, evaluated by Hatchet on the engine using CEL against the payload and metadata:
 
-| Need                                     | Declaration                                                                                                                        |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| FIFO per order                           | `concurrency: { expression: 'input.data.orderId', maxRuns: 1, limitStrategy: GROUP_ROUND_ROBIN }`                                  |
-| Only the newest matters (debounced push) | `limitStrategy: CANCEL_IN_PROGRESS` on the same key                                                                                |
-| One active run per owner, drop extras    | `limitStrategy: CANCEL_NEWEST`                                                                                                     |
-| Per-business-tenant fairness             | `concurrency: { key: 'input.tenantId', maxRuns: 1, strategy: 'round-robin' }` — one run per tenant at a time, tenants taking turns |
+| Need | Declaration |
+|---|---|
+| FIFO per order | `concurrency: { expression: 'input.data.orderId', maxRuns: 1, limitStrategy: GROUP_ROUND_ROBIN }` |
+| Only the newest matters (debounced push) | `limitStrategy: CANCEL_IN_PROGRESS` on the same key |
+| One active run per owner, drop extras | `limitStrategy: CANCEL_NEWEST` |
+| Per-business-tenant fairness | `concurrency: { key: 'input.tenantId', maxRuns: 1, strategy: 'round-robin' }` — one run per tenant at a time, tenants taking turns |
 
 `'fifo'` and `'round-robin'` both map to `GROUP_ROUND_ROBIN`, the engine's only non-deprecated queueing strategy: FIFO inside a key group, round robin across groups. Fairness comes from choosing a key that groups a whole business tenant, not from a different strategy. A concurrency expression may read `additional_metadata.tenantId` as well as `input.tenantId`; both are proven against the local engine.
 
@@ -394,23 +394,19 @@ A cancelled run ends as `cancelled`, not `failed`, and is not retried, so it nev
 Working shape; names to be finalised in review.
 
 ```ts
-import { createKyu, createPublisher, defineEvent, pruneOutbox } from '@kyuworks/sdk'
+import { createKyu, createPublisher, defineEvent, pruneOutbox } from '@kyuworks/sdk';
 
-const orderPlaced = defineEvent({
-  name: 'shop.order.placed',
-  version: 1,
-  data: z.object({ orderId: z.string(), customerId: z.string() }),
-})
-const orderShipped = defineEvent({ name: 'shop.order.shipped', version: 1, data: z.object({ orderId: z.string() }) })
+const orderPlaced = defineEvent({ name: 'shop.order.placed', version: 1, data: z.object({ orderId: z.string(), customerId: z.string() }) });
+const orderShipped = defineEvent({ name: 'shop.order.shipped', version: 1, data: z.object({ orderId: z.string() }) });
 
-const kyu = createKyu({ hatchet: hatchetClient, source: 'shop.api' })
+const kyu = createKyu({ hatchet: hatchetClient, source: 'shop.api' });
 
 // Producer, inside a transaction
-await kyu.publish(tx, orderPlaced, { orderId, customerId }, { tenantId, actorUserId })
+await kyu.publish(tx, orderPlaced, { orderId, customerId }, { tenantId, actorUserId });
 
 // A process that only publishes needs no engine client and no engine token
-const publisher = createPublisher({ source: 'shop.cli' })
-await publisher.publish(tx, orderPlaced, { orderId, customerId }, { tenantId })
+const publisher = createPublisher({ source: 'shop.cli' });
+await publisher.publish(tx, orderPlaced, { orderId, customerId }, { tenantId });
 
 // Consumer
 export const sendInvoice = kyu.subscribe(orderPlaced, {
@@ -419,10 +415,8 @@ export const sendInvoice = kyu.subscribe(orderPlaced, {
   retries: 5,
   backoff: { factor: 2, maxSeconds: 600 },
   rateLimit: { per: 'tenant', limit: 50, window: 'minute' },
-  handler: (ctx) => {
-    /* open tenant-scoped tx with ctx.envelope.tenantId */
-  },
-})
+  handler: (ctx) => { /* open tenant-scoped tx with ctx.envelope.tenantId */ },
+});
 
 // Durable consumer
 export const followUpOrder = kyu.durable(orderPlaced, {
@@ -430,34 +424,27 @@ export const followUpOrder = kyu.durable(orderPlaced, {
   concurrency: { key: 'input.data.customerId', maxRuns: 1, strategy: 'cancel_newest' },
   executionTimeout: '240h',
   handler: async (ctx) => {
-    await ctx.sleepFor('48h')
-    const shipped = await ctx.waitFor(orderShipped, {
-      where: { field: 'data.orderId', equals: ctx.envelope.data.orderId },
-      timeout: '120h',
-    })
+    await ctx.sleepFor('48h');
+    const shipped = await ctx.waitFor(orderShipped, { where: { field: 'data.orderId', equals: ctx.envelope.data.orderId }, timeout: '120h' });
   },
-})
+});
 
 // Worker
-const worker = await kyu.worker('shop-api', { subscriptions: [sendInvoice, followUpOrder], slots: 10 })
-await worker.start()
-const marketplaceWorker = await kyu.worker('shop-marketplace', {
-  subscriptions: [sendInvoice, followUpOrder],
-  serves: ['send-invoice'],
-  slots: 2,
-})
+const worker = await kyu.worker('shop-api', { subscriptions: [sendInvoice, followUpOrder], slots: 10 });
+await worker.start();
+const marketplaceWorker = await kyu.worker('shop-marketplace', { subscriptions: [sendInvoice, followUpOrder], serves: ['send-invoice'], slots: 2 });
 
 // Relay, started once per project, in its own process
-const relay = kyu.startRelay({ db: pool, workerId: 'shop-api-1' })
+const relay = kyu.startRelay({ db: pool, workerId: 'shop-api-1' });
 
 // Outbox prune, once a day from the producer's own scheduler (45-day floor)
-await pruneOutbox(pool)
+await pruneOutbox(pool);
 
 // Alerting: a run's outcome by envelope id, without the engine client
-const outcomes = await kyu.runs.forEnvelope(envelope.id)
-const deadLetters = outcomes.filter((o) => o.status === 'failed')
-const progress = await kyu.runs.forCorrelation(envelope.correlationId) // every run of one workflow run, oldest first
-await kyu.runs.cancelForCorrelation(envelope.correlationId) // stop a workflow run and everything it started
+const outcomes = await kyu.runs.forEnvelope(envelope.id);
+const deadLetters = outcomes.filter((o) => o.status === 'failed');
+const progress = await kyu.runs.forCorrelation(envelope.correlationId); // every run of one workflow run, oldest first
+await kyu.runs.cancelForCorrelation(envelope.correlationId); // stop a workflow run and everything it started
 ```
 
 Durable handlers set `executionTimeout` above the total of their sleeps and waits; the SDK defaults it to 24 hours.
@@ -474,19 +461,19 @@ Commands use the same `publish` and `subscribe` calls with `kind: 'command'`; th
 
 ## 12. Deployment and operations
 
-| Concern        | Release one                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Who runs it    | Each producer application, from the template in `infra/hatchet/fly/`, following `docs/operations/kyu-engine-on-fly.md`. Kyu runs no deployed engine ([ADR](../architecture/adr/20261006-each-producer-application-runs-its-own-engine.md)). The local stack (`infra/hatchet/compose.yaml`) and the `hatchet-lite` service in CI are Kyu's test infrastructure                                                                                                                                                                                                                                           |
-| Runtime        | `hatchet-lite` as a Fly app per environment, one machine, no autostop, `performance-2x` in the template, dedicated IPv4, health check on `/api/ready`; the template's region is `syd`                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Internal queue | RabbitMQ in every deployed environment, decided 2026-09-25 ([ADR](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md)); N1 is amended for it. The template's broker: `rabbitmq:3.13.7`, one `performance-1x` machine, private network only. Only the local stack and CI use the Postgres-backed queue: on Fly it never met `outbox-backlog`'s window on any database plan tried, and on RabbitMQ with both clusters on Launch, both load scenarios met theirs (`docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`)                                                                     |
-| Relay          | One sidecar process per project per environment, on a small dedicated pool; supervised, restarted on exit; in-process only for a single-process project                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| Database       | Fly Managed Postgres, one cluster per environment, Postgres 17, direct session-mode connection, no pooler; not a project's own database or its transaction pooler. Plan: Launch or larger for load at the harness's report size; Basic passed only at smoke size (measured September 2026, guide _Sizing_)                                                                                                                                                                                                                                                                                              |
-| Config         | Every secret name and where its value comes from: `infra/hatchet/fly/secrets.sh`; deploy and operate steps: `docs/operations/kyu-engine-on-fly.md`                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Backups        | The platform's daily snapshot; restore rehearsal steps in the guide. A rehearsal on 2026-09-23 completed in about 3.5 minutes; its data was not checked                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| Upgrades       | Kyu pins the image tag (`v0.107.0`) in its test infrastructure and the template, and moves it in one PR (`scripts/gates/check-engine-image-tag.sh`); each producer's operator then moves its own copy: snapshot, upgrade dev, soak, staging, production; Hatchet migrates its schema on start                                                                                                                                                                                                                                                                                                           |
-| Retention      | Run and event history is dropped by whole days after `SERVER_LIMITS_DEFAULT_TENANT_RETENTION_PERIOD`, one engine-wide env var in `fly.toml` (not per tenant: the per-tenant column in v0.107.0 only drives old-worker cleanup, which is off). The template sets `168h` (7 days) for dev; production `720h` (30 days). Guide: _Retention_                                                                                                                                                                                                                                                                |
-| Monitoring     | Failed-run alerts: each engine's operator may turn on the engine's own Slack alerting (guide, _Turning on failure alerts_); Kyu runs no alerting. Its message carries the workflow name, the time, and a link with the tenant and run ids only; no payloads, error text or logs (engine source v0.107.0, `internal/integrations/alerting/slack.go:59-69`). Engine metrics: `/api/v1/meta` reports `observabilityEnabled:false` (that flag gates only OTel trace collection) and `prometheusServerEnabled:false`, so there is nothing to scrape yet. Outbox-lag alert from each producer: still deferred |
-| Scaling path   | Compose or Helm topology with separate engine replicas and RabbitMQ when N4 is exceeded; no code change; the template already runs hatchet-lite on RabbitMQ                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Concern | Release one |
+|---|---|
+| Who runs it | Each producer application, from the template in `infra/hatchet/fly/`, following `docs/operations/kyu-engine-on-fly.md`. Kyu runs no deployed engine ([ADR](../architecture/adr/20261006-each-producer-application-runs-its-own-engine.md)). The local stack (`infra/hatchet/compose.yaml`) and the `hatchet-lite` service in CI are Kyu's test infrastructure |
+| Runtime | `hatchet-lite` as a Fly app per environment, one machine, no autostop, `performance-2x` in the template, dedicated IPv4, health check on `/api/ready`; the template's region is `syd` |
+| Internal queue | RabbitMQ in every deployed environment, decided 2026-09-25 ([ADR](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md)); N1 is amended for it. The template's broker: `rabbitmq:3.13.7`, one `performance-1x` machine, private network only. Only the local stack and CI use the Postgres-backed queue: on Fly it never met `outbox-backlog`'s window on any database plan tried, and on RabbitMQ with both clusters on Launch, both load scenarios met theirs (`docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`) |
+| Relay | One sidecar process per project per environment, on a small dedicated pool; supervised, restarted on exit; in-process only for a single-process project |
+| Database | Fly Managed Postgres, one cluster per environment, Postgres 17, direct session-mode connection, no pooler; not a project's own database or its transaction pooler. Plan: Launch or larger for load at the harness's report size; Basic passed only at smoke size (measured September 2026, guide *Sizing*) |
+| Config | Every secret name and where its value comes from: `infra/hatchet/fly/secrets.sh`; deploy and operate steps: `docs/operations/kyu-engine-on-fly.md` |
+| Backups | The platform's daily snapshot; restore rehearsal steps in the guide. A rehearsal on 2026-09-23 completed in about 3.5 minutes; its data was not checked |
+| Upgrades | Kyu pins the image tag (`v0.107.0`) in its test infrastructure and the template, and moves it in one PR (`scripts/gates/check-engine-image-tag.sh`); each producer's operator then moves its own copy: snapshot, upgrade dev, soak, staging, production; Hatchet migrates its schema on start |
+| Retention | Run and event history is dropped by whole days after `SERVER_LIMITS_DEFAULT_TENANT_RETENTION_PERIOD`, one engine-wide env var in `fly.toml` (not per tenant: the per-tenant column in v0.107.0 only drives old-worker cleanup, which is off). The template sets `168h` (7 days) for dev; production `720h` (30 days). Guide: *Retention* |
+| Monitoring | Failed-run alerts: each engine's operator may turn on the engine's own Slack alerting (guide, *Turning on failure alerts*); Kyu runs no alerting. Its message carries the workflow name, the time, and a link with the tenant and run ids only; no payloads, error text or logs (engine source v0.107.0, `internal/integrations/alerting/slack.go:59-69`). Engine metrics: `/api/v1/meta` reports `observabilityEnabled:false` (that flag gates only OTel trace collection) and `prometheusServerEnabled:false`, so there is nothing to scrape yet. Outbox-lag alert from each producer: still deferred |
+| Scaling path | Compose or Helm topology with separate engine replicas and RabbitMQ when N4 is exceeded; no code change; the template already runs hatchet-lite on RabbitMQ |
 
 Harness numbers from a deployment of this template, since decommissioned (September 2026): `docs/proofs/2026-09-23-shop-failure-harness-fly-dev.md`
 
@@ -518,15 +505,15 @@ One real project adds the outbox table, starts the relay beside it, publishes it
 
 A consumer's workflow engine moves onto durable handlers: each run becomes one durable handler interpreting the workflow definition. Mapping:
 
-| Legacy mechanism                           | Bus mechanism                                                                                                            |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| Trigger job from a service seam            | Subscription on the trigger's event name with a CEL filter                                                               |
-| One job per step with a claim token        | Steps inside one durable handler; Hatchet checkpoints them                                                               |
-| Duration wait and a due sweep              | `sleepFor` for a short wait; above the hand-off threshold, `publish()` with `publishAt` at the wake time and a fresh run |
-| Wait-for-completion and a resumption table | `waitForEvent` with a CEL filter on the awaited id                                                                       |
-| Schedule and `next_run_at`                 | Cron handlers                                                                                                            |
-| One active run per owner unique index      | Concurrency key on owner id with `CANCEL_NEWEST`                                                                         |
-| Per-tenant action limits                   | Rate limits keyed on tenant                                                                                              |
+| Legacy mechanism | Bus mechanism |
+|---|---|
+| Trigger job from a service seam | Subscription on the trigger's event name with a CEL filter |
+| One job per step with a claim token | Steps inside one durable handler; Hatchet checkpoints them |
+| Duration wait and a due sweep | `sleepFor` for a short wait; above the hand-off threshold, `publish()` with `publishAt` at the wake time and a fresh run |
+| Wait-for-completion and a resumption table | `waitForEvent` with a CEL filter on the awaited id |
+| Schedule and `next_run_at` | Cron handlers |
+| One active run per owner unique index | Concurrency key on owner id with `CANCEL_NEWEST` |
+| Per-tenant action limits | Rate limits keyed on tenant |
 
 Stays in the consumer: workflow definitions and versions, run ledger rows for its UI, condition evaluation over its own projections, action executors, run-as-user scope.
 
@@ -550,39 +537,39 @@ Synchronous third-party lookups get a shared HTTP client with timeouts, retries 
 
 ## Appendix A: legacy patterns and their bus equivalents
 
-| Legacy pattern                                     | Bus                                                |
-| -------------------------------------------------- | -------------------------------------------------- |
-| Edit-triggered push job                            | Command with per-key FIFO and `CANCEL_IN_PROGRESS` |
-| Tick-style sweep                                   | Cron handler fanning out commands                  |
-| Chained page pulls                                 | Durable handler fanning out child runs per page    |
-| Log pruning tick                                   | Cron handler                                       |
-| Inbound email summarising                          | Event with a rate-limited subscriber               |
-| Expiry and schedule ticks                          | Cron handlers                                      |
-| Notification ticks                                 | Cron handlers, or workflow steps                   |
-| Interval processors started from the API boot file | Cron handlers                                      |
-| Webhook polling                                    | Inbound webhook                                    |
-| In-process dispatcher chain                        | One event with several subscribers                 |
+| Legacy pattern | Bus |
+|---|---|
+| Edit-triggered push job | Command with per-key FIFO and `CANCEL_IN_PROGRESS` |
+| Tick-style sweep | Cron handler fanning out commands |
+| Chained page pulls | Durable handler fanning out child runs per page |
+| Log pruning tick | Cron handler |
+| Inbound email summarising | Event with a rate-limited subscriber |
+| Expiry and schedule ticks | Cron handlers |
+| Notification ticks | Cron handlers, or workflow steps |
+| Interval processors started from the API boot file | Cron handlers |
+| Webhook polling | Inbound webhook |
+| In-process dispatcher chain | One event with several subscribers |
 
 ## Appendix B: Requirement traceability
 
-| Req        | Hatchet feature                                                                                                                                                                          | Verified                  |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| F1, F4     | Event triggers; every workflow declaring the key runs                                                                                                                                    | Docs, Events              |
-| F2         | Same, with one subscriber; SDK enforces single registration                                                                                                                              | Design                    |
-| F3         | Not provided; SDK outbox                                                                                                                                                                 | Design                    |
-| F5         | CEL filters with scope                                                                                                                                                                   | Docs, Events              |
-| F6         | Envelope id; `kyu_processed`                                                                                                                                                             | Design                    |
-| F7         | `retries`, `backoff`, `NonRetryableError`                                                                                                                                                | Docs, Retry policies      |
-| F8         | Failed runs, dashboard replay                                                                                                                                                            | Docs                      |
-| F9         | Concurrency key, `maxRuns: 1`, `GROUP_ROUND_ROBIN`                                                                                                                                       | Docs, Concurrency         |
-| F10        | `CANCEL_IN_PROGRESS`, `CANCEL_NEWEST`                                                                                                                                                    | Docs, Concurrency         |
-| F11        | Schedules, crons, `sleepFor`                                                                                                                                                             | Docs, Client reference    |
-| F12        | `durableTask`, `waitForEvent` with CEL, scope, lookback                                                                                                                                  | Docs, Durable event waits |
-| F13        | Priority 1 to 3, within a workflow                                                                                                                                                       | Docs, Priority            |
-| F14        | Static and dynamic rate limits                                                                                                                                                           | Docs, Rate limits         |
-| F15        | Inbound webhooks with HMAC, CEL key expression                                                                                                                                           | Docs, Webhooks            |
-| F16 to F19 | Envelope and metadata conventions                                                                                                                                                        | Design                    |
-| F20        | Child workflows from a durable context                                                                                                                                                   | Docs, Client reference    |
-| N1, N2     | Hatchet Lite on Postgres, MIT; N1 amended on 2026-09-25: deployed environments run the internal queue on RabbitMQ ([ADR](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md)) | Docs, LICENSE, ADR        |
+| Req | Hatchet feature | Verified |
+|---|---|---|
+| F1, F4 | Event triggers; every workflow declaring the key runs | Docs, Events |
+| F2 | Same, with one subscriber; SDK enforces single registration | Design |
+| F3 | Not provided; SDK outbox | Design |
+| F5 | CEL filters with scope | Docs, Events |
+| F6 | Envelope id; `kyu_processed` | Design |
+| F7 | `retries`, `backoff`, `NonRetryableError` | Docs, Retry policies |
+| F8 | Failed runs, dashboard replay | Docs |
+| F9 | Concurrency key, `maxRuns: 1`, `GROUP_ROUND_ROBIN` | Docs, Concurrency |
+| F10 | `CANCEL_IN_PROGRESS`, `CANCEL_NEWEST` | Docs, Concurrency |
+| F11 | Schedules, crons, `sleepFor` | Docs, Client reference |
+| F12 | `durableTask`, `waitForEvent` with CEL, scope, lookback | Docs, Durable event waits |
+| F13 | Priority 1 to 3, within a workflow | Docs, Priority |
+| F14 | Static and dynamic rate limits | Docs, Rate limits |
+| F15 | Inbound webhooks with HMAC, CEL key expression | Docs, Webhooks |
+| F16 to F19 | Envelope and metadata conventions | Design |
+| F20 | Child workflows from a durable context | Docs, Client reference |
+| N1, N2 | Hatchet Lite on Postgres, MIT; N1 amended on 2026-09-25: deployed environments run the internal queue on RabbitMQ ([ADR](../architecture/adr/20260925-engine-queue-runs-on-rabbitmq.md)) | Docs, LICENSE, ADR |
 
 Sources: Hatchet self-hosting, Hatchet Lite, Docker Compose, High Availability, Events, Durable Event Waits, Concurrency, Rate Limits, Retry Policies, Priority, Webhooks and TypeScript client reference pages at docs.hatchet.run; repository LICENSE at github.com/hatchet-dev/hatchet; hatchet.run/pricing. All read on 16 September 2026.

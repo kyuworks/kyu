@@ -42,3 +42,13 @@ describe('parseEnvelopeSafe', () => {
     expect(result.issues[0]?.path).toBe('version')
   })
 })
+
+describe('parseEnvelope and parseEnvelopeSafe on a tracestate without a usable traceparent', () => {
+  const orphan = { ...validEnvelope, traceparent: 'garbage', tracestate: 'rojo=00f067aa0ba902b7' }
+
+  it('drops the tracestate along with the traceparent', () => {
+    expect(parseEnvelope(orphan)).not.toHaveProperty('tracestate')
+    const result = parseEnvelopeSafe(orphan)
+    expect(result.ok && result.envelope).not.toHaveProperty('tracestate')
+  })
+})

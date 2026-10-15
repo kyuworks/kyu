@@ -1,6 +1,7 @@
 export {
   MESSAGE_NAME_PATTERN,
   envelopeMetadataSchema,
+  envelopeReadSchema,
   envelopeSchema,
   fromEnvelopeMetadata,
   messageKindSchema,

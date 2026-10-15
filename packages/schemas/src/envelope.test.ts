@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import {
   envelopeMetadataSchema,
+  envelopeReadSchema,
   envelopeSchema,
   fromEnvelopeMetadata,
   messageNameSchema,
@@ -199,11 +200,24 @@ describe('traceparent and tracestate', () => {
   it.each([
     ['dropped as malformed', 'garbage'],
     ['absent', undefined],
-  ])('drops a valid tracestate when the traceparent is %s', (_label, badParent) => {
-    const parsed = envelopeSchema.safeParse({ ...validEnvelope, traceparent: badParent, tracestate })
+  ])('envelopeReadSchema drops a valid tracestate when the traceparent is %s', (_label, badParent) => {
+    const parsed = envelopeReadSchema.safeParse({ ...validEnvelope, traceparent: badParent, tracestate })
     expect(parsed.success).toBe(true)
     expect(parsed.data).not.toHaveProperty('tracestate')
     expect(parsed.data?.traceparent).toBeUndefined()
+  })
+
+  it('envelopeReadSchema keeps both when the traceparent is usable', () => {
+    const parsed = envelopeReadSchema.parse({ ...validEnvelope, traceparent, tracestate })
+    expect(parsed.traceparent).toBe(traceparent)
+    expect(parsed.tracestate).toBe(tracestate)
+  })
+
+  it('keeps envelopeSchema a plain object schema that pick, omit, partial and extend accept', () => {
+    expect(Object.keys(envelopeSchema.pick({ id: true }).shape)).toEqual(['id'])
+    expect(Object.keys(envelopeSchema.omit({ data: true }).shape)).not.toContain('data')
+    expect(envelopeSchema.partial().safeParse({}).success).toBe(true)
+    expect(envelopeSchema.extend({ data: z.object({}) }).safeParse({ ...validEnvelope, data: {} }).success).toBe(true)
   })
 
   it('accepts 32 members, a multi-tenant key and optional white space around commas', () => {

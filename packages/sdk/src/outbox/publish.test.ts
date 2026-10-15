@@ -54,6 +54,28 @@ describe('createPublisher', () => {
     expect(stored.tracestate).toBe(tracestate)
   })
 
+  it('stores no tracestate when the caller passes an empty one', async () => {
+    const recordedParams: Array<readonly QueryParam[]> = []
+    const db: Queryable = {
+      query(_text: string, params: readonly QueryParam[]): Promise<QueryRows> {
+        recordedParams.push(params)
+        return Promise.resolve({ rows: [], rowCount: 1 })
+      },
+    }
+    const traceparent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+    const publisher = createPublisher({ source: 'shop-service' })
+    const envelope = await publisher.publish(
+      db,
+      orderPlaced,
+      { orderId: '018f0000-0000-7000-8000-000000000002' },
+      { tenantId: null, traceparent, tracestate: '' },
+    )
+    expect(envelope).not.toHaveProperty('tracestate')
+    const stored = z.record(z.string(), z.json()).parse(JSON.parse(z.string().parse(recordedParams[0]?.[3])))
+    expect(stored).not.toHaveProperty('tracestate')
+    expect(stored['traceparent']).toBe(traceparent)
+  })
+
   it('passes publishAt through as the insert’s publish_at parameter', async () => {
     const recordedParams: Array<readonly QueryParam[]> = []
     const db: Queryable = {

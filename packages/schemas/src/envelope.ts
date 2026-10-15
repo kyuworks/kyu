@@ -51,8 +51,7 @@ export function isBlankTracestate(value: string): boolean {
 const traceparentReadSchema = traceparentSchema.optional().catch(undefined)
 const tracestateReadSchema = tracestateSchema.optional().catch(undefined)
 
-// Not in index.ts: createEnvelope extends this, since the read overwrite below would hide an orphan tracestate.
-export const envelopeFieldsSchema = z.object({
+export const envelopeSchema = z.object({
   id: z.uuidv7(),
   name: messageNameSchema,
   version: messageVersionSchema,
@@ -72,8 +71,9 @@ export const envelopeFieldsSchema = z.object({
   data: z.record(z.string(), z.json()),
 })
 
-// §3.3: a receiver that cannot use traceparent must not use tracestate.
-export const envelopeSchema = envelopeFieldsSchema.overwrite((envelope) => {
+// §3.3: a receiver that cannot use traceparent must not use tracestate. Read edges parse with this;
+// envelopeSchema stays a plain object schema so pick, omit, partial and extend keep working.
+export const envelopeReadSchema = envelopeSchema.transform((envelope): z.infer<typeof envelopeSchema> => {
   if (envelope.traceparent !== undefined) return envelope
   const { tracestate: _orphan, ...rest } = envelope
   return rest

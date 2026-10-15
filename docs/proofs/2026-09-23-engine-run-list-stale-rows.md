@@ -12,10 +12,10 @@ defect can be raised upstream at the next engine upgrade.
 
 The engine keeps a run's state twice:
 
-| Copy                        | Tables                                                                                                                                     | Read by                                                                                                                                                                                   |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The engine's own task state | `v1_task`, `v1_task_event` (terminal events `COMPLETED`, `FAILED`, `CANCELLED`), `v1_queue_item`, `v1_retry_queue_item`, `v1_task_runtime` | gRPC `AdminService.GetRunDetails`, reached through `runs.getDetails` (`v1/client/features/runs.js:133-137`)                                                                               |
-| The run list's copy         | `v1_runs_olap`, `v1_tasks_olap` (`readable_status`), `v1_task_events_olap`                                                                 | REST `v1WorkflowRunList` through `runs.list` (`v1/client/features/runs.js:145-150`, `clients/rest/generated/Api.js:118`), and also `v1WorkflowRunGetStatus` and `v1TaskGet` (`Api.js:28`) |
+| Copy | Tables | Read by |
+|---|---|---|
+| The engine's own task state | `v1_task`, `v1_task_event` (terminal events `COMPLETED`, `FAILED`, `CANCELLED`), `v1_queue_item`, `v1_retry_queue_item`, `v1_task_runtime` | gRPC `AdminService.GetRunDetails`, reached through `runs.getDetails` (`v1/client/features/runs.js:133-137`) |
+| The run list's copy | `v1_runs_olap`, `v1_tasks_olap` (`readable_status`), `v1_task_events_olap` | REST `v1WorkflowRunList` through `runs.list` (`v1/client/features/runs.js:145-150`, `clients/rest/generated/Api.js:118`), and also `v1WorkflowRunGetStatus` and `v1TaskGet` (`Api.js:28`) |
 
 The list's copy is written from events the engine sends after it has written its own state. A run
 whose last event never reaches the list stays at the list's last status.
@@ -28,10 +28,10 @@ None of them had a row in `v1_task_runtime`, `v1_queue_item` or `v1_retry_queue_
 `v1_task_events_olap_tmp` and `v1_task_status_updates_tmp` were empty, so no list update was still
 waiting to be applied. They fall into two kinds:
 
-| Kind                                       | Count                                                                          | Engine task state                                             | Run detail (`runs.getDetails`) | Run list          |
-| ------------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------- | ------------------------------ | ----------------- |
-| A — the list missed the final step         | 99 (`record-order` 65, `audit-order` 19, `send-invoice` 9, `watch-shipping` 6) | `COMPLETED` event present                                     | `COMPLETED`, `done: true`      | RUNNING or QUEUED |
-| B — the engine lost the scheduling timeout | 195 (`watch-shipping`, durable)                                                | only `SIGNAL_COMPLETED`; no terminal event and nothing queued | `QUEUED`, `done: false`        | RUNNING or QUEUED |
+| Kind | Count | Engine task state | Run detail (`runs.getDetails`) | Run list |
+|---|---|---|---|---|
+| A — the list missed the final step | 99 (`record-order` 65, `audit-order` 19, `send-invoice` 9, `watch-shipping` 6) | `COMPLETED` event present | `COMPLETED`, `done: true` | RUNNING or QUEUED |
+| B — the engine lost the scheduling timeout | 195 (`watch-shipping`, durable) | only `SIGNAL_COMPLETED`; no terminal event and nothing queued | `QUEUED`, `done: false` | RUNNING or QUEUED |
 
 Kind B runs all follow one pattern in `v1_task_events_olap`: the worker stopped while the run was
 parked (`DURABLE_EVICTED`), the wait was satisfied (`DURABLE_RESTORING`, core `SIGNAL_COMPLETED`),
@@ -73,13 +73,13 @@ runs. 292 remain on the local engine as evidence.
 Each attempt ran against the local engine in a throwaway namespace (`plan170_<hex>_`), using the
 engine SDK directly, with `scheduleTimeout: '20s'` so a stuck run would show within a minute:
 
-| Sequence                                                                                              | Run list, ~60 s later | Run detail | Engine task state                                                                                    |
-| ----------------------------------------------------------------------------------------------------- | --------------------- | ---------- | ---------------------------------------------------------------------------------------------------- |
-| Plain task, worker SIGKILLed mid-run                                                                  | FAILED                | CANCELLED  | `REASSIGNED` then `SCHEDULING_TIMED_OUT`; core `CANCELLED`                                           |
-| Durable run parked in a wait, worker stopped gracefully (evicted), wait's event pushed with no worker | FAILED                | CANCELLED  | `DURABLE_EVICTED`, `DURABLE_RESTORING`, `SCHEDULING_TIMED_OUT`; core `SIGNAL_COMPLETED`, `CANCELLED` |
-| Durable run parked in a wait, worker SIGKILLed, event pushed                                          | FAILED                | CANCELLED  | `REASSIGNED`, `REQUEUED_NO_WORKER`, `SCHEDULING_TIMED_OUT`; core `SIGNAL_COMPLETED`, `CANCELLED`     |
-| Task that fails its first attempt, retry pending, worker SIGKILLed                                    | FAILED                | CANCELLED  | `FAILED`, `RETRYING`, `REQUEUED_NO_WORKER`, `SCHEDULING_TIMED_OUT`; core `CANCELLED`                 |
-| Control: task that completes                                                                          | COMPLETED             | COMPLETED  | `FINISHED`; core `COMPLETED`                                                                         |
+| Sequence | Run list, ~60 s later | Run detail | Engine task state |
+|---|---|---|---|
+| Plain task, worker SIGKILLed mid-run | FAILED | CANCELLED | `REASSIGNED` then `SCHEDULING_TIMED_OUT`; core `CANCELLED` |
+| Durable run parked in a wait, worker stopped gracefully (evicted), wait's event pushed with no worker | FAILED | CANCELLED | `DURABLE_EVICTED`, `DURABLE_RESTORING`, `SCHEDULING_TIMED_OUT`; core `SIGNAL_COMPLETED`, `CANCELLED` |
+| Durable run parked in a wait, worker SIGKILLed, event pushed | FAILED | CANCELLED | `REASSIGNED`, `REQUEUED_NO_WORKER`, `SCHEDULING_TIMED_OUT`; core `SIGNAL_COMPLETED`, `CANCELLED` |
+| Task that fails its first attempt, retry pending, worker SIGKILLed | FAILED | CANCELLED | `FAILED`, `RETRYING`, `REQUEUED_NO_WORKER`, `SCHEDULING_TIMED_OUT`; core `CANCELLED` |
+| Control: task that completes | COMPLETED | COMPLETED | `FINISHED`; core `COMPLETED` |
 
 Every sequence settled. None of them leaves a stale row without the engine itself stopping, and
 stopping the engine is not something a test in this repository may do (no Docker changes). So the

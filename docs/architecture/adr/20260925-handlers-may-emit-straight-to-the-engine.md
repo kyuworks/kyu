@@ -60,7 +60,7 @@ Envelope ids are clock uuid v7 (`packages/schemas/src/uuidv7.ts:27-37`). `afterM
    - No personal data reaches the bus: not the engine's run history, not RabbitMQ, not the engine database.
    - The read happens at send time, so a cancellation or opt-out made after the command was queued is honoured.
    - The credential is narrower than a database connection, and it can be rotated.
-     The costs: one API read per send; the CRM API must expose an internal read endpoint with service authentication; and a CRM API outage pauses sends until the engine's retries succeed. A read that is still failing when its retries run out leaves a failed run, which is replayable.
+   The costs: one API read per send; the CRM API must expose an internal read endpoint with service authentication; and a CRM API outage pauses sends until the engine's retries succeed. A read that is still failing when its retries run out leaves a failed run, which is replayable.
 
 ---
 
