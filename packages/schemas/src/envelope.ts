@@ -23,7 +23,8 @@ export const traceparentSchema = z
   .string()
   .regex(/^00-(?!0{32})[0-9a-f]{32}-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$/, 'traceparent must be a W3C version 00 value')
 
-// §3.3.1: at most 32 key=value members; 512 characters is the length every vendor must propagate (§3.3.1.5).
+// §3.3.1: at most 32 key=value members. The 512-character cap is this writer's own limit; §3.3.1.5 only says
+// vendors SHOULD propagate at least that much, so it is not a validity rule.
 const TRACESTATE_MEMBER_PATTERN =
   /^[a-z0-9][_0-9a-z*/@-]{0,255}=[\x20-\x2b\x2d-\x3c\x3e-\x7e]{0,255}[\x21-\x2b\x2d-\x3c\x3e-\x7e]$/
 
@@ -39,11 +40,19 @@ export const tracestateSchema = z
     )
   }, 'tracestate must be 1 to 32 comma-separated W3C key=value members')
 
+const TRACESTATE_BLANK_MEMBER = /^[ \t]*$/
+
+/** A tracestate with no non-empty member (`""`, `","`, white space only) is valid W3C but carries nothing (§3.3.1.2). */
+export function isBlankTracestate(value: string): boolean {
+  return value.split(',').every((member) => TRACESTATE_BLANK_MEMBER.test(member))
+}
+
 // Read side, as for sdkVersion: a malformed stored or foreign value is dropped, never a rejection.
 const traceparentReadSchema = traceparentSchema.optional().catch(undefined)
 const tracestateReadSchema = tracestateSchema.optional().catch(undefined)
 
-export const envelopeSchema = z.object({
+// Not in index.ts: createEnvelope extends this, since the read overwrite below would hide an orphan tracestate.
+export const envelopeFieldsSchema = z.object({
   id: z.uuidv7(),
   name: messageNameSchema,
   version: messageVersionSchema,
@@ -61,6 +70,13 @@ export const envelopeSchema = z.object({
   traceparent: traceparentReadSchema,
   tracestate: tracestateReadSchema,
   data: z.record(z.string(), z.json()),
+})
+
+// §3.3: a receiver that cannot use traceparent must not use tracestate.
+export const envelopeSchema = envelopeFieldsSchema.overwrite((envelope) => {
+  if (envelope.traceparent !== undefined) return envelope
+  const { tracestate: _orphan, ...rest } = envelope
+  return rest
 })
 
 export type MessageKind = z.infer<typeof messageKindSchema>

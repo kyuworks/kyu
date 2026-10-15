@@ -59,10 +59,10 @@ allowBuilds:
 
 The SDK ships SQL migrations that create three tables in your own database ([`migrations/README.md`](../../packages/sdk/migrations/README.md)):
 
-| Table | Used by |
-|---|---|
-| `kyu_outbox` | `publish()` writes a row; the relay ships it |
-| `kyu_processed` | `onceById()` records each handled envelope id |
+| Table               | Used by                                           |
+| ------------------- | ------------------------------------------------- |
+| `kyu_outbox`        | `publish()` writes a row; the relay ships it      |
+| `kyu_processed`     | `onceById()` records each handled envelope id     |
 | `kyu_paused_tenant` | the relay reads it to hold a paused tenant's rows |
 
 Apply them with **your own migration runner**:
@@ -136,11 +136,16 @@ export async function updateContact(pool: Pool, input: UpdateContactInput): Prom
   try {
     await client.query('BEGIN')
     await client.query('UPDATE contact SET name = $2 WHERE id = $1', [input.contactId, input.name])
-    await publisher.publish(client, contactUpdated, { contactId: input.contactId }, {
-      tenantId: input.tenantId,
-      actorUserId: input.userId,
-      correlationId: input.correlationId, // leave out when you have none
-    })
+    await publisher.publish(
+      client,
+      contactUpdated,
+      { contactId: input.contactId },
+      {
+        tenantId: input.tenantId,
+        actorUserId: input.userId,
+        correlationId: input.correlationId, // leave out when you have none
+      },
+    )
     await client.query('COMMIT')
   } catch (error) {
     await client.query('ROLLBACK')
@@ -155,17 +160,17 @@ The shop does the same in [`src/producer/placeOrder.ts`](https://github.com/kyuw
 
 `publish(tx, definition, data, options)` returns the envelope it wrote ([`publish.ts`](../../packages/sdk/src/outbox/publish.ts)). The options ([`createEnvelope.ts`](../../packages/schemas/src/createEnvelope.ts), `CreateEnvelopeOptions`):
 
-| Option | Required | Value |
-|---|---|---|
-| `tenantId` | yes | the business tenant's uuid, or `null` |
-| `actorUserId` | when a user caused it | the user's uuid |
-| `correlationId` | no | a uuid **v7** shared by a whole chain of messages. Left out, it is the envelope's own id |
-| `causationId` | no | the envelope id (uuid v7) of the message that caused this one |
-| `orgUnitId` | no | a uuid for a sub-division of the tenant |
-| `occurredAt` | no | a `Date`; defaults to now |
-| `publishAt` | no | a `Date`; the relay holds the row until then |
-| `traceparent` | no | the W3C traceparent of your active span |
-| `tracestate` | no | the W3C tracestate that goes with it; refused without `traceparent` |
+| Option          | Required              | Value                                                                                                    |
+| --------------- | --------------------- | -------------------------------------------------------------------------------------------------------- |
+| `tenantId`      | yes                   | the business tenant's uuid, or `null`                                                                    |
+| `actorUserId`   | when a user caused it | the user's uuid                                                                                          |
+| `correlationId` | no                    | a uuid **v7** shared by a whole chain of messages. Left out, it is the envelope's own id                 |
+| `causationId`   | no                    | the envelope id (uuid v7) of the message that caused this one                                            |
+| `orgUnitId`     | no                    | a uuid for a sub-division of the tenant                                                                  |
+| `occurredAt`    | no                    | a `Date`; defaults to now                                                                                |
+| `publishAt`     | no                    | a `Date`; the relay holds the row until then                                                             |
+| `traceparent`   | no                    | the W3C traceparent of your active span                                                                  |
+| `tracestate`    | no                    | the W3C tracestate that goes with it; refused without `traceparent`, except that an empty one is ignored |
 
 Fill `actorUserId` whenever a signed-in user made the change. For `correlationId`, pass an id your request already carries only if it is a uuid v7; a random (v4) request id is refused. A message a handler publishes in reply passes `correlationId: ctx.envelope.correlationId` and `causationId: ctx.envelope.id`.
 
@@ -202,7 +207,10 @@ relay.closed.catch(() => process.exit(1))
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
-    void relay.stop().then(() => db.end()).then(() => process.exit(0))
+    void relay
+      .stop()
+      .then(() => db.end())
+      .then(() => process.exit(0))
   })
 }
 ```
@@ -290,12 +298,12 @@ await withTransaction(pool, (tx) =>
 
 **The ordering key** is a CEL expression over the message ([`concurrency.ts`](../../packages/sdk/src/consume/concurrency.ts)):
 
-| Need | `concurrency` |
-|---|---|
-| One at a time per record, in publish order | `{ key: 'input.data.contactId', maxRuns: 1 }` (`strategy` defaults to `'fifo'`) |
-| Only the newest matters | `strategy: 'cancel_in_progress'` on the same key |
-| Drop a new one while one runs | `strategy: 'cancel_newest'` |
-| One run per business tenant, tenants taking turns | `{ key: TENANT_CONCURRENCY_KEY, maxRuns: 1, strategy: 'round-robin' }` |
+| Need                                              | `concurrency`                                                                   |
+| ------------------------------------------------- | ------------------------------------------------------------------------------- |
+| One at a time per record, in publish order        | `{ key: 'input.data.contactId', maxRuns: 1 }` (`strategy` defaults to `'fifo'`) |
+| Only the newest matters                           | `strategy: 'cancel_in_progress'` on the same key                                |
+| Drop a new one while one runs                     | `strategy: 'cancel_newest'`                                                     |
+| One run per business tenant, tenants taking turns | `{ key: TENANT_CONCURRENCY_KEY, maxRuns: 1, strategy: 'round-robin' }`          |
 
 `TENANT_CONCURRENCY_KEY` fails any message whose `tenantId` is `null`. Other options: `rateLimit`, and `scheduleTimeout` (how long a run may wait for a free slot; the engine's default is 5 minutes) ([`taskOptions.ts`](../../packages/sdk/src/consume/taskOptions.ts)). A subscription `name` is lower-case letters, digits, `-` or `_`, starting with a letter.
 
@@ -317,7 +325,10 @@ const worker = await kyu.worker('<project>-worker', {
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
-    void worker.stop().then(() => pool.end()).then(() => process.exit(0))
+    void worker
+      .stop()
+      .then(() => pool.end())
+      .then(() => process.exit(0))
   })
 }
 
@@ -341,13 +352,14 @@ Your project runs its own engine. Kyu runs none ([ADR](../architecture/adr/20261
 3. **Worker token.** Your operator mints it, or an engineer the operator has given an SSH certificate for the engine's Fly organisation: `bash infra/hatchet/fly/token.sh -a <engine-app> --tenant-id <your-bus-tenant-id>`, from your copy of the template ([`token.sh`](../../infra/hatchet/fly/token.sh); [guide, Who does what](kyu-engine-on-fly.md#who-does-what)). The token goes straight into your project's secret store. It expires 90 days after it is minted; mint a new one before then ([guide, A bus tenant for each project](kyu-engine-on-fly.md#a-bus-tenant-for-each-project), sub-step 5). An agent never mints, reads or prints a token. Never commit it or log it.
 4. **The three variables** every process that talks to the engine needs (the relay, the worker, anything that reads run outcomes):
 
-   | Variable | Value |
-   |---|---|
-   | `HATCHET_CLIENT_TOKEN` | the worker token |
-   | `HATCHET_CLIENT_API_URL` | your engine's HTTPS address, `https://<engine-app>.fly.dev` |
+   | Variable                   | Value                                                            |
+   | -------------------------- | ---------------------------------------------------------------- |
+   | `HATCHET_CLIENT_TOKEN`     | the worker token                                                 |
+   | `HATCHET_CLIENT_API_URL`   | your engine's HTTPS address, `https://<engine-app>.fly.dev`      |
    | `HATCHET_CLIENT_HOST_PORT` | your engine's gRPC address and port, `<engine-app>.fly.dev:7077` |
 
    Leave `HATCHET_CLIENT_TLS_STRATEGY` unset against a deployed engine; it defaults to `tls`. Set it to `none` only for a local engine. A process that only publishes needs none of these.
+
 5. **Namespace.** Set `HATCHET_CLIENT_NAMESPACE` (or pass `namespace` to `createHatchetClient`) to the same value in the relay and every worker. The engine prefixes every message name and subscription with it, lower-cased, with a trailing `_`, so a relay and a worker with different namespaces never meet.
 
 If your project receives another producer's messages, that producer's operator creates your tenant on its engine and puts the token in your secret store; use that engine's addresses.
@@ -386,23 +398,23 @@ Turning the flag off stops new messages. Messages already in the outbox are stil
 
 See each delivery rule hold in dev before you widen the flag. Each one also has an SDK test that proves it on every Kyu change.
 
-| Rule | How to see it in dev | SDK test |
-|---|---|---|
-| A rolled-back publish never arrives | In a script: `BEGIN`, `publish()`, `ROLLBACK`. Then `SELECT count(*) FROM kyu_outbox WHERE id = '<envelope id>'` is 0 and `kyu.runs.forEnvelope('<envelope id>')` returns `[]` | [`publish.integration.test.ts`](../../packages/sdk/src/outbox/publish.integration.test.ts): "a rolled-back transaction leaves no outbox row" |
-| A redelivery is idempotent | Replay a completed run from the engine dashboard (a local engine's dashboard is at `http://localhost:8888` after `pnpm hatchet:up`; the seeded admin sign-in is in the header comment of [`infra/hatchet/compose.yaml`](../../infra/hatchet/compose.yaml)). The external system shows no second change, and `kyu_processed` still has one row for that envelope id and handler | [`onceById.integration.test.ts`](../../packages/sdk/src/outbox/onceById.integration.test.ts): "runs the body once across repeated calls for the same envelope id and handler" |
-| The tenant id reaches the handler unchanged | Log `ctx.envelope.tenantId` in the handler and compare it with the `tenantId` you published. The SDK fails a run whose metadata tenant and envelope tenant disagree | [`subscribe.integration.test.ts`](../../packages/sdk/src/consume/subscribe.integration.test.ts): "reaches the handler with the tenant id unchanged (flow 5)" |
-| Ordering holds per key | Make three quick edits to one record. With `fifo`, the handler logs them in publish order. With `cancel_in_progress`, the earlier runs end `cancelled` and the external system holds the last edit | [`subscribe.integration.test.ts`](../../packages/sdk/src/consume/subscribe.integration.test.ts): "preserves publish order per key (flow 7)" and "lets only the newest complete (flow 8)" |
+| Rule                                        | How to see it in dev                                                                                                                                                                                                                                                                                                                                                           | SDK test                                                                                                                                                                                 |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A rolled-back publish never arrives         | In a script: `BEGIN`, `publish()`, `ROLLBACK`. Then `SELECT count(*) FROM kyu_outbox WHERE id = '<envelope id>'` is 0 and `kyu.runs.forEnvelope('<envelope id>')` returns `[]`                                                                                                                                                                                                 | [`publish.integration.test.ts`](../../packages/sdk/src/outbox/publish.integration.test.ts): "a rolled-back transaction leaves no outbox row"                                             |
+| A redelivery is idempotent                  | Replay a completed run from the engine dashboard (a local engine's dashboard is at `http://localhost:8888` after `pnpm hatchet:up`; the seeded admin sign-in is in the header comment of [`infra/hatchet/compose.yaml`](../../infra/hatchet/compose.yaml)). The external system shows no second change, and `kyu_processed` still has one row for that envelope id and handler | [`onceById.integration.test.ts`](../../packages/sdk/src/outbox/onceById.integration.test.ts): "runs the body once across repeated calls for the same envelope id and handler"            |
+| The tenant id reaches the handler unchanged | Log `ctx.envelope.tenantId` in the handler and compare it with the `tenantId` you published. The SDK fails a run whose metadata tenant and envelope tenant disagree                                                                                                                                                                                                            | [`subscribe.integration.test.ts`](../../packages/sdk/src/consume/subscribe.integration.test.ts): "reaches the handler with the tenant id unchanged (flow 5)"                             |
+| Ordering holds per key                      | Make three quick edits to one record. With `fifo`, the handler logs them in publish order. With `cancel_in_progress`, the earlier runs end `cancelled` and the external system holds the last edit                                                                                                                                                                             | [`subscribe.integration.test.ts`](../../packages/sdk/src/consume/subscribe.integration.test.ts): "preserves publish order per key (flow 7)" and "lets only the newest complete (flow 8)" |
 
 ## 11. Not in the first slice
 
-| Not now | Where it is written up |
-|---|---|
-| Durable handlers (`kyu.durable`, `sleepFor`, `waitFor`) | available; [`README.md`](../../README.md) and [design § 9.5](../design/kyu-requirements-and-design.md#95-timers-and-correlation) |
-| Integration pools and `ctx.emit()` | proposed, not in the SDK yet: [ADR](../architecture/adr/20260925-handlers-may-emit-straight-to-the-engine.md) |
-| The writer pool | proposed, same ADR; [design § 12](../design/kyu-requirements-and-design.md#12-deployment-and-operations), Pool layout |
-| Alerts on failed runs | optional, on your engine: your operator turns on the engine's own Slack alerts ([guide, Turning on failure alerts](kyu-engine-on-fly.md#turning-on-failure-alerts)). Kyu runs no alerting |
-| Alerts on outbox lag | not in the SDK; run the section 6 queries from your own monitoring |
-| Crons, tenant pause, run cancel | available; [`README.md`](../../README.md) |
-| Inbound webhooks | [design § 6.1](../design/kyu-requirements-and-design.md#61-components) |
+| Not now                                                 | Where it is written up                                                                                                                                                                    |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Durable handlers (`kyu.durable`, `sleepFor`, `waitFor`) | available; [`README.md`](../../README.md) and [design § 9.5](../design/kyu-requirements-and-design.md#95-timers-and-correlation)                                                          |
+| Integration pools and `ctx.emit()`                      | proposed, not in the SDK yet: [ADR](../architecture/adr/20260925-handlers-may-emit-straight-to-the-engine.md)                                                                             |
+| The writer pool                                         | proposed, same ADR; [design § 12](../design/kyu-requirements-and-design.md#12-deployment-and-operations), Pool layout                                                                     |
+| Alerts on failed runs                                   | optional, on your engine: your operator turns on the engine's own Slack alerts ([guide, Turning on failure alerts](kyu-engine-on-fly.md#turning-on-failure-alerts)). Kyu runs no alerting |
+| Alerts on outbox lag                                    | not in the SDK; run the section 6 queries from your own monitoring                                                                                                                        |
+| Crons, tenant pause, run cancel                         | available; [`README.md`](../../README.md)                                                                                                                                                 |
+| Inbound webhooks                                        | [design § 6.1](../design/kyu-requirements-and-design.md#61-components)                                                                                                                    |
 
 Questions or a gap in this page: open an issue in [`kyuworks/kyu`](https://github.com/kyuworks/kyu/issues).

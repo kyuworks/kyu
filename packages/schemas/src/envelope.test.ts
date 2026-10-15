@@ -196,6 +196,16 @@ describe('traceparent and tracestate', () => {
     expect(parsed.data?.traceparent).toBe(traceparent)
   })
 
+  it.each([
+    ['dropped as malformed', 'garbage'],
+    ['absent', undefined],
+  ])('drops a valid tracestate when the traceparent is %s', (_label, badParent) => {
+    const parsed = envelopeSchema.safeParse({ ...validEnvelope, traceparent: badParent, tracestate })
+    expect(parsed.success).toBe(true)
+    expect(parsed.data).not.toHaveProperty('tracestate')
+    expect(parsed.data?.traceparent).toBeUndefined()
+  })
+
   it('accepts 32 members, a multi-tenant key and optional white space around commas', () => {
     const members = Array.from({ length: 31 }, (_, i) => `k${i}=v`)
     const value = ['tenant@vendor=x', ...members].join(' ,\t')

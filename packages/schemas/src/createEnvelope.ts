@@ -1,8 +1,8 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { z } from 'zod'
 import type { MessageDefinition, MessageSchema } from './define.js'
-import type { Envelope, EnvelopeData } from './envelope.js'
-import { envelopeSchema, traceparentSchema, tracestateSchema } from './envelope.js'
+import type { Envelope, EnvelopeData, envelopeSchema } from './envelope.js'
+import { envelopeFieldsSchema, isBlankTracestate, traceparentSchema, tracestateSchema } from './envelope.js'
 import { EnvelopeOptionsError, MessageDataError } from './errors.js'
 import type { MessageDataShape } from './json.js'
 import { normalizeEnvelopeData } from './normalizeData.js'
@@ -19,12 +19,12 @@ export interface CreateEnvelopeOptions {
   occurredAt?: Date
   /** The W3C `traceparent` of the publisher's active span. */
   traceparent?: string
-  /** The W3C `tracestate` that goes with `traceparent`; refused without it. */
+  /** The W3C `tracestate` that goes with `traceparent`; refused without it, but an empty one is ignored. */
   tracestate?: string
 }
 
 // Write side is strict: envelopeSchema drops a malformed trace value on read, so it is refused here instead.
-const createdEnvelopeSchema = envelopeSchema
+const createdEnvelopeSchema = envelopeFieldsSchema
   .extend({ traceparent: traceparentSchema.optional(), tracestate: tracestateSchema.optional() })
   .refine((envelope) => envelope.tracestate === undefined || envelope.traceparent !== undefined, {
     path: ['tracestate'],
@@ -67,7 +67,8 @@ export async function createEnvelope<S extends MessageSchema>(
   if (options.actorUserId !== undefined) raw.actorUserId = options.actorUserId
   if (options.causationId !== undefined) raw.causationId = options.causationId
   if (options.traceparent !== undefined) raw.traceparent = options.traceparent
-  if (options.tracestate !== undefined) raw.tracestate = options.tracestate
+  // An OpenTelemetry propagator injects `tracestate: ""` for a request whose header was empty; that carries nothing.
+  if (options.tracestate !== undefined && !isBlankTracestate(options.tracestate)) raw.tracestate = options.tracestate
 
   // `data` is normalised above; a `data`-path issue here routes to MessageDataError.
   const result = createdEnvelopeSchema.safeParse(raw)

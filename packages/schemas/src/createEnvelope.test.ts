@@ -173,6 +173,24 @@ describe('createEnvelope', () => {
   })
 
   it.each([
+    ['empty', ''],
+    ['white space only', '   '],
+    ['commas and white space only', ' , ,\t,'],
+  ])('treats a tracestate that is %s as absent, with or without a traceparent', async (_label, tracestate) => {
+    const traceparent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+    const withParent = await createEnvelope(
+      orderPlaced,
+      { orderId },
+      { tenantId, source: 'shop.api', traceparent, tracestate },
+    )
+    expect(withParent.traceparent).toBe(traceparent)
+    expect(withParent).not.toHaveProperty('tracestate')
+    const withoutParent = await createEnvelope(orderPlaced, { orderId }, { tenantId, source: 'shop.api', tracestate })
+    expect(withoutParent).not.toHaveProperty('traceparent')
+    expect(withoutParent).not.toHaveProperty('tracestate')
+  })
+
+  it.each([
     [{ traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7' }, 'traceparent'],
     [{ traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01' }, 'traceparent'],
     [{ traceparent: 'ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' }, 'traceparent'],
