@@ -154,6 +154,61 @@ describe('createEnvelope', () => {
     })
   })
 
+  it('keeps a given traceparent and tracestate on the envelope', async () => {
+    const traceparent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+    const tracestate = 'rojo=00f067aa0ba902b7'
+    const envelope = await createEnvelope(
+      orderPlaced,
+      { orderId },
+      { tenantId, source: 'shop.api', traceparent, tracestate },
+    )
+    expect(envelope.traceparent).toBe(traceparent)
+    expect(envelope.tracestate).toBe(tracestate)
+  })
+
+  it('leaves both out when neither is given', async () => {
+    const envelope = await createEnvelope(orderPlaced, { orderId }, { tenantId, source: 'shop.api' })
+    expect(envelope).not.toHaveProperty('traceparent')
+    expect(envelope).not.toHaveProperty('tracestate')
+  })
+
+  it.each([
+    ['empty', ''],
+    ['white space only', '   '],
+    ['commas and white space only', ' , ,\t,'],
+  ])('treats a tracestate that is %s as absent, with or without a traceparent', async (_label, tracestate) => {
+    const traceparent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+    const withParent = await createEnvelope(
+      orderPlaced,
+      { orderId },
+      { tenantId, source: 'shop.api', traceparent, tracestate },
+    )
+    expect(withParent.traceparent).toBe(traceparent)
+    expect(withParent).not.toHaveProperty('tracestate')
+    const withoutParent = await createEnvelope(orderPlaced, { orderId }, { tenantId, source: 'shop.api', tracestate })
+    expect(withoutParent).not.toHaveProperty('traceparent')
+    expect(withoutParent).not.toHaveProperty('tracestate')
+  })
+
+  it.each([
+    [{ traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7' }, 'traceparent'],
+    [{ traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01' }, 'traceparent'],
+    [{ traceparent: 'ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' }, 'traceparent'],
+    [
+      { traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01', tracestate: 'no-equals-sign' },
+      'tracestate',
+    ],
+    [{ tracestate: 'rojo=00f067aa0ba902b7' }, 'tracestate'],
+  ])('rejects %j with EnvelopeOptionsError naming %s', async (trace, path) => {
+    try {
+      await createEnvelope(orderPlaced, { orderId }, { tenantId, source: 'shop.api', ...trace })
+      expect.unreachable('createEnvelope should have thrown')
+    } catch (error) {
+      if (!(error instanceof EnvelopeOptionsError)) throw error
+      expect(error.issues.map((issue) => issue.path)).toEqual([path])
+    }
+  })
+
   it('accepts the schema input and stores the transformed output', async () => {
     const envelope = await createEnvelope(rawLength, { raw: 'abc' }, { tenantId, source: 'shop.api' })
     expect(envelope.data).toEqual({ length: 3 })

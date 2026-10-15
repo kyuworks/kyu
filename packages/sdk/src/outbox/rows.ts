@@ -1,4 +1,4 @@
-import { envelopeSchema } from '@kyuworks/schemas'
+import { envelopeReadSchema } from '@kyuworks/schemas'
 import { z } from 'zod'
 
 // Shapes as `pg` returns them: timestamptz columns decode to Date, uuid to
@@ -7,7 +7,7 @@ export const outboxRowSchema = z.object({
   id: z.uuid(),
   name: z.string(),
   tenant_id: z.uuid().nullable(),
-  envelope: envelopeSchema,
+  envelope: envelopeReadSchema,
   created_at: z.date(),
   publish_at: z.date(),
   claimed_at: z.date().nullable(),

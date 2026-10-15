@@ -695,3 +695,79 @@ describe('relay + subscribe: a scheduled publish waits for its time', () => {
     expect(delivered?.sdkVersion).toBe(SDK_VERSION)
   }, 180_000)
 })
+
+const traced = defineEvent({
+  name: 'kyu.relay_test.traced',
+  version: 1,
+  data: z.object({ n: z.number() }),
+})
+
+describe('relay + subscribe: trace context reaches the handler and the run list', () => {
+  const seen = new Map<string, HandlerContext<{ n: number }>>()
+  let worker: KyuWorker | undefined
+
+  beforeAll(async () => {
+    const subscription = subscribe(hatchet, traced, {
+      name: 'relay-trace-recorder',
+      handler: async (ctx: HandlerContext<{ n: number }>) => {
+        seen.set(ctx.envelope.id, ctx)
+      },
+    })
+    worker = await createWorker(hatchet, 'kyu-sdk-relay-trace-test', { subscriptions: [subscription] })
+    void worker.start()
+    await worker.waitUntilReady()
+  }, 60_000)
+
+  afterAll(async () => {
+    await worker?.stop()
+  })
+
+  it('delivers traceparent and tracestate unchanged, and the run list finds the run by kyu_traceparent', async () => {
+    const tracestate = 'rojo=00f067aa0ba902b7,congo=t61rcWkgMzE'
+    const relay = startRelay({ db: client, hatchet, workerId: `worker-${randomUUID()}`, pollIntervalMs: 60_000 })
+    const published: Envelope<{ n: number }>[] = []
+    let deliveredId: string | undefined
+    try {
+      // A fresh workflow's first delivery can lag by a minute on a cold engine; publish again until one arrives.
+      const deadline = Date.now() + 150_000
+      while (deliveredId === undefined && Date.now() < deadline) {
+        const traceparent = `00-${randomBytes(16).toString('hex')}-${randomBytes(8).toString('hex')}-01`
+        published.push(await publisher.publish(client, traced, { n: 1 }, { tenantId: null, traceparent, tracestate }))
+        await relay.tick()
+        await waitUntil(() => published.some((envelope) => seen.has(envelope.id)), 5_000)
+        deliveredId = published.find((envelope) => seen.has(envelope.id))?.id
+      }
+    } finally {
+      await relay.stop()
+    }
+    const sent = published.find((envelope) => envelope.id === deliveredId)
+    const ctx = deliveredId === undefined ? undefined : seen.get(deliveredId)
+    if (sent?.traceparent === undefined || ctx === undefined)
+      throw new Error('the handler never received a traced envelope')
+
+    expect(ctx.envelope.traceparent).toBe(sent.traceparent)
+    expect(ctx.envelope.tracestate).toBe(tracestate)
+    expect(ctx.metadata.traceparent).toBe(sent.traceparent)
+
+    const since = new Date(Date.now() - 10 * 60_000)
+    async function runIdsFor(kyuTraceparent: string): Promise<string[]> {
+      const result = await hatchet.runs.list({
+        additionalMetadata: { kyu_traceparent: kyuTraceparent },
+        since,
+        limit: 10,
+      })
+      return result.rows
+        .filter((row) => row.workflowName?.startsWith(namespace))
+        .flatMap((row) => [row.taskExternalId, row.workflowRunExternalId])
+    }
+    let runIds: string[] = []
+    const listDeadline = Date.now() + 30_000
+    while (!runIds.includes(ctx.runId) && Date.now() < listDeadline) {
+      runIds = await runIdsFor(sent.traceparent)
+      if (!runIds.includes(ctx.runId)) await new Promise<void>((resolve) => setTimeout(resolve, 500))
+    }
+    expect(runIds).toContain(ctx.runId)
+    // Control: the filter is applied, so a traceparent nobody published finds nothing.
+    expect(await runIdsFor(`00-${randomBytes(16).toString('hex')}-${randomBytes(8).toString('hex')}-01`)).toEqual([])
+  }, 240_000)
+})

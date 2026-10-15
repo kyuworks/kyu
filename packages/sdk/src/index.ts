@@ -5,6 +5,7 @@ export {
   createEnvelope,
   defineCommand,
   defineEvent,
+  envelopeReadSchema,
   envelopeSchema,
   messageKindSchema,
   messageNameSchema,

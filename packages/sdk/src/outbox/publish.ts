@@ -67,6 +67,8 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
       if (publishOptions.correlationId !== undefined) envelopeOptions.correlationId = publishOptions.correlationId
       if (publishOptions.causationId !== undefined) envelopeOptions.causationId = publishOptions.causationId
       if (publishOptions.occurredAt !== undefined) envelopeOptions.occurredAt = publishOptions.occurredAt
+      if (publishOptions.traceparent !== undefined) envelopeOptions.traceparent = publishOptions.traceparent
+      if (publishOptions.tracestate !== undefined) envelopeOptions.tracestate = publishOptions.tracestate
 
       const envelope = await createEnvelope(definition, data, envelopeOptions)
       return publishEnvelope(tx, envelope, publishOptions.publishAt)

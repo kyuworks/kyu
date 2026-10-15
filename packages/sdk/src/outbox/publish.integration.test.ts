@@ -121,6 +121,54 @@ describe('publish via the outbox', () => {
     expect(claimed.rows[0]?.envelope.sdkVersion).toBeUndefined()
   })
 
+  it('claims a row whose stored traceparent and tracestate are unusable, with both fields dropped', async () => {
+    const publisher = createPublisher({ source: 'outbox-test' })
+    const envelope = await publisher.publish(
+      client,
+      thingHappened,
+      { n: 6 },
+      {
+        tenantId: null,
+        traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+        tracestate: 'rojo=00f067aa0ba902b7',
+      },
+    )
+    await client.query(
+      `UPDATE kyu_outbox SET envelope = envelope || '{"traceparent": "not-a-traceparent", "tracestate": "Bad Key"}'::jsonb WHERE id = $1`,
+      [envelope.id],
+    )
+
+    const claimed = await claimPendingRows(client, { limit: 10, workerId: `w-${randomUUID()}`, staleAfterMs: 0 })
+
+    expect(claimed.rows.map((row) => row.id)).toEqual([envelope.id])
+    expect(claimed.rows[0]?.envelope.traceparent).toBeUndefined()
+    expect(claimed.rows[0]?.envelope.tracestate).toBeUndefined()
+  })
+
+  it('claims a row whose stored traceparent is unusable with its valid tracestate dropped too', async () => {
+    const publisher = createPublisher({ source: 'outbox-test' })
+    const envelope = await publisher.publish(
+      client,
+      thingHappened,
+      { n: 7 },
+      {
+        tenantId: null,
+        traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+        tracestate: 'rojo=00f067aa0ba902b7',
+      },
+    )
+    await client.query(
+      `UPDATE kyu_outbox SET envelope = envelope || '{"traceparent": "garbage"}'::jsonb WHERE id = $1`,
+      [envelope.id],
+    )
+
+    const claimed = await claimPendingRows(client, { limit: 10, workerId: `w-${randomUUID()}`, staleAfterMs: 0 })
+
+    expect(claimed.rows.map((row) => row.id)).toEqual([envelope.id])
+    expect(claimed.rows[0]?.envelope.traceparent).toBeUndefined()
+    expect(claimed.rows[0]?.envelope.tracestate).toBeUndefined()
+  })
+
   it('a scheduled publish in a rolled-back transaction leaves no row', async () => {
     const publisher = createPublisher({ source: 'outbox-test' })
 
