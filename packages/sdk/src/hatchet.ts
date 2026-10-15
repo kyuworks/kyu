@@ -1,5 +1,5 @@
-// The one import site for the engine (check-package-boundaries.sh). The package has no `exports` map, so
-// `@hatchet-dev/typescript-sdk/v1` does not resolve under NodeNext; import by file path.
+// The one import site for the engine (check-package-boundaries.sh). Import by file path: the package's subpath
+// exports vary by version, and the paths below resolve under NodeNext on every version the range allows.
 // The root barrel adds the legacy workflow module and the admin client, which this wrapper does not use.
 import { V1TaskStatus } from '@hatchet-dev/typescript-sdk/clients/rest/generated/data-contracts.js'
 import {

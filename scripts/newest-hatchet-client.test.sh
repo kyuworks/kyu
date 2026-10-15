@@ -81,10 +81,18 @@ write_case registry-error '^1.33.2' 1.33.2 '{"error":{"code":"E404","summary":"N
 assert_exit "a registry error object fails" 1 pick registry-error
 assert_last_output_contains "a registry error object names the cause" "the registry answered with an error"
 
-# The default paths read this repository's own package.json and lockfile.
-printf '%s\n' "${LIST}" > "${WORK}/repo-versions.json"
+# The default paths read this repository's own package.json and lockfile. The version list is built from the
+# range just read, so a client bump does not break the case: the base, a pre-release and a next major are
+# skipped, the patch above the base is picked.
 expected_range="$(node -p "require('${SCRIPT_DIR}/../packages/sdk/package.json').dependencies['@hatchet-dev/typescript-sdk']")"
+base="${expected_range#^}"
+IFS=. read -r base_major base_minor base_patch <<< "${base}"
+expected_newest="${base_major}.${base_minor}.$((base_patch + 1))"
+expected_locked="$(node -p "[...require('fs').readFileSync('${SCRIPT_DIR}/../pnpm-lock.yaml', 'utf8').matchAll(/^  '@hatchet-dev\\/typescript-sdk@([^'(]+)':\$/gm)][0][1]")"
+printf '["%s","%s.%s.%s-alpha.1","%s","%s.0.0"]\n' "${base}" "${base_major}" "${base_minor}" "$((base_patch + 1))" "${expected_newest}" "$((base_major + 1))" > "${WORK}/repo-versions.json"
 assert_output_contains "reads the repository's range by default" "range=${expected_range}" \
   env NEWEST_CLIENT_VERSIONS="${WORK}/repo-versions.json" bash "${PICKER}"
+assert_last_output_contains "the default list is built from that range" "newest=${expected_newest}"
+assert_last_output_contains "reads the repository's lockfile by default" "lockfile=${expected_locked}"
 
 gate_test_finish
