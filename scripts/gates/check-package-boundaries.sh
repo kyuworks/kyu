@@ -28,6 +28,8 @@
 # Blocked in packages/sdk/ the same way: @opentelemetry/... anywhere but
 # `@opentelemetry/api` in src/otel.ts, and any import of otel.ts, so the main
 # entry point never loads the optional peer. src/otel.test.ts is exempt.
+# Also blocked there: an import of `@kyuworks/sdk` by its own name, which would reach otel.ts
+# through the exports map. No exception.
 #
 # Env (tests): ROOT_DIR
 set -euo pipefail
@@ -138,6 +140,14 @@ if [ -d packages/sdk ]; then
   OTEL_ENTRY_HITS="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --include='*.cts' --exclude-dir=node_modules --exclude-dir=dist "${OTEL_ENTRY_PATTERN}" packages/sdk 2>/dev/null | sed -E '/^packages\/sdk\/src\/otel\.test\.ts:/d' || true)"
   if [ -n "${OTEL_ENTRY_HITS}" ]; then
     printf '%s\n' "${OTEL_ENTRY_HITS}" | sed 's/^/FAIL: packages\/sdk reaches src\/otel.ts only through the .\/otel entry point: /' >&2
+    FAIL=1
+  fi
+  # A self-import by name (`@kyuworks/sdk/otel`) would reach otel.ts past the rule above.
+  SELF_SPEC="@kyuworks/sdk(/[^'\"]*)?"
+  SELF_PATTERN="(from|import)[[:space:]]+['\"](${SELF_SPEC})['\"]|(import|require)[[:space:]]*\([[:space:]]*['\"](${SELF_SPEC})['\"]"
+  SELF_HITS="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --include='*.cts' --exclude-dir=node_modules --exclude-dir=dist "${SELF_PATTERN}" packages/sdk 2>/dev/null || true)"
+  if [ -n "${SELF_HITS}" ]; then
+    printf '%s\n' "${SELF_HITS}" | sed 's/^/FAIL: packages\/sdk does not import @kyuworks\/sdk by name: /' >&2
     FAIL=1
   fi
 fi

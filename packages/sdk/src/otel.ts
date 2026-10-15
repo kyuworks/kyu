@@ -1,4 +1,4 @@
-import { context, defaultTextMapSetter, propagation } from '@opentelemetry/api'
+import { context, propagation } from '@opentelemetry/api'
 import type { PublisherOptions } from './outbox/publish.js'
 
 export type ActiveTraceContext = Pick<PublisherOptions, 'traceparent' | 'tracestate'>
@@ -6,7 +6,7 @@ export type ActiveTraceContext = Pick<PublisherOptions, 'traceparent' | 'tracest
 /** The W3C trace context of the active span, as the global propagator injects it; `{}` with no span or no propagator. */
 export function activeTraceContext(): ActiveTraceContext {
   const carrier: ActiveTraceContext = {}
-  propagation.inject(context.active(), carrier, defaultTextMapSetter)
+  propagation.inject(context.active(), carrier)
   const traceContext: ActiveTraceContext = {}
   if (carrier.traceparent === undefined) return traceContext
   traceContext.traceparent = carrier.traceparent

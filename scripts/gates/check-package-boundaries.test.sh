@@ -150,6 +150,24 @@ sdk_case otel-allowed src/otel.test.ts "import { W3CTraceContextPropagator } fro
 sdk_case otel-allowed src/consume/otelSpan.ts "import { x } from './otelSpan/x.js'\n// Pairs with @opentelemetry/api through ./otel.js.\nexport const y = x\n"
 assert_exit "sdk otel.ts on the api, its test, and a mention in a comment pass" 0 env ROOT_DIR="${WORK}/otel-allowed" bash "${CHECK}"
 
+# --- Inside packages/sdk nothing imports the package by its own name, so the ./otel entry point cannot be reached by self-reference (#76) ---
+sdk_case self-otel src/index.ts "export { activeTraceContext as selfRefProbe } from '@kyuworks/sdk/otel'\n"
+assert_exit "sdk index.ts re-exporting @kyuworks/sdk/otel by name fails" 1 env ROOT_DIR="${WORK}/self-otel" bash "${CHECK}"
+assert_last_output_contains "self-import failure names the file and line" "packages/sdk/src/index.ts:1:"
+assert_last_output_contains "self-import failure names the rule" "packages/sdk does not import @kyuworks/sdk by name"
+sdk_case self-bare src/consume/worker.ts "import '@kyuworks/sdk/otel'\n"
+assert_exit "sdk bare import of @kyuworks/sdk/otel fails" 1 env ROOT_DIR="${WORK}/self-bare" bash "${CHECK}"
+sdk_case self-dynamic src/consume/worker.ts "export const o = await import('@kyuworks/sdk/otel')\n"
+assert_exit "sdk dynamic import() of @kyuworks/sdk/otel fails" 1 env ROOT_DIR="${WORK}/self-dynamic" bash "${CHECK}"
+sdk_case self-require src/consume/worker.cts "const o = require('@kyuworks/sdk/otel')\nexport const p = o\n"
+assert_exit "sdk require() of @kyuworks/sdk/otel in a .cts file fails" 1 env ROOT_DIR="${WORK}/self-require" bash "${CHECK}"
+sdk_case self-test src/otel.test.ts "import { activeTraceContext } from '@kyuworks/sdk/otel'\nexport const a = activeTraceContext\n"
+assert_exit "sdk otel.test.ts importing @kyuworks/sdk/otel by name fails" 1 env ROOT_DIR="${WORK}/self-test" bash "${CHECK}"
+sdk_case self-root src/consume/worker.ts "import { createPublisher } from '@kyuworks/sdk'\nexport const p = createPublisher\n"
+assert_exit "sdk file importing @kyuworks/sdk by name fails" 1 env ROOT_DIR="${WORK}/self-root" bash "${CHECK}"
+sdk_case self-allowed src/consume/worker.ts "import { z } from '@kyuworks/schemas'\nimport { y } from '@kyuworks/sdk-other'\n// Consumers import @kyuworks/sdk/otel by name.\nexport const x = [z, y]\n"
+assert_exit "sdk imports of other packages and a mention in a comment pass" 0 env ROOT_DIR="${WORK}/self-allowed" bash "${CHECK}"
+
 # --- A .cts file is scanned by all four checks like a .ts file (#45) ---
 mkdir -p "${WORK}/cts-relative/packages/a/src" "${WORK}/cts-relative/packages/b/src"
 printf "export const x = 1\n" > "${WORK}/cts-relative/packages/a/src/x.ts"
