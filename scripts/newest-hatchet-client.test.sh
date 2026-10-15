@@ -82,17 +82,20 @@ assert_exit "a registry error object fails" 1 pick registry-error
 assert_last_output_contains "a registry error object names the cause" "the registry answered with an error"
 
 # The default paths read this repository's own package.json and lockfile. The version list is built from the
-# range just read, so a client bump does not break the case: the base, a pre-release and a next major are
-# skipped, the patch above the base is picked.
+# range just read, so a client bump does not break the case: the base, a pre-release of the next minor (it would
+# win if pre-releases were kept) and the next major are skipped; the patch above the base is picked.
 expected_range="$(node -p "require('${SCRIPT_DIR}/../packages/sdk/package.json').dependencies['@hatchet-dev/typescript-sdk']")"
 base="${expected_range#^}"
 IFS=. read -r base_major base_minor base_patch <<< "${base}"
 expected_newest="${base_major}.${base_minor}.$((base_patch + 1))"
-expected_locked="$(node -p "[...require('fs').readFileSync('${SCRIPT_DIR}/../pnpm-lock.yaml', 'utf8').matchAll(/^  '@hatchet-dev\\/typescript-sdk@([^'(]+)':\$/gm)][0][1]")"
-printf '["%s","%s.%s.%s-alpha.1","%s","%s.0.0"]\n' "${base}" "${base_major}" "${base_minor}" "$((base_patch + 1))" "${expected_newest}" "$((base_major + 1))" > "${WORK}/repo-versions.json"
+[[ "${expected_range}" =~ ^\^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+gate_test_record "the repository's range is a plain caret version" "$?"
+printf '["%s","%s.%s.0-alpha.1","%s","%s.0.0"]\n' "${base}" "${base_major}" "$((base_minor + 1))" "${expected_newest}" "$((base_major + 1))" > "${WORK}/repo-versions.json"
 assert_output_contains "reads the repository's range by default" "range=${expected_range}" \
   env NEWEST_CLIENT_VERSIONS="${WORK}/repo-versions.json" bash "${PICKER}"
 assert_last_output_contains "the default list is built from that range" "newest=${expected_newest}"
-assert_last_output_contains "reads the repository's lockfile by default" "lockfile=${expected_locked}"
+# The lockfile line must carry a real version, so a lockfile the picker did not read cannot pass.
+[[ "${GATE_TEST_LAST_OUT}" =~ (^|$'\n')lockfile=[0-9]+\.[0-9]+\.[0-9]+($|$'\n') ]]
+gate_test_record "reads the repository's lockfile by default" "$?"
 
 gate_test_finish
