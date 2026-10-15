@@ -25,6 +25,10 @@
 # site for the engine. src/hatchet.test.ts is the one exception: it checks
 # the wrapper against the real package.
 #
+# Blocked in packages/sdk/ the same way: @opentelemetry/... anywhere but
+# `@opentelemetry/api` in src/otel.ts, and any import of otel.ts, so the main
+# entry point never loads the optional peer. src/otel.test.ts is exempt.
+#
 # Env (tests): ROOT_DIR
 set -euo pipefail
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
@@ -117,6 +121,23 @@ if [ -d packages/sdk ]; then
   ENGINE_HITS="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --include='*.cts' --exclude-dir=node_modules --exclude-dir=dist "${ENGINE_PATTERN}" packages/sdk 2>/dev/null | sed -E '/^packages\/sdk\/src\/hatchet(\.test)?\.ts:/d' || true)"
   if [ -n "${ENGINE_HITS}" ]; then
     printf '%s\n' "${ENGINE_HITS}" | sed 's/^/FAIL: packages\/sdk imports @hatchet-dev\/ in src\/hatchet.ts only: /' >&2
+    FAIL=1
+  fi
+
+  # @opentelemetry/api is an optional peer: only src/otel.ts (the ./otel entry point) imports it.
+  OTEL_SPEC="@opentelemetry/[^'\"]*"
+  OTEL_PATTERN="(from|import)[[:space:]]+['\"](${OTEL_SPEC})['\"]|(import|require)[[:space:]]*\([[:space:]]*['\"](${OTEL_SPEC})['\"]"
+  OTEL_HITS="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --include='*.cts' --exclude-dir=node_modules --exclude-dir=dist "${OTEL_PATTERN}" packages/sdk 2>/dev/null | sed -E -e '/^packages\/sdk\/src\/otel\.test\.ts:/d' -e "/^packages\/sdk\/src\/otel\.ts:.*['\"]@opentelemetry\/api['\"]/d" || true)"
+  if [ -n "${OTEL_HITS}" ]; then
+    printf '%s\n' "${OTEL_HITS}" | sed 's/^/FAIL: packages\/sdk imports @opentelemetry\/api in src\/otel.ts only: /' >&2
+    FAIL=1
+  fi
+  # No other file imports otel.ts, so the main entry point never loads the peer.
+  OTEL_ENTRY_SPEC="(\.\.?\/)+otel(\.js)?"
+  OTEL_ENTRY_PATTERN="(from|import)[[:space:]]+['\"]${OTEL_ENTRY_SPEC}['\"]|(import|require)[[:space:]]*\([[:space:]]*['\"]${OTEL_ENTRY_SPEC}['\"]"
+  OTEL_ENTRY_HITS="$(grep -rnE --include='*.ts' --include='*.tsx' --include='*.mts' --include='*.cts' --exclude-dir=node_modules --exclude-dir=dist "${OTEL_ENTRY_PATTERN}" packages/sdk 2>/dev/null | sed -E '/^packages\/sdk\/src\/otel\.test\.ts:/d' || true)"
+  if [ -n "${OTEL_ENTRY_HITS}" ]; then
+    printf '%s\n' "${OTEL_ENTRY_HITS}" | sed 's/^/FAIL: packages\/sdk reaches src\/otel.ts only through the .\/otel entry point: /' >&2
     FAIL=1
   fi
 fi
