@@ -164,8 +164,12 @@ The shop does the same in [`src/producer/placeOrder.ts`](https://github.com/kyuw
 | `orgUnitId` | no | a uuid for a sub-division of the tenant |
 | `occurredAt` | no | a `Date`; defaults to now |
 | `publishAt` | no | a `Date`; the relay holds the row until then |
+| `traceparent` | no | the W3C traceparent of your active span |
+| `tracestate` | no | the W3C tracestate that goes with it; refused without `traceparent` |
 
 Fill `actorUserId` whenever a signed-in user made the change. For `correlationId`, pass an id your request already carries only if it is a uuid v7; a random (v4) request id is refused. A message a handler publishes in reply passes `correlationId: ctx.envelope.correlationId` and `causationId: ctx.envelope.id`.
+
+To link traces, pass your active span's context. The SDK does not depend on OpenTelemetry, so the publisher reads it: `const carrier: { traceparent?: string; tracestate?: string } = {}; propagation.inject(context.active(), carrier)` (from `@opentelemetry/api`), then `kyu.publish(tx, contactChanged, { contactId }, { tenantId, ...carrier })`. In the handler, start your span with a **link** to `trace.getSpanContext(propagation.extract(ROOT_CONTEXT, { traceparent: ctx.envelope.traceparent ?? '', tracestate: ctx.envelope.tracestate ?? '' }))`, not as its child. A message the handler publishes passes the handler's own span context, the same way it passes `causationId`.
 
 `tx` must be a client inside an open transaction. Passing a `pg.Pool` is a type error ([`queryable.ts`](../../packages/sdk/src/db/queryable.ts)).
 
@@ -268,6 +272,7 @@ export function pushContactSubscription(kyu: Kyu, pool: Pool): Subscription {
 - `ctx.signal` — aborts when the engine cancels this run, including a `cancel_in_progress` cancel. Pass it to your HTTP client so a stale push stops;
 - `ctx.retryCount`, `ctx.runId`, `ctx.logger`, `ctx.metadata`.
 - `ctx.envelope.sdkVersion` — the `@kyuworks/sdk` release that published the message, for your logs. A message from a producer on 0.2.0 or older has none. Do not branch on it.
+- `ctx.envelope.traceparent` / `ctx.envelope.tracestate` — the publisher's trace context when it sent one; also `ctx.metadata.traceparent`. A malformed value arrives as absent.
 
 Throw to retry, up to `retries` with `backoff`. Throw `NonRetryableError` for a condition no retry can fix, such as a 400 or 404 answer that will not change on retry (408 and 429 are retryable), or a record that no longer exists. Either way an exhausted run is a failed run, which is the dead letter.
 

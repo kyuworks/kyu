@@ -32,6 +32,28 @@ describe('createPublisher', () => {
     expect(roundTripped).toEqual(envelope)
   })
 
+  it('writes a given traceparent and tracestate into the stored envelope', async () => {
+    const recordedParams: Array<readonly QueryParam[]> = []
+    const db: Queryable = {
+      query(_text: string, params: readonly QueryParam[]): Promise<QueryRows> {
+        recordedParams.push(params)
+        return Promise.resolve({ rows: [], rowCount: 1 })
+      },
+    }
+    const traceparent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+    const tracestate = 'rojo=00f067aa0ba902b7'
+    const publisher = createPublisher({ source: 'shop-service' })
+    await publisher.publish(
+      db,
+      orderPlaced,
+      { orderId: '018f0000-0000-7000-8000-000000000002' },
+      { tenantId: null, traceparent, tracestate },
+    )
+    const stored = envelopeSchema.parse(JSON.parse(z.string().parse(recordedParams[0]?.[3])))
+    expect(stored.traceparent).toBe(traceparent)
+    expect(stored.tracestate).toBe(tracestate)
+  })
+
   it('passes publishAt through as the insert’s publish_at parameter', async () => {
     const recordedParams: Array<readonly QueryParam[]> = []
     const db: Queryable = {

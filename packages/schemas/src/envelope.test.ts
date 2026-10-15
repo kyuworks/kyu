@@ -144,6 +144,65 @@ describe('sdkVersion', () => {
   })
 })
 
+const traceparent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+const tracestate = 'congo=t61rcWkgMzE,rojo=00f067aa0ba902b7'
+
+describe('traceparent and tracestate', () => {
+  it('keeps both on the envelope and mirrors only traceparent into kyu_traceparent metadata', () => {
+    const envelope: Envelope = envelopeSchema.parse({ ...validEnvelope, traceparent, tracestate })
+    expect(envelope.traceparent).toBe(traceparent)
+    expect(envelope.tracestate).toBe(tracestate)
+    const metadata = toEnvelopeMetadata(envelope)
+    expect(metadata['kyu_traceparent']).toBe(traceparent)
+    expect(metadata).not.toHaveProperty('kyu_tracestate')
+    expect(fromEnvelopeMetadata(metadata).traceparent).toBe(traceparent)
+  })
+
+  it('still accepts an envelope and metadata without them, as a 0.2.0 producer writes them', () => {
+    const envelope: Envelope = envelopeSchema.parse(validEnvelope)
+    expect(envelope).not.toHaveProperty('traceparent')
+    expect(envelope).not.toHaveProperty('tracestate')
+    const metadata = toEnvelopeMetadata(envelope)
+    expect(metadata).not.toHaveProperty('kyu_traceparent')
+    expect(fromEnvelopeMetadata(metadata)).not.toHaveProperty('traceparent')
+  })
+
+  it.each([
+    '01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+    '00-00000000000000000000000000000000-00f067aa0ba902b7-01',
+    '00-4BF92F3577B34DA6A3CE929D0E0E4736-00f067aa0ba902b7-01',
+    '',
+    42,
+  ])('drops traceparent %j from an envelope and from engine metadata instead of rejecting it', (bad) => {
+    const parsed = envelopeSchema.safeParse({ ...validEnvelope, traceparent: bad })
+    expect(parsed.success).toBe(true)
+    expect(parsed.data?.traceparent).toBeUndefined()
+    const metadata = toEnvelopeMetadata(envelopeSchema.parse(validEnvelope))
+    const fields = envelopeMetadataSchema.safeParse({ ...metadata, kyu_traceparent: bad })
+    expect(fields.success).toBe(true)
+    expect(fields.data?.kyu_traceparent).toBeUndefined()
+  })
+
+  it.each([
+    ['empty', ''],
+    ['an upper-case key', 'Bad Key=1'],
+    ['over 512 characters', 'k=v'.padEnd(513, 'v')],
+    ['33 members', Array.from({ length: 33 }, (_, i) => `k${i}=v`).join(',')],
+    ['not a string', 7],
+  ])('drops a tracestate that is %s from an envelope instead of rejecting it', (_label, bad) => {
+    const parsed = envelopeSchema.safeParse({ ...validEnvelope, traceparent, tracestate: bad })
+    expect(parsed.success).toBe(true)
+    expect(parsed.data?.tracestate).toBeUndefined()
+    expect(parsed.data?.traceparent).toBe(traceparent)
+  })
+
+  it('accepts 32 members, a multi-tenant key and optional white space around commas', () => {
+    const members = Array.from({ length: 31 }, (_, i) => `k${i}=v`)
+    const value = ['tenant@vendor=x', ...members].join(' ,\t')
+    expect(envelopeSchema.parse({ ...validEnvelope, traceparent, tracestate: value }).tracestate).toBe(value)
+  })
+})
+
 describe('fromEnvelopeMetadata', () => {
   it('round-trips through toEnvelopeMetadata', () => {
     const envelope: Envelope = envelopeSchema.parse({

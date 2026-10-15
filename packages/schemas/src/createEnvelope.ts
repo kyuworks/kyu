@@ -2,7 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { z } from 'zod'
 import type { MessageDefinition, MessageSchema } from './define.js'
 import type { Envelope, EnvelopeData } from './envelope.js'
-import { envelopeSchema } from './envelope.js'
+import { envelopeSchema, traceparentSchema, tracestateSchema } from './envelope.js'
 import { EnvelopeOptionsError, MessageDataError } from './errors.js'
 import type { MessageDataShape } from './json.js'
 import { normalizeEnvelopeData } from './normalizeData.js'
@@ -17,7 +17,19 @@ export interface CreateEnvelopeOptions {
   causationId?: string
   source: string
   occurredAt?: Date
+  /** The W3C `traceparent` of the publisher's active span. */
+  traceparent?: string
+  /** The W3C `tracestate` that goes with `traceparent`; refused without it. */
+  tracestate?: string
 }
+
+// Write side is strict: envelopeSchema drops a malformed trace value on read, so it is refused here instead.
+const createdEnvelopeSchema = envelopeSchema
+  .extend({ traceparent: traceparentSchema.optional(), tracestate: tracestateSchema.optional() })
+  .refine((envelope) => envelope.tracestate === undefined || envelope.traceparent !== undefined, {
+    path: ['tracestate'],
+    message: 'tracestate needs a traceparent',
+  })
 
 type RawEnvelope = Omit<z.input<typeof envelopeSchema>, 'data'> & { data: EnvelopeData }
 
@@ -54,9 +66,11 @@ export async function createEnvelope<S extends MessageSchema>(
   if (options.orgUnitId !== undefined) raw.orgUnitId = options.orgUnitId
   if (options.actorUserId !== undefined) raw.actorUserId = options.actorUserId
   if (options.causationId !== undefined) raw.causationId = options.causationId
+  if (options.traceparent !== undefined) raw.traceparent = options.traceparent
+  if (options.tracestate !== undefined) raw.tracestate = options.tracestate
 
   // `data` is normalised above; a `data`-path issue here routes to MessageDataError.
-  const result = envelopeSchema.safeParse(raw)
+  const result = createdEnvelopeSchema.safeParse(raw)
   if (!result.success) {
     const issues = result.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message }))
     if (result.error.issues.some((issue) => issue.path[0] === 'data')) throw new MessageDataError(issues)

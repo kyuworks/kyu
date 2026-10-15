@@ -183,6 +183,8 @@ interface Envelope<T> {
   causationId?: string;   // id of the message this one was caused by
   source: string;         // producing project and component, 'shop.api'
   sdkVersion?: string;    // @kyuworks/sdk release that wrote it; set by the SDK, absent from 0.2.0 producers
+  traceparent?: string;   // W3C trace context of the publishing span, when the publisher passes it
+  tracestate?: string;    // W3C vendor state that goes with traceparent
   data: T;                // ids-only unless the schema opts in
 }
 ```
@@ -190,6 +192,8 @@ interface Envelope<T> {
 Mapping onto Hatchet: `name` is the event key; `data` and the scalar envelope fields are the event payload; `tenantId`, `correlationId`, `causationId`, `source` and `actorUserId` are duplicated into `additionalMetadata` so CEL filters, concurrency keys and rate-limit keys can read them; `tenantId` is the default `scope`.
 
 `sdkVersion` is the SDK's `SDK_VERSION`, written by `insertOutboxRow` (so by `publish()`, scheduled ticks and any direct caller) over any value the caller set, and mirrored into `additionalMetadata` as `kyu_sdk_version` so the run list can be filtered by it. It is for logs and support only: no subscription, filter or handler may route on it, and a consumer must accept a message without it. On every read path (consume, outbox read, metadata decode) a value that is not a string of 1 to 64 characters is dropped, never a rejection.
+
+`traceparent` and `tracestate` carry the [W3C trace context](https://www.w3.org/TR/trace-context/) of the span that published the message. The publisher passes them to `publish()`. The SDK does not read the active span itself and does not depend on `@opentelemetry/api`. `createEnvelope` refuses each of these with an `EnvelopeOptionsError` that names the field: a `traceparent` that is not version `00` with a trace id and parent id that are not all zeros (§3.2.2); a `tracestate` that is not 1 to 32 `key=value` members within 512 characters (§3.3.1); and a `tracestate` without a `traceparent`. On every read path a value that breaks those rules is dropped, never a rejection, as for `sdkVersion`. `traceparent` is copied into `additionalMetadata` as `kyu_traceparent` so the run list can be filtered by trace. `tracestate` is not copied. The key has the `kyu_` prefix because the engine SDK's OpenTelemetry instrumentor reads a bare `traceparent` key and would make the run's span a child of the producer's. A consumer span links to the producer's context and does not descend from it, because the handler runs in another process at another time ([OpenTelemetry messaging spans](https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/)). A message that a handler publishes carries the handler's own span context, not `ctx.envelope.traceparent`. `causationId` already records the chain.
 
 ### 7.2 Naming
 
