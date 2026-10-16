@@ -1,6 +1,6 @@
 {
   "name": "@kyuworks/schemas",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Kyu message envelope, naming rules and schema adapters. Runtime-light; depends on Zod only.",
   "type": "module",
   "license": "MIT",
