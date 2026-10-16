@@ -5,6 +5,7 @@ import { celPayloadPath } from './celPath.js'
 import { TENANT_CONCURRENCY_KEY, toHatchetConcurrency } from './concurrency.js'
 import type { ConcurrencyOption } from './concurrency.js'
 import { engineDurationMs } from './engineDuration.js'
+import type { EngineDuration } from './engineDuration.js'
 
 /**
  * An engine-side rate limit on a subscription. `key` is a CEL expression over
@@ -52,7 +53,7 @@ export interface SharedTaskOptions {
    * run that waits longer without ever starting it; its own default is 5
    * minutes, which the SDK leaves in place.
    */
-  scheduleTimeout?: Extract<Duration, string>
+  scheduleTimeout?: EngineDuration
   priority?: 'low' | 'medium' | 'high'
 }
 
@@ -134,17 +135,22 @@ function resolveSubscriptionRateLimit(bucket: string, option: SubscriptionRateLi
   return { key: `${JSON.stringify(`${bucket}:`)} + ${rateLimitSubject(parsed.data)}`, limit, period: window }
 }
 
-// The Duration string type admits '0s', '-30s' and '1e3s'. Proved on the local engine (v0.107.0): it refuses
-// '-30s' and '1e3s' at registration, and '0s' fails every queued run at once with no error message.
-function assertScheduleTimeout(value: Extract<Duration, string>): void {
+// Proved on the local engine (v0.107.0): it refuses '-30s' and '1e3s' at registration; '0s' and anything under one
+// second register and then fail every run at once with no error message. The floor is the smallest value the SDK
+// accepted before it read the engine's grammar, not the engine's exact edge ('100ms' completed, '10ms' did not).
+const MIN_SCHEDULE_TIMEOUT_MS = 1_000
+
+function assertScheduleTimeout(value: EngineDuration): void {
   const milliseconds = engineDurationMs(value)
   if (milliseconds === undefined) {
     throw new KyuError(
-      `scheduleTimeout "${value}" is not a duration the engine reads: use numbers with a unit of ms, s, m or h, no sign or spaces, under 292 years, for example "5m", "1h30m" or "1.5s"`,
+      `scheduleTimeout "${value}" is not a duration the engine reads: use numbers of at most 15 characters with a unit of ms, s, m or h, no sign or spaces, under 292 years, for example "5m", "1h30m" or "1.5s"`,
     )
   }
-  if (milliseconds <= 0) {
-    throw new KyuError(`scheduleTimeout "${value}" rounds to zero milliseconds: every run would fail before it started`)
+  if (milliseconds < MIN_SCHEDULE_TIMEOUT_MS) {
+    throw new KyuError(
+      `scheduleTimeout "${value}" is under the one second minimum: the engine would fail every run before it started`,
+    )
   }
 }
 
@@ -179,7 +185,8 @@ export function applySharedTaskOptions(
   if (options.executionTimeout !== undefined) taskOptions.executionTimeout = options.executionTimeout
   if (options.scheduleTimeout !== undefined) {
     assertScheduleTimeout(options.scheduleTimeout)
-    taskOptions.scheduleTimeout = options.scheduleTimeout
+    // The client types the string narrower than the engine reads; it sends the string unchanged (workflow-proto resolveScheduleTimeout).
+    taskOptions.scheduleTimeout = options.scheduleTimeout as Extract<Duration, string>
   }
   if (options.priority !== undefined) taskOptions.defaultPriority = PRIORITY_CODE[options.priority]
 }
