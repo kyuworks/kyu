@@ -10,9 +10,10 @@ import type {
 } from '@kyuworks/schemas'
 import { EnvelopeRejectedError } from '../errors.js'
 import { eventScope } from '../eventScope.js'
-import { UserEventCondition, durationToMs } from '../hatchet.js'
-import type { Duration } from '../hatchet.js'
+import { KyuError, UserEventCondition } from '../hatchet.js'
 import { celPayloadPath } from './celPath.js'
+import { engineDurationMs } from './engineDuration.js'
+import type { EngineDuration } from './engineDuration.js'
 import { decodeIncomingEnvelope } from './subscribe.js'
 
 export function celEquals(caller: string, field: string, equals: string): string {
@@ -36,12 +37,18 @@ export interface WaitWindow {
 export function buildWaitWindow(
   handlerEnvelope: Envelope<MessageDataShape>,
   scope: string | undefined,
-  lookback: Extract<Duration, string> | undefined,
+  lookback: EngineDuration | undefined,
   now: Date,
 ): WaitWindow {
+  const lookbackMs = engineDurationMs(lookback ?? '5m')
+  if (lookbackMs === undefined) {
+    throw new KyuError(
+      `lookback "${lookback}" is not a duration: use numbers with a unit of ms, s, m or h, for example "5m"`,
+    )
+  }
   return {
     scope: scope ?? eventScope(handlerEnvelope),
-    considerEventsSince: new Date(now.getTime() - durationToMs(lookback ?? '5m')).toISOString(),
+    considerEventsSince: new Date(now.getTime() - lookbackMs).toISOString(),
   }
 }
 

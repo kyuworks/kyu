@@ -10,6 +10,7 @@ import { envelopeSchema } from '@kyuworks/schemas'
 import { KyuError } from '../errors.js'
 import { Or, SleepCondition } from '../hatchet.js'
 import type { DurableContext, Duration, JsonObject, OrCondition } from '../hatchet.js'
+import type { EngineDuration } from './engineDuration.js'
 import { readRunOutcomes } from './runOutcomes.js'
 import type { RunsReader } from './runOutcomes.js'
 import {
@@ -30,7 +31,7 @@ export interface WaitForChildrenOptions {
   /** Defaults to the handler envelope's tenant, or `'global'`; an explicit value disables the tenant cross-check. */
   scope?: string
   /** Defaults to `'5m'`. */
-  lookback?: Extract<Duration, string>
+  lookback?: EngineDuration
   /** One deadline for the whole set. Each child that has not replied by then is classified from its own engine runs. */
   timeout: Extract<Duration, string>
 }
