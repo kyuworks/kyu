@@ -40,7 +40,7 @@
     "lint": "NODE_OPTIONS='--import tsx' oxlint"
   },
   "dependencies": {
-    "@hatchet-dev/typescript-sdk": "^1.33.2",
+    "@hatchet-dev/typescript-sdk": "^1.36.0",
     "@kyuworks/schemas": "workspace:*",
     "zod": "^4.6.5"
   },
@@ -56,9 +56,9 @@
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/context-async-hooks": "^2.12.0",
     "@opentelemetry/core": "^2.12.0",
-    "@types/node": "^24.19.0",
+    "@types/node": "^24.19.1",
     "@types/pg": "^8.23.1",
-    "oxlint": "^1.86.0",
+    "oxlint": "^1.87.0",
     "oxlint-tsgolint": "7.0.2003",
     "pg": "^8.23.1",
     "typescript": "^6.0.0",
