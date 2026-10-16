@@ -18,7 +18,8 @@ const TENANT = '2b1f7f3e-9f3a-4e3e-9f3a-2b1f7f3e9f30'
 
 // One slot per worker, held until the test releases it: the second message's run is the
 // only one queued, so no handler duration or dispatch order decides which run fails.
-const STRICT_TIMEOUT_MS = 15_000
+// A fraction on purpose ('14.5s'): the engine registers and honours it, so the SDK must pass it through.
+const STRICT_TIMEOUT_MS = 14_500
 const STRICT_TIMEOUT = `${STRICT_TIMEOUT_MS / 1000}s` as const
 const STRICT = 'slot-strict'
 const PATIENT = 'slot-patient'

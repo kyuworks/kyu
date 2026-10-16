@@ -242,17 +242,42 @@ describe('subscribe: option wiring', () => {
     expect(capturedOptions()?.scheduleTimeout).toBeUndefined()
   })
 
+  // Each value was registered or refused by the local engine (v0.107.0) with the raw client; see taskOptions.ts.
   it.each([
-    ['zero, which would fail every queued run at once', '0s'],
-    ['a fraction the engine grammar cannot read', '1.5s'],
-    ['a negative duration', '-30s'],
-    ['an empty string', '' as Extract<Duration, string>],
-  ] as const)('refuses a scheduleTimeout of %s before the engine', (_shape, value) => {
+    ['a fraction', '1.5s'],
+    ['hours and minutes', '1h30m'],
+    ['minutes and a fractional second', '1m30.5s'],
+    ['milliseconds', '500ms' as Extract<Duration, string>],
+    ['a repeated unit, which the engine adds up', '1s1s' as Extract<Duration, string>],
+  ] as const)('passes a scheduleTimeout of %s to the engine unchanged', (_shape, value) => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined, scheduleTimeout: value })
+
+    expect(capturedOptions()?.scheduleTimeout).toBe(value)
+  })
+
+  it.each([
+    ['zero, which would fail every queued run at once', '0s', /rounds to zero/],
+    ['under half a millisecond, which the engine also reads as zero', '0.0000001s', /rounds to zero/],
+    ['a negative duration', '-30s', /not a duration the engine reads/],
+    ['an exponent', '1e3s', /not a duration the engine reads/],
+    ['a number with no unit', '90' as Extract<Duration, string>, /not a duration the engine reads/],
+    ['a fraction with no unit', '1.5' as Extract<Duration, string>, /not a duration the engine reads/],
+    ['an unknown unit', '5x' as Extract<Duration, string>, /not a duration the engine reads/],
+    ['an upper-case unit', '5M' as Extract<Duration, string>, /not a duration the engine reads/],
+    ['leading spaces', '  5m', /not a duration the engine reads/],
+    ['more than the engine ceiling of about 292 years', '2562048h', /not a duration the engine reads/],
+    ['an empty string', '' as Extract<Duration, string>, /not a duration the engine reads/],
+  ] as const)('refuses a scheduleTimeout of %s before the engine', (_shape, value, message) => {
     const { client, capturedOptions } = fakeHatchetClient()
 
     expect(() =>
       subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined, scheduleTimeout: value }),
     ).toThrow(KyuError)
+    expect(() =>
+      subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined, scheduleTimeout: value }),
+    ).toThrow(message)
     expect(capturedOptions()).toBeUndefined()
   })
 })

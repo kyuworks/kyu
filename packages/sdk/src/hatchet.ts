@@ -12,7 +12,6 @@ import {
   RateLimitDuration,
   SleepCondition,
   UserEventCondition,
-  durationToMs,
 } from '@hatchet-dev/typescript-sdk/v1/index.js'
 import type {
   Concurrency,
@@ -37,7 +36,6 @@ export {
   SleepCondition,
   UserEventCondition,
   V1TaskStatus,
-  durationToMs,
 }
 export type {
   Concurrency,
