@@ -202,6 +202,32 @@ describe('buildWaitForConditions', () => {
     expect(userEvent.considerEventsSince).toBe(new Date(now.getTime() - 60 * 60_000).toISOString())
   })
 
+  it('honours a fractional lookback', async () => {
+    const envelope = await handlerEnvelope(null)
+
+    const { userEvent } = buildWaitForConditions(
+      envelope,
+      orderShipped,
+      { where: { field: 'data.orderId', equals: 'order-1' }, lookback: '1.5m', timeout: '30s' },
+      now,
+    )
+
+    expect(userEvent.considerEventsSince).toBe(new Date(now.getTime() - 90_000).toISOString())
+  })
+
+  it('refuses a lookback that is not a duration', async () => {
+    const envelope = await handlerEnvelope(null)
+
+    expect(() =>
+      buildWaitForConditions(
+        envelope,
+        orderShipped,
+        { where: { field: 'data.orderId', equals: 'order-1' }, lookback: '-5m', timeout: '30s' },
+        now,
+      ),
+    ).toThrow(KyuError)
+  })
+
   it('requires a later envelope id when parking again after a wake', async () => {
     const envelope = await handlerEnvelope(null)
     const woke = await createEnvelope(orderShipped, { orderId: 'order-1' }, { tenantId: null, source: 'sdk.test' })
@@ -477,15 +503,22 @@ describe('durable: option wiring', () => {
     expect(bare.capturedOptions()?.scheduleTimeout).toBeUndefined()
   })
 
-  // Mirrors subscribe.test.ts's refusal coverage: durable() rejects an invalid
-  // duration through the same shared validation, before the engine is touched.
+  // Mirrors subscribe.test.ts's coverage: durable() goes through the same shared validation.
   it('refuses a scheduleTimeout the engine cannot read, before the engine is touched', () => {
     const { client, capturedOptions } = fakeHatchetClient()
 
     expect(() =>
-      durable(client, orderPlaced, { name: 'follow-up', handler: () => undefined, scheduleTimeout: '1.5s' }),
+      durable(client, orderPlaced, { name: 'follow-up', handler: () => undefined, scheduleTimeout: '-30s' }),
     ).toThrow(KyuError)
     expect(capturedOptions()).toBeUndefined()
+  })
+
+  it('passes a fractional scheduleTimeout the engine reads to the engine unchanged', () => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    durable(client, orderPlaced, { name: 'follow-up', handler: () => undefined, scheduleTimeout: '1.5s' })
+
+    expect(capturedOptions()?.scheduleTimeout).toBe('1.5s')
   })
 })
 

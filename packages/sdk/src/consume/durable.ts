@@ -17,6 +17,7 @@ import type {
   JsonObject,
   UserEventCondition,
 } from '../hatchet.js'
+import type { EngineDuration } from './engineDuration.js'
 import { decodeAndCheckMetadata, decodeIncomingEnvelope } from './subscribe.js'
 import type { Subscription } from './subscribe.js'
 import { buildHandlerContext } from './handlerContext.js'
@@ -43,7 +44,7 @@ export interface WaitForOptions {
   /** Defaults to the handler envelope's tenant, or `'global'` for a null tenant; an explicit value disables the tenant cross-check on the match. */
   scope?: string
   /** Defaults to `'5m'`. */
-  lookback?: Extract<Duration, string>
+  lookback?: EngineDuration
   /** The run's total sleep and wait time must stay below the task's `executionTimeout`, or the engine cancels the run mid-wait and the result never arrives. */
   timeout: Extract<Duration, string>
 }

@@ -2,15 +2,9 @@ import { createEnvelope, defineCommand, defineEvent, toEnvelopeMetadata } from '
 import { z } from 'zod'
 import { describe, expect, it, vi } from 'vitest'
 import { EnvelopeRejectedError } from '../errors.js'
-import type {
-  Context,
-  CreateTaskWorkflowOpts,
-  Duration,
-  HatchetClient,
-  JsonObject,
-  TaskWorkflowDeclaration,
-} from '../hatchet.js'
+import type { Context, CreateTaskWorkflowOpts, HatchetClient, JsonObject, TaskWorkflowDeclaration } from '../hatchet.js'
 import { ConcurrencyLimitStrategy, KyuError, Priority, RateLimitDuration } from '../hatchet.js'
+import type { EngineDuration } from './engineDuration.js'
 import { decodeIncomingEnvelope, subscribe } from './subscribe.js'
 import { toHatchetRateLimit } from './taskOptions.js'
 import type { SharedTaskOptions, SubscriptionRateLimitOption } from './taskOptions.js'
@@ -242,17 +236,66 @@ describe('subscribe: option wiring', () => {
     expect(capturedOptions()?.scheduleTimeout).toBeUndefined()
   })
 
+  // Each value was registered or refused by the local engine (v0.107.0) with the raw client; see taskOptions.ts.
   it.each([
-    ['zero, which would fail every queued run at once', '0s'],
-    ['a fraction the engine grammar cannot read', '1.5s'],
+    ['a fraction', '1.5s'],
+    ['hours and minutes', '1h30m'],
+    ['minutes and a fractional second', '1m30.5s'],
+    ['milliseconds', '1000ms'],
+    ['a repeated unit, which the engine adds up', '1s1s'],
+    ['exactly the one second floor', '1s'],
+  ] as const)('passes a scheduleTimeout of %s to the engine unchanged', (_shape, value) => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined, scheduleTimeout: value })
+
+    expect(capturedOptions()?.scheduleTimeout).toBe(value)
+  })
+
+  // Under one second the engine registers the value and then fails every run at once without starting it (measured at
+  // 0.5ms, 1ms and 10ms on a free slot); the SDK's smallest accepted value stays the one second it always was.
+  it.each([
+    ['zero', '0s'],
+    ['under half a millisecond', '0.0000001s'],
+    ['half a millisecond', '0.5ms'],
+    ['one millisecond', '1ms'],
+    ['just under the one second floor', '999ms'],
+  ] as const)('refuses a scheduleTimeout of %s as under the one second floor', (_shape, value) => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    expect(() =>
+      subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined, scheduleTimeout: value }),
+    ).toThrow(KyuError)
+    expect(() =>
+      subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined, scheduleTimeout: value }),
+    ).toThrow(/under the one second minimum/)
+    expect(capturedOptions()).toBeUndefined()
+  })
+
+  // The engine's convert_duration_to_interval (sql/schema/v1-core.sql at v0.107.0) raises on the long number parts and
+  // on the totals past 9223372036 seconds; the workflow still registers and every event of its type is then lost.
+  it.each([
     ['a negative duration', '-30s'],
-    ['an empty string', '' as Extract<Duration, string>],
+    ['an exponent', '1e3s'],
+    ['a number with no unit', '90' as EngineDuration],
+    ['a fraction with no unit', '1.5' as EngineDuration],
+    ['an unknown unit', '5x' as EngineDuration],
+    ['an upper-case unit', '5M' as EngineDuration],
+    ['leading spaces', '  5m'],
+    ['more than the engine ceiling of about 292 years', '2562048h'],
+    ['a total just past the 9223372036 second limit the engine stores', '2562047h47m16.5s'],
+    ['a number of more than 15 characters', '1.0000000000000000s'],
+    ['a number padded to more than 15 characters', '0000000000000001s'],
+    ['an empty string', '' as EngineDuration],
   ] as const)('refuses a scheduleTimeout of %s before the engine', (_shape, value) => {
     const { client, capturedOptions } = fakeHatchetClient()
 
     expect(() =>
       subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined, scheduleTimeout: value }),
     ).toThrow(KyuError)
+    expect(() =>
+      subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined, scheduleTimeout: value }),
+    ).toThrow(/not a duration the engine reads/)
     expect(capturedOptions()).toBeUndefined()
   })
 })
