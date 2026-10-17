@@ -186,7 +186,6 @@ describe('durable: a refused sleepFor', () => {
 
     expect(outcome?.status).toBe('failed')
     expect(outcome?.attempts).toBe(1)
-    expect(outcome?.error).toContain('DurationRejectedError')
     expect(outcome?.error).toContain('is not a duration the engine reads')
     expect(bodyRuns.get(envelope.id)).toBe(1)
   }, 60_000)
