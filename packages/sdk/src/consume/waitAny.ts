@@ -1,5 +1,5 @@
 import type { Envelope, MessageDataShape, MessageDefinition, MessageSchema, Unparsed } from '@kyuworks/schemas'
-import { KyuError } from '../errors.js'
+import { KyuError, WaitArgumentRejectedError } from '../errors.js'
 import { Or, SleepCondition } from '../hatchet.js'
 import type { DurableContext, JsonObject, OrCondition } from '../hatchet.js'
 import { readWaitDuration } from './engineDuration.js'
@@ -39,10 +39,12 @@ export const MAX_WAIT_FOR_ANY_MESSAGES = 10
 
 function assertMessageWaits(waits: readonly MessageWait[]): void {
   if (waits.length === 0) {
-    throw new KyuError('waitForAny: waits must not be empty')
+    throw new WaitArgumentRejectedError('waitForAny: waits must not be empty')
   }
   if (waits.length > MAX_WAIT_FOR_ANY_MESSAGES) {
-    throw new KyuError(`waitForAny: ${waits.length} waits, more than the ${MAX_WAIT_FOR_ANY_MESSAGES}-wait cap`)
+    throw new WaitArgumentRejectedError(
+      `waitForAny: ${waits.length} waits, more than the ${MAX_WAIT_FOR_ANY_MESSAGES}-wait cap`,
+    )
   }
 }
 

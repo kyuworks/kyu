@@ -11,13 +11,13 @@ import type {
 import { EnvelopeRejectedError } from '../errors.js'
 import { eventScope } from '../eventScope.js'
 import { UserEventCondition } from '../hatchet.js'
-import { celPayloadPath } from './celPath.js'
+import { celWaitPayloadPath } from './celPath.js'
 import { readWaitDuration } from './engineDuration.js'
 import type { EngineDuration } from './engineDuration.js'
 import { decodeIncomingEnvelope } from './subscribe.js'
 
 export function celEquals(caller: string, field: string, equals: string): string {
-  return `${celPayloadPath(`${caller}: where.field`, field)} == ${JSON.stringify(equals)}`
+  return `${celWaitPayloadPath(`${caller}: where.field`, field)} == ${JSON.stringify(equals)}`
 }
 
 /** One equality test on a dotted payload path: the subject key a durable wait holds out for. */

@@ -68,7 +68,6 @@ export type { EngineDuration as Duration } from './consume/engineDuration.js'
 
 export {
   CommandHasTwoSubscribersError,
-  DurationRejectedError,
   EnvelopeOptionsError,
   EnvelopeRejectedError,
   MessageDataError,
@@ -78,6 +77,7 @@ export {
   ScheduleAlreadyExistsError,
   ScheduleMessageUnknownError,
   SubscriptionAlreadyBoundError,
+  WaitArgumentRejectedError,
   WorkerStoppingError,
 } from './errors.js'
 export type { EnvelopeOptionIssue, MessageDataIssue } from './errors.js'

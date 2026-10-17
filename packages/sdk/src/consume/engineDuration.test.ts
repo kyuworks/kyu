@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DurationRejectedError } from '../errors.js'
+import { WaitArgumentRejectedError } from '../errors.js'
 import { KyuError, NonRetryableError } from '../hatchet.js'
 import { engineDurationMs, readEngineDuration, readWaitDuration } from './engineDuration.js'
 import { REFUSED_ENGINE_DURATIONS } from './__tests__/engineDurationCases.js'
@@ -61,7 +61,7 @@ describe('readWaitDuration', () => {
 
   it.each(REFUSED_ENGINE_DURATIONS)('refuses %s with a non-retryable error that names the option', (_shape, value) => {
     expect(() => readWaitDuration('sleepFor', value)).toThrow(NonRetryableError)
-    expect(() => readWaitDuration('sleepFor', value)).toThrow(DurationRejectedError)
+    expect(() => readWaitDuration('sleepFor', value)).toThrow(WaitArgumentRejectedError)
     expect(() => readWaitDuration('sleepFor', value)).toThrow(`sleepFor "${value}" is not a duration the engine reads`)
   })
 })

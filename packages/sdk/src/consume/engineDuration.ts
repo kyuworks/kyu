@@ -1,4 +1,4 @@
-import { DurationRejectedError } from '../errors.js'
+import { WaitArgumentRejectedError } from '../errors.js'
 import { KyuError } from '../hatchet.js'
 import type { Duration } from '../hatchet.js'
 
@@ -72,9 +72,9 @@ export function readEngineDuration(option: string, value: EngineDuration): Engin
   return reading
 }
 
-/** Reads an option inside a running durable body; a DurationRejectedError for a refused value fails the run at once. */
+/** Reads an option inside a running durable body; a WaitArgumentRejectedError for a refused value fails the run at once. */
 export function readWaitDuration(option: string, value: EngineDuration): EngineDurationReading {
   const reading = toEngineDurationReading(value)
-  if (reading === undefined) throw new DurationRejectedError(engineDurationRefusal(option, value))
+  if (reading === undefined) throw new WaitArgumentRejectedError(engineDurationRefusal(option, value))
   return reading
 }

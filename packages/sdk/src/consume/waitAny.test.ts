@@ -2,7 +2,7 @@ import { createEnvelope, defineEvent } from '@kyuworks/schemas'
 import type { Envelope, MessageDataShape } from '@kyuworks/schemas'
 import { z } from 'zod'
 import { describe, expect, it } from 'vitest'
-import { DurationRejectedError, EnvelopeRejectedError, KyuError } from '../errors.js'
+import { EnvelopeRejectedError, KyuError, WaitArgumentRejectedError } from '../errors.js'
 import { NonRetryableError, OrCondition, SleepCondition, UserEventCondition } from '../hatchet.js'
 import type { DurableContext, JsonObject } from '../hatchet.js'
 import { buildAnyWaitConditions, waitForAnyMessage } from './waitAny.js'
@@ -68,7 +68,7 @@ describe('buildAnyWaitConditions', () => {
     const build = (): OrCondition => buildAnyWaitConditions(envelope, waits, { timeout: value }, now)
 
     expect(build).toThrow(NonRetryableError)
-    expect(build).toThrow(DurationRejectedError)
+    expect(build).toThrow(WaitArgumentRejectedError)
     expect(build).toThrow(`waitForAny timeout "${value}" is not a duration the engine reads`)
   })
 
@@ -149,22 +149,45 @@ function fakeDurableContext(
 }
 
 describe('waitForAnyMessage', () => {
-  it('rejects an empty waits list', async () => {
+  it('refuses an empty waits list with a non-retryable WaitArgumentRejectedError', async () => {
     const { context } = fakeDurableContext({ CREATE: { timeout: [{ sleep_duration: '30s' }] } })
     const envelope = await handlerEnvelope(null)
+    const rejection = waitForAnyMessage(context, envelope, [], { timeout: '30s' })
 
-    await expect(waitForAnyMessage(context, envelope, [], { timeout: '30s' })).rejects.toBeInstanceOf(KyuError)
+    await expect(rejection).rejects.toThrow(NonRetryableError)
+    await expect(rejection).rejects.toThrow(WaitArgumentRejectedError)
+    await expect(rejection).rejects.toThrow('waitForAny: waits must not be empty')
   })
 
-  it('rejects more waits than the cap', async () => {
+  it('refuses more waits than the cap with a non-retryable WaitArgumentRejectedError', async () => {
     const { context } = fakeDurableContext({ CREATE: { timeout: [{ sleep_duration: '30s' }] } })
     const envelope = await handlerEnvelope(null)
     const tooMany: MessageWait[] = Array.from({ length: 11 }, () => ({
       definition: orderShipped,
       where: { field: 'data.orderId', equals: 'order-1' },
     }))
+    const rejection = waitForAnyMessage(context, envelope, tooMany, { timeout: '30s' })
 
-    await expect(waitForAnyMessage(context, envelope, tooMany, { timeout: '30s' })).rejects.toBeInstanceOf(KyuError)
+    await expect(rejection).rejects.toThrow(NonRetryableError)
+    await expect(rejection).rejects.toThrow(WaitArgumentRejectedError)
+    await expect(rejection).rejects.toThrow('waitForAny: 11 waits, more than the 10-wait cap')
+  })
+
+  it('refuses a where.field that is not a dotted identifier path with a non-retryable WaitArgumentRejectedError', async () => {
+    const { context } = fakeDurableContext({ CREATE: { timeout: [{ sleep_duration: '30s' }] } })
+    const envelope = await handlerEnvelope(null)
+    const rejection = waitForAnyMessage(
+      context,
+      envelope,
+      [{ definition: orderShipped, where: { field: 'data.orderId || true', equals: 'order-1' } }],
+      { timeout: '30s' },
+    )
+
+    await expect(rejection).rejects.toThrow(NonRetryableError)
+    await expect(rejection).rejects.toThrow(WaitArgumentRejectedError)
+    await expect(rejection).rejects.toThrow(
+      'waitForAny: where.field "data.orderId || true" is not a dotted identifier path',
+    )
   })
 
   it('reports the wait that matched by index and name', async () => {

@@ -2,7 +2,7 @@ import { createEnvelope, defineEvent, uuidv7 } from '@kyuworks/schemas'
 import type { Envelope, MessageDataShape } from '@kyuworks/schemas'
 import { z } from 'zod'
 import { describe, expect, it } from 'vitest'
-import { DurationRejectedError, EnvelopeRejectedError, KyuError } from '../errors.js'
+import { EnvelopeRejectedError, KyuError, WaitArgumentRejectedError } from '../errors.js'
 import { NonRetryableError, OrCondition, SleepCondition, UserEventCondition } from '../hatchet.js'
 import type { DurableContext, HatchetClient, JsonObject } from '../hatchet.js'
 import { buildChildConditions, waitForChildMessages } from './fanOut.js'
@@ -70,7 +70,7 @@ describe('buildChildConditions', () => {
       )
 
     expect(build).toThrow(NonRetryableError)
-    expect(build).toThrow(DurationRejectedError)
+    expect(build).toThrow(WaitArgumentRejectedError)
     expect(build).toThrow(`waitForChildren timeout "${value}" is not a duration the engine reads`)
   })
 
@@ -222,65 +222,42 @@ function asIncoming<T extends object>(value: T): JsonObject {
 }
 
 describe('waitForChildMessages', () => {
-  it('rejects a where.field that is not a dotted identifier path', async () => {
+  const duplicateId = uuidv7()
+  it.each([
+    [
+      'a where.field that is not a dotted identifier path',
+      { field: 'data.childEnvelopeId == "x" || true', envelopeIds: [duplicateId] },
+      'waitForChildren: where.field "data.childEnvelopeId == "x" || true" is not a dotted identifier path',
+    ],
+    [
+      'a child envelope id that is not a uuid v7',
+      { field: 'data.childEnvelopeId', envelopeIds: ['not-a-uuid'] },
+      'waitForChildren: where.envelopeIds contains "not-a-uuid", not a uuid v7',
+    ],
+    [
+      'a duplicate child envelope id',
+      { field: 'data.childEnvelopeId', envelopeIds: [duplicateId, duplicateId] },
+      `waitForChildren: where.envelopeIds contains "${duplicateId}" more than once`,
+    ],
+    [
+      'an empty child list',
+      { field: 'data.childEnvelopeId', envelopeIds: [] },
+      'waitForChildren: where.envelopeIds must not be empty',
+    ],
+    [
+      'a child list over the 50-child cap',
+      { field: 'data.childEnvelopeId', envelopeIds: Array.from({ length: 51 }, () => uuidv7()) },
+      'waitForChildren: where.envelopeIds has 51 ids, more than the 50-child cap',
+    ],
+  ])('refuses %s with a non-retryable WaitArgumentRejectedError', async (_shape, where, message) => {
     const { context } = fakeDurableContext({ CREATE: {} })
     const envelope = await handlerEnvelope(null)
     const runs = fakeRunsReader('ns_', new Map())
+    const rejection = waitForChildMessages(context, runs, envelope, childReplied, { where, timeout: '30s' })
 
-    await expect(
-      waitForChildMessages(context, runs, envelope, childReplied, {
-        where: { field: 'data.childEnvelopeId == "x" || true', envelopeIds: [uuidv7()] },
-        timeout: '30s',
-      }),
-    ).rejects.toBeInstanceOf(KyuError)
-  })
-
-  it('rejects a child envelope id that is not a uuid v7', async () => {
-    const { context } = fakeDurableContext({ CREATE: {} })
-    const envelope = await handlerEnvelope(null)
-    const runs = fakeRunsReader('ns_', new Map())
-
-    await expect(
-      waitForChildMessages(context, runs, envelope, childReplied, {
-        where: { field: 'data.childEnvelopeId', envelopeIds: ['not-a-uuid'] },
-        timeout: '30s',
-      }),
-    ).rejects.toBeInstanceOf(KyuError)
-  })
-
-  it('rejects a duplicate child envelope id', async () => {
-    const { context } = fakeDurableContext({ CREATE: {} })
-    const envelope = await handlerEnvelope(null)
-    const runs = fakeRunsReader('ns_', new Map())
-    const id = uuidv7()
-
-    await expect(
-      waitForChildMessages(context, runs, envelope, childReplied, {
-        where: { field: 'data.childEnvelopeId', envelopeIds: [id, id] },
-        timeout: '30s',
-      }),
-    ).rejects.toBeInstanceOf(KyuError)
-  })
-
-  it('rejects an empty child list and a list over the 50-child cap', async () => {
-    const { context } = fakeDurableContext({ CREATE: {} })
-    const envelope = await handlerEnvelope(null)
-    const runs = fakeRunsReader('ns_', new Map())
-
-    await expect(
-      waitForChildMessages(context, runs, envelope, childReplied, {
-        where: { field: 'data.childEnvelopeId', envelopeIds: [] },
-        timeout: '30s',
-      }),
-    ).rejects.toBeInstanceOf(KyuError)
-
-    const tooMany = Array.from({ length: 51 }, () => uuidv7())
-    await expect(
-      waitForChildMessages(context, runs, envelope, childReplied, {
-        where: { field: 'data.childEnvelopeId', envelopeIds: tooMany },
-        timeout: '30s',
-      }),
-    ).rejects.toBeInstanceOf(KyuError)
+    await expect(rejection).rejects.toThrow(NonRetryableError)
+    await expect(rejection).rejects.toThrow(WaitArgumentRejectedError)
+    await expect(rejection).rejects.toThrow(message)
   })
 
   it('reports a replied child even when its own timeout key also fired', async () => {

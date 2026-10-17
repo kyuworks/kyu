@@ -64,13 +64,14 @@ export class EnvelopeRejectedError extends NonRetryableError {
 }
 
 /**
- * A durable body passed `sleepFor`, a wait `timeout` or `lookback` a duration the engine would refuse, lose or
- * mis-store. Non-retryable: every attempt of the body reaches the same value.
+ * A durable body passed `sleepFor` or a wait an argument the SDK refuses: a duration the engine would refuse, lose or
+ * mis-store, a `where.field` that is not a payload path, or a wait or envelope id list that is empty, too long or
+ * malformed. Non-retryable: every attempt of the body reaches the same value.
  */
-export class DurationRejectedError extends NonRetryableError {
+export class WaitArgumentRejectedError extends NonRetryableError {
   constructor(message: string) {
     super(message)
-    this.name = 'DurationRejectedError'
+    this.name = 'WaitArgumentRejectedError'
   }
 }
 

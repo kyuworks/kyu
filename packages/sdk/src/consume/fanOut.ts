@@ -7,7 +7,7 @@ import type {
   Unparsed,
 } from '@kyuworks/schemas'
 import { envelopeSchema } from '@kyuworks/schemas'
-import { KyuError } from '../errors.js'
+import { KyuError, WaitArgumentRejectedError } from '../errors.js'
 import { Or, SleepCondition } from '../hatchet.js'
 import type { DurableContext, JsonObject, OrCondition } from '../hatchet.js'
 import { readWaitDuration } from './engineDuration.js'
@@ -48,20 +48,20 @@ export const MAX_FAN_OUT_CHILDREN = 50
 
 function assertChildEnvelopeIds(envelopeIds: readonly string[]): void {
   if (envelopeIds.length === 0) {
-    throw new KyuError('waitForChildren: where.envelopeIds must not be empty')
+    throw new WaitArgumentRejectedError('waitForChildren: where.envelopeIds must not be empty')
   }
   if (envelopeIds.length > MAX_FAN_OUT_CHILDREN) {
-    throw new KyuError(
+    throw new WaitArgumentRejectedError(
       `waitForChildren: where.envelopeIds has ${envelopeIds.length} ids, more than the ${MAX_FAN_OUT_CHILDREN}-child cap`,
     )
   }
   const seen = new Set<string>()
   for (const id of envelopeIds) {
     if (!envelopeSchema.shape.id.safeParse(id).success) {
-      throw new KyuError(`waitForChildren: where.envelopeIds contains "${id}", not a uuid v7`)
+      throw new WaitArgumentRejectedError(`waitForChildren: where.envelopeIds contains "${id}", not a uuid v7`)
     }
     if (seen.has(id)) {
-      throw new KyuError(`waitForChildren: where.envelopeIds contains "${id}" more than once`)
+      throw new WaitArgumentRejectedError(`waitForChildren: where.envelopeIds contains "${id}" more than once`)
     }
     seen.add(id)
   }
