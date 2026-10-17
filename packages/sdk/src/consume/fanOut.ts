@@ -10,7 +10,7 @@ import { envelopeSchema } from '@kyuworks/schemas'
 import { KyuError } from '../errors.js'
 import { Or, SleepCondition } from '../hatchet.js'
 import type { DurableContext, JsonObject, OrCondition } from '../hatchet.js'
-import { readEngineDuration } from './engineDuration.js'
+import { readWaitDuration } from './engineDuration.js'
 import type { EngineDuration } from './engineDuration.js'
 import { readRunOutcomes } from './runOutcomes.js'
 import type { RunsReader } from './runOutcomes.js'
@@ -76,7 +76,7 @@ export function buildChildConditions(
   now: Date,
 ): OrCondition[] {
   const window = buildWaitWindow(handlerEnvelope, options.scope, options.lookback, now)
-  const timeout = readEngineDuration('waitForChildren timeout', options.timeout).duration
+  const timeout = readWaitDuration('waitForChildren timeout', options.timeout).duration
   return options.where.envelopeIds.map((envelopeId, index) => {
     const reply = buildMessageCondition({
       caller: 'waitForChildren',

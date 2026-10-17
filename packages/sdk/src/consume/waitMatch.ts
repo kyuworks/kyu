@@ -12,7 +12,7 @@ import { EnvelopeRejectedError } from '../errors.js'
 import { eventScope } from '../eventScope.js'
 import { UserEventCondition } from '../hatchet.js'
 import { celPayloadPath } from './celPath.js'
-import { readEngineDuration } from './engineDuration.js'
+import { readWaitDuration } from './engineDuration.js'
 import type { EngineDuration } from './engineDuration.js'
 import { decodeIncomingEnvelope } from './subscribe.js'
 
@@ -40,7 +40,7 @@ export function buildWaitWindow(
   lookback: EngineDuration | undefined,
   now: Date,
 ): WaitWindow {
-  const lookbackMs = readEngineDuration('lookback', lookback ?? '5m').milliseconds
+  const lookbackMs = readWaitDuration('lookback', lookback ?? '5m').milliseconds
   return {
     scope: scope ?? eventScope(handlerEnvelope),
     considerEventsSince: new Date(now.getTime() - lookbackMs).toISOString(),

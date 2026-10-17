@@ -68,6 +68,7 @@ export type { EngineDuration as Duration } from './consume/engineDuration.js'
 
 export {
   CommandHasTwoSubscribersError,
+  DurationRejectedError,
   EnvelopeOptionsError,
   EnvelopeRejectedError,
   MessageDataError,

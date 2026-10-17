@@ -16,7 +16,7 @@ import type {
   JsonObject,
   UserEventCondition,
 } from '../hatchet.js'
-import { readEngineDuration } from './engineDuration.js'
+import { readWaitDuration } from './engineDuration.js'
 import type { EngineDuration } from './engineDuration.js'
 import { decodeAndCheckMetadata, decodeIncomingEnvelope } from './subscribe.js'
 import type { Subscription } from './subscribe.js'
@@ -97,7 +97,7 @@ export function buildWaitForConditions(
       window,
       afterMessageId: options.afterMessage?.id,
     }),
-    sleep: new SleepCondition(readEngineDuration('waitFor timeout', options.timeout).duration, 'timeout'),
+    sleep: new SleepCondition(readWaitDuration('waitFor timeout', options.timeout).duration, 'timeout'),
   }
 }
 
@@ -158,7 +158,7 @@ function buildDurableHandlerContext<TData extends MessageDataShape>(
     ...buildHandlerContext(envelope, metadata, hatchetContext),
     sleepFor: async (duration) => {
       assertWorkerNotStopping(isStopping)
-      const engineDuration = readEngineDuration('sleepFor', duration).duration
+      const engineDuration = readWaitDuration('sleepFor', duration).duration
       // The wait the client's own sleepFor registers, without the re-read of the duration it makes afterwards,
       // which throws on '500ms' and '1s1s' in every client in range, and on '1.5s' in 1.36.0.
       await hatchetContext.waitFor({ sleepFor: engineDuration })

@@ -2,8 +2,8 @@ import { createEnvelope, defineEvent } from '@kyuworks/schemas'
 import type { Envelope, MessageDataShape } from '@kyuworks/schemas'
 import { z } from 'zod'
 import { describe, expect, it } from 'vitest'
-import { EnvelopeRejectedError, KyuError } from '../errors.js'
-import { OrCondition, SleepCondition, UserEventCondition } from '../hatchet.js'
+import { DurationRejectedError, EnvelopeRejectedError, KyuError } from '../errors.js'
+import { NonRetryableError, OrCondition, SleepCondition, UserEventCondition } from '../hatchet.js'
 import type { DurableContext, JsonObject } from '../hatchet.js'
 import { buildAnyWaitConditions, waitForAnyMessage } from './waitAny.js'
 import type { MessageWait } from './waitAny.js'
@@ -67,7 +67,8 @@ describe('buildAnyWaitConditions', () => {
     const envelope = await handlerEnvelope(null)
     const build = (): OrCondition => buildAnyWaitConditions(envelope, waits, { timeout: value }, now)
 
-    expect(build).toThrow(KyuError)
+    expect(build).toThrow(NonRetryableError)
+    expect(build).toThrow(DurationRejectedError)
     expect(build).toThrow(`waitForAny timeout "${value}" is not a duration the engine reads`)
   })
 

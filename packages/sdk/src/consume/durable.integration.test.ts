@@ -8,6 +8,8 @@ import { createHatchetClient } from '../hatchet.js'
 import type { HatchetClient } from '../hatchet.js'
 import type { DurableHandlerContext, WaitForOptions, WaitForResult } from './durable.js'
 import { durable } from './durable.js'
+import type { EngineDuration } from './engineDuration.js'
+import { readRunOutcomes } from './runOutcomes.js'
 import { createWorker } from './worker.js'
 import type { KyuWorker } from './worker.js'
 import type { WaitForAnyOptions } from './waitAny.js'
@@ -137,6 +139,56 @@ describe('durable: sleepFor in milliseconds', () => {
 
     expect(await waitUntil(() => sleptMs.has(envelope.id), 30_000)).toBe(true)
     expect(sleptMs.get(envelope.id)).toBeGreaterThanOrEqual(1_400)
+  }, 60_000)
+})
+
+describe('durable: a refused sleepFor', () => {
+  const trigger = defineEvent({
+    name: 'kyu.durable.refused_sleep_trigger',
+    version: 1,
+    data: z.object({ marker: z.string() }),
+  })
+  const bodyRuns = new Map<string, number>()
+  let worker: KyuWorker | undefined
+
+  beforeAll(async () => {
+    const subscription = durable(hatchet, trigger, {
+      name: 'refused-sleep',
+      retries: 2,
+      handler: async (ctx: DurableHandlerContext<{ marker: string }>) => {
+        bodyRuns.set(ctx.envelope.id, (bodyRuns.get(ctx.envelope.id) ?? 0) + 1)
+        await ctx.sleepFor('5x' as EngineDuration)
+      },
+    })
+    worker = await createWorker(hatchet, 'kyu-durable-refused-sleep', { subscriptions: [subscription] })
+    void worker.start()
+    await worker.waitUntilReady()
+  }, 90_000)
+
+  afterAll(async () => {
+    await worker?.stop()
+  })
+
+  // Before DurationRejectedError the same run failed after 3 attempts (local engine v0.107.0, client 1.36.0).
+  it('fails the run on its first attempt despite retries: 2', async () => {
+    const envelope = await createEnvelope(trigger, { marker: 'refused' }, { tenantId: null, source: 'sdk.test' })
+    await hatchet.events.push(trigger.name, envelope, {
+      additionalMetadata: toEnvelopeMetadata(envelope),
+      scope: eventScope(envelope),
+    })
+
+    const deadline = Date.now() + 50_000
+    let outcome = (await readRunOutcomes(hatchet, envelope.id)).at(0)
+    while (outcome?.finishedAt === undefined && Date.now() < deadline) {
+      await sleep(250)
+      outcome = (await readRunOutcomes(hatchet, envelope.id)).at(0)
+    }
+
+    expect(outcome?.status).toBe('failed')
+    expect(outcome?.attempts).toBe(1)
+    expect(outcome?.error).toContain('DurationRejectedError')
+    expect(outcome?.error).toContain('is not a duration the engine reads')
+    expect(bodyRuns.get(envelope.id)).toBe(1)
   }, 60_000)
 })
 
