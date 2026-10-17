@@ -33,6 +33,15 @@ async function waitUntil(predicate: () => Promise<boolean>, timeoutMs: number, i
   return predicate()
 }
 
+// A new cron first fires at the next whole minute after the engine's ticker picks it up (its fallback
+// poll is 15 s), and a busy local engine has taken up to 58 s to hand a queued tick to a worker.
+const CRON_PICKUP_MS = 15_000
+const TICK_DISPATCH_MARGIN_MS = 60_000
+
+function firstCronFireAt(createdAtMs: number): number {
+  return (Math.floor((createdAtMs + CRON_PICKUP_MS) / 60_000) + 1) * 60_000
+}
+
 describe('kyu.schedules: a cron tick publishes through the outbox', () => {
   const scheduleName = `lane98b-${randomBytes(3).toString('hex')}`
   let client: Client
@@ -64,13 +73,12 @@ describe('kyu.schedules: a cron tick publishes through the outbox', () => {
   it('creates the schedule, and its tick writes an outbox row with the tenant id and a fresh envelope id', async () => {
     const tenantId = randomUUID()
     await kyu.schedules.create({ name: scheduleName, cron: '* * * * *', definition: ticked, data: { n: 1 }, tenantId })
+    const deadline = firstCronFireAt(Date.now()) + TICK_DISPATCH_MARGIN_MS
 
-    // A `* * * * *` cron fires at the next whole minute (plan proof 3): up to
-    // 70s covers the worst-case wait plus engine dispatch and relay lag.
     const found = await waitUntil(async () => {
       const result = await client.query('SELECT count(*)::text AS count FROM kyu_outbox WHERE name = $1', [ticked.name])
       return Number(result.rows[0]?.['count']) > 0
-    }, 70_000)
+    }, deadline - Date.now())
     expect(found).toBe(true)
 
     const result = await client.query(
@@ -90,5 +98,5 @@ describe('kyu.schedules: a cron tick publishes through the outbox', () => {
     await kyu.schedules.remove(scheduleName)
     const remaining = await kyu.schedules.list()
     expect(remaining.some((s) => s.name === scheduleName)).toBe(false)
-  }, 90_000)
+  }, 150_000)
 })
