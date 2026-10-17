@@ -4,7 +4,7 @@ import type { Concurrency, CreateTaskWorkflowOpts, Duration, HatchetClient, Json
 import { celPayloadPath } from './celPath.js'
 import { TENANT_CONCURRENCY_KEY, toHatchetConcurrency } from './concurrency.js'
 import type { ConcurrencyOption } from './concurrency.js'
-import { engineDurationMs } from './engineDuration.js'
+import { readEngineDuration } from './engineDuration.js'
 import type { EngineDuration } from './engineDuration.js'
 
 /**
@@ -47,7 +47,8 @@ export interface SharedTaskOptions {
   rateLimits?: RateLimitOption[]
   /** Counted in a bucket of this subscription's own (namespace plus name). Use `rateLimits` to share a bucket; never both. */
   rateLimit?: SubscriptionRateLimitOption
-  executionTimeout?: Extract<Duration, string>
+  /** How long one attempt may run. The engine fails an attempt that runs longer; its own default is 60 seconds, and `durable()` sets 24 hours. */
+  executionTimeout?: EngineDuration
   /**
    * How long a run may wait in the queue for a free slot. The engine fails a
    * run that waits longer without ever starting it; its own default is 5
@@ -140,18 +141,14 @@ function resolveSubscriptionRateLimit(bucket: string, option: SubscriptionRateLi
 // accepted before it read the engine's grammar, not the engine's exact edge ('100ms' completed, '10ms' did not).
 const MIN_SCHEDULE_TIMEOUT_MS = 1_000
 
-function assertScheduleTimeout(value: EngineDuration): void {
-  const milliseconds = engineDurationMs(value)
-  if (milliseconds === undefined) {
-    throw new KyuError(
-      `scheduleTimeout "${value}" is not a duration the engine reads: use numbers of at most 15 characters with a unit of ms, s, m or h, no sign or spaces, under 292 years, for example "5m", "1h30m" or "1.5s"`,
-    )
-  }
+function toScheduleTimeout(value: EngineDuration): Extract<Duration, string> {
+  const { duration, milliseconds } = readEngineDuration('scheduleTimeout', value)
   if (milliseconds < MIN_SCHEDULE_TIMEOUT_MS) {
     throw new KyuError(
       `scheduleTimeout "${value}" is under the one second minimum: the engine would fail every run before it started`,
     )
   }
+  return duration
 }
 
 function toConcurrencyList(
@@ -182,11 +179,10 @@ export function applySharedTaskOptions(
     const bucket = `${hatchet.config.namespace ?? ''}${options.name}`
     taskOptions.rateLimits = [toEngineRateLimit(resolveSubscriptionRateLimit(bucket, options.rateLimit))]
   }
-  if (options.executionTimeout !== undefined) taskOptions.executionTimeout = options.executionTimeout
-  if (options.scheduleTimeout !== undefined) {
-    assertScheduleTimeout(options.scheduleTimeout)
-    // The client types the string narrower than the engine reads; it sends the string unchanged (workflow-proto resolveScheduleTimeout).
-    taskOptions.scheduleTimeout = options.scheduleTimeout as Extract<Duration, string>
+  // No floor (local engine, v0.107.0): under one second the timeout is still honoured, and a 50 ms body completed at '0s'.
+  if (options.executionTimeout !== undefined) {
+    taskOptions.executionTimeout = readEngineDuration('executionTimeout', options.executionTimeout).duration
   }
+  if (options.scheduleTimeout !== undefined) taskOptions.scheduleTimeout = toScheduleTimeout(options.scheduleTimeout)
   if (options.priority !== undefined) taskOptions.defaultPriority = PRIORITY_CODE[options.priority]
 }

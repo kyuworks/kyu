@@ -10,9 +10,9 @@ import type {
 } from '@kyuworks/schemas'
 import { EnvelopeRejectedError } from '../errors.js'
 import { eventScope } from '../eventScope.js'
-import { KyuError, UserEventCondition } from '../hatchet.js'
+import { UserEventCondition } from '../hatchet.js'
 import { celPayloadPath } from './celPath.js'
-import { engineDurationMs } from './engineDuration.js'
+import { readEngineDuration } from './engineDuration.js'
 import type { EngineDuration } from './engineDuration.js'
 import { decodeIncomingEnvelope } from './subscribe.js'
 
@@ -40,12 +40,7 @@ export function buildWaitWindow(
   lookback: EngineDuration | undefined,
   now: Date,
 ): WaitWindow {
-  const lookbackMs = engineDurationMs(lookback ?? '5m')
-  if (lookbackMs === undefined) {
-    throw new KyuError(
-      `lookback "${lookback}" is not a duration: use numbers with a unit of ms, s, m or h, for example "5m"`,
-    )
-  }
+  const lookbackMs = readEngineDuration('lookback', lookback ?? '5m').milliseconds
   return {
     scope: scope ?? eventScope(handlerEnvelope),
     considerEventsSince: new Date(now.getTime() - lookbackMs).toISOString(),

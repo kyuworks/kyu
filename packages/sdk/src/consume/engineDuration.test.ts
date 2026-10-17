@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { engineDurationMs } from './engineDuration.js'
+import { KyuError } from '../hatchet.js'
+import { engineDurationMs, readEngineDuration } from './engineDuration.js'
+import { REFUSED_ENGINE_DURATIONS } from './__tests__/engineDurationCases.js'
 
 // Milliseconds for values the local engine (v0.107.0) registered; the refusals are covered in subscribe.test.ts.
 describe('engineDurationMs', () => {
@@ -35,5 +37,18 @@ describe('engineDurationMs', () => {
     ['0000000000000001s', 'a number part of 16 characters'],
   ] as const)('refuses %s, %s', (value, _why) => {
     expect(engineDurationMs(value)).toBeUndefined()
+  })
+})
+
+describe('readEngineDuration', () => {
+  it('returns the value unchanged with its milliseconds', () => {
+    expect(readEngineDuration('sleepFor', '1h30m')).toEqual({ duration: '1h30m', milliseconds: 5_400_000 })
+  })
+
+  it.each(REFUSED_ENGINE_DURATIONS)('refuses %s with a KyuError that names the option', (_shape, value) => {
+    expect(() => readEngineDuration('executionTimeout', value)).toThrow(KyuError)
+    expect(() => readEngineDuration('executionTimeout', value)).toThrow(
+      `executionTimeout "${value}" is not a duration the engine reads`,
+    )
   })
 })

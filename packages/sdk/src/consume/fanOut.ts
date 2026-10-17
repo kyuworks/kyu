@@ -9,7 +9,8 @@ import type {
 import { envelopeSchema } from '@kyuworks/schemas'
 import { KyuError } from '../errors.js'
 import { Or, SleepCondition } from '../hatchet.js'
-import type { DurableContext, Duration, JsonObject, OrCondition } from '../hatchet.js'
+import type { DurableContext, JsonObject, OrCondition } from '../hatchet.js'
+import { readEngineDuration } from './engineDuration.js'
 import type { EngineDuration } from './engineDuration.js'
 import { readRunOutcomes } from './runOutcomes.js'
 import type { RunsReader } from './runOutcomes.js'
@@ -33,7 +34,7 @@ export interface WaitForChildrenOptions {
   /** Defaults to `'5m'`. */
   lookback?: EngineDuration
   /** One deadline for the whole set. Each child that has not replied by then is classified from its own engine runs. */
-  timeout: Extract<Duration, string>
+  timeout: EngineDuration
 }
 
 export type ChildOutcome<S extends MessageSchema> =
@@ -75,6 +76,7 @@ export function buildChildConditions(
   now: Date,
 ): OrCondition[] {
   const window = buildWaitWindow(handlerEnvelope, options.scope, options.lookback, now)
+  const timeout = readEngineDuration('waitForChildren timeout', options.timeout).duration
   return options.where.envelopeIds.map((envelopeId, index) => {
     const reply = buildMessageCondition({
       caller: 'waitForChildren',
@@ -84,7 +86,7 @@ export function buildChildConditions(
       window,
       afterMessageId: undefined,
     })
-    return Or(reply, new SleepCondition(options.timeout, `timeout-${index}`))
+    return Or(reply, new SleepCondition(timeout, `timeout-${index}`))
   })
 }
 

@@ -18,6 +18,8 @@ import type {
   TaskWorkflowDeclaration,
 } from '../hatchet.js'
 import { buildWaitForConditions, durable, waitForMessage } from './durable.js'
+import type { DurableOptions } from './durable.js'
+import { ACCEPTED_ENGINE_DURATIONS, REFUSED_ENGINE_DURATIONS } from './__tests__/engineDurationCases.js'
 
 const orderPlaced = defineEvent({
   name: 'shop.order.placed',
@@ -119,6 +121,33 @@ describe('buildWaitForConditions', () => {
         now,
       ),
     ).not.toThrow()
+  })
+
+  it.each(ACCEPTED_ENGINE_DURATIONS)('passes a timeout of %s to the engine unchanged', async (_shape, value) => {
+    const envelope = await handlerEnvelope(null)
+
+    const { sleep } = buildWaitForConditions(
+      envelope,
+      orderShipped,
+      { where: { field: 'data.orderId', equals: 'order-1' }, timeout: value },
+      now,
+    )
+
+    expect(sleep.sleepFor).toBe(value)
+  })
+
+  it.each(REFUSED_ENGINE_DURATIONS)('refuses a timeout of %s before the wait is registered', async (_shape, value) => {
+    const envelope = await handlerEnvelope(null)
+    const build = (): ReturnType<typeof buildWaitForConditions> =>
+      buildWaitForConditions(
+        envelope,
+        orderShipped,
+        { where: { field: 'data.orderId', equals: 'order-1' }, timeout: value },
+        now,
+      )
+
+    expect(build).toThrow(KyuError)
+    expect(build).toThrow(`waitFor timeout "${value}" is not a duration the engine reads`)
   })
 
   it('carries the target message name and a fixed readableDataKey pair', async () => {
@@ -483,6 +512,19 @@ describe('durable: option wiring', () => {
     expect(capturedOptions()?.executionTimeout).toBe('10m')
   })
 
+  it('refuses an executionTimeout the engine cannot store, before the engine is touched', () => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    expect(() =>
+      durable(client, orderPlaced, {
+        name: 'follow-up',
+        handler: () => undefined,
+        executionTimeout: '2562047h47m16.5s',
+      }),
+    ).toThrow('executionTimeout "2562047h47m16.5s" is not a duration the engine reads')
+    expect(capturedOptions()).toBeUndefined()
+  })
+
   it('defaults retries to 3 so a stop during execution is re-dispatched, and keeps an explicit 0', () => {
     const { client, capturedOptions } = fakeHatchetClient()
     durable(client, orderPlaced, { name: 'follow-up', handler: () => undefined })
@@ -554,30 +596,45 @@ function asIncoming<T extends object>(value: T): JsonObject {
 
 const ENGINE_NOW = new Date('2026-01-01T00:00:00.000Z')
 
+type DurableWaitConditions = Parameters<DurableContext<JsonObject>['waitFor']>[0]
+
 interface FakeDurableHatchetContext {
   context: DurableContext<JsonObject>
   sleepForCalls: () => number
+  waitForCalls: () => readonly DurableWaitConditions[]
   nowCalls: () => number
 }
 
 // DurableContext carries private fields, so a Pick of just these members needs
 // the same single, unchained `as` cast as subscribe.test.ts's fakeHatchetContext.
-// `sleepFor` throws: a wrapper that reaches the engine must fail loudly here.
+// `sleepFor` throws: the SDK must never call the client's sleepFor, which re-reads the duration after the sleep.
+// `waitFor` records each wait and resolves it at once, as a satisfied sleep.
 // buildHandlerContext reads retryCount/workflowRunId/abortController/logger
 // unconditionally when building the handler context, so a fake that drives a
 // handler through to completion (not just the additionalMetadata trust edge)
 // needs those stubbed too.
 function fakeDurableHatchetContext(additionalMetadata: Record<string, string>): FakeDurableHatchetContext {
-  const calls = { sleepFor: 0, now: 0 }
+  const calls = { sleepFor: 0, now: 0, waitFor: new Array<DurableWaitConditions>() }
   const noopLog = (): Promise<void> => Promise.resolve()
   const stub: Pick<
     DurableContext<JsonObject>,
-    'additionalMetadata' | 'sleepFor' | 'retryCount' | 'workflowRunId' | 'abortController' | 'logger' | 'now'
+    | 'additionalMetadata'
+    | 'sleepFor'
+    | 'waitFor'
+    | 'retryCount'
+    | 'workflowRunId'
+    | 'abortController'
+    | 'logger'
+    | 'now'
   > = {
     additionalMetadata: () => additionalMetadata,
     sleepFor: () => {
       calls.sleepFor += 1
       throw new Error('sleepFor reached the engine')
+    },
+    waitFor: (conditions) => {
+      calls.waitFor.push(conditions)
+      return Promise.resolve({ CREATE: { sleep: [{ sleep_duration: 'not read' }] } })
     },
     retryCount: () => 0,
     workflowRunId: () => 'fake-run-id',
@@ -591,6 +648,7 @@ function fakeDurableHatchetContext(additionalMetadata: Record<string, string>): 
   return {
     context: stub as DurableContext<JsonObject>,
     sleepForCalls: () => calls.sleepFor,
+    waitForCalls: () => calls.waitFor,
     nowCalls: () => calls.now,
   }
 }
@@ -638,7 +696,7 @@ describe('durable: a wait entered after the worker began stopping', () => {
     const fn = capturedOptions()?.fn
     if (fn === undefined) throw new Error('durable did not capture a task fn')
     const envelope = await createEnvelope(orderPlaced, { orderId: 'order-1' }, { tenantId: null, source: 'sdk.test' })
-    const { context, sleepForCalls } = fakeDurableHatchetContext(toEnvelopeMetadata(envelope))
+    const { context, sleepForCalls, waitForCalls } = fakeDurableHatchetContext(toEnvelopeMetadata(envelope))
 
     const error: unknown = await Promise.resolve(fn(asIncoming(envelope), context)).catch((cause: unknown) => cause)
 
@@ -646,7 +704,59 @@ describe('durable: a wait entered after the worker began stopping', () => {
     // Retryable on purpose: the engine re-dispatches the failed attempt.
     expect(error).not.toBeInstanceOf(NonRetryableError)
     expect(sleepForCalls()).toBe(0)
+    expect(waitForCalls()).toHaveLength(0)
   })
+})
+
+// Runs one durable body against the fake engine context and returns what it threw, if anything.
+async function runDurableBody(
+  handler: DurableOptions<{ orderId: string }>['handler'],
+): Promise<{ error: unknown; fake: FakeDurableHatchetContext }> {
+  const { client, capturedOptions } = fakeHatchetClient()
+  durable(client, orderPlaced, { name: 'follow-up', handler })
+  const fn = capturedOptions()?.fn
+  if (fn === undefined) throw new Error('durable did not capture a task fn')
+  const envelope = await createEnvelope(orderPlaced, { orderId: 'order-1' }, { tenantId: null, source: 'sdk.test' })
+  const fake = fakeDurableHatchetContext(toEnvelopeMetadata(envelope))
+  const error: unknown = await Promise.resolve(fn(asIncoming(envelope), fake.context)).then(
+    () => undefined,
+    (cause: unknown) => cause,
+  )
+  return { error, fake }
+}
+
+describe('durable: sleepFor', () => {
+  // The client's own sleepFor re-reads the duration after the sleep and throws on '500ms' and '1s1s' (1.36.0 to
+  // 1.38.0) and on '1.5s' (1.36.0), failing the run once the sleep is over. Proved on the local engine.
+  it.each(ACCEPTED_ENGINE_DURATIONS)(
+    'sleeps %s through the engine wait with the value unchanged',
+    async (_shape, value) => {
+      const { error, fake } = await runDurableBody(async (ctx) => {
+        await ctx.sleepFor(value)
+      })
+
+      expect(error).toBeUndefined()
+      expect(fake.waitForCalls()).toEqual([{ sleepFor: value }])
+      expect(fake.sleepForCalls()).toBe(0)
+    },
+  )
+
+  it.each(REFUSED_ENGINE_DURATIONS)(
+    'refuses a sleepFor of %s before the wait reaches the engine',
+    async (_shape, value) => {
+      const { error, fake } = await runDurableBody(async (ctx) => {
+        await ctx.sleepFor(value)
+      })
+
+      expect(error).toBeInstanceOf(KyuError)
+      expect(error).toHaveProperty(
+        'message',
+        expect.stringContaining(`sleepFor "${value}" is not a duration the engine reads`),
+      )
+      expect(fake.waitForCalls()).toHaveLength(0)
+      expect(fake.sleepForCalls()).toBe(0)
+    },
+  )
 })
 
 describe('durable: durable handler context', () => {

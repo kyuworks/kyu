@@ -11,12 +11,12 @@ import { KyuError, WorkerStoppingError } from '../errors.js'
 import { Or, SleepCondition } from '../hatchet.js'
 import type {
   CreateDurableTaskWorkflowOpts,
-  Duration,
   DurableContext,
   HatchetClient,
   JsonObject,
   UserEventCondition,
 } from '../hatchet.js'
+import { readEngineDuration } from './engineDuration.js'
 import type { EngineDuration } from './engineDuration.js'
 import { decodeAndCheckMetadata, decodeIncomingEnvelope } from './subscribe.js'
 import type { Subscription } from './subscribe.js'
@@ -46,7 +46,7 @@ export interface WaitForOptions {
   /** Defaults to `'5m'`. */
   lookback?: EngineDuration
   /** The run's total sleep and wait time must stay below the task's `executionTimeout`, or the engine cancels the run mid-wait and the result never arrives. */
-  timeout: Extract<Duration, string>
+  timeout: EngineDuration
 }
 
 /** When several events match the filter, the first in the engine's own order wins. */
@@ -55,7 +55,7 @@ export type WaitForResult<S extends MessageSchema> =
   | { kind: 'timeout' }
 
 export interface DurableHandlerContext<TData extends MessageDataShape> extends HandlerContext<TData> {
-  sleepFor(duration: Extract<Duration, string>): Promise<void>
+  sleepFor(duration: EngineDuration): Promise<void>
   waitFor<S extends MessageSchema>(definition: MessageDefinition<S>, options: WaitForOptions): Promise<WaitForResult<S>>
   /** Waits for a reply from every child in `where.envelopeIds` at once; one outcome per child, in that order. */
   waitForChildren<S extends MessageSchema>(
@@ -97,7 +97,7 @@ export function buildWaitForConditions(
       window,
       afterMessageId: options.afterMessage?.id,
     }),
-    sleep: new SleepCondition(options.timeout, 'timeout'),
+    sleep: new SleepCondition(readEngineDuration('waitFor timeout', options.timeout).duration, 'timeout'),
   }
 }
 
@@ -158,7 +158,10 @@ function buildDurableHandlerContext<TData extends MessageDataShape>(
     ...buildHandlerContext(envelope, metadata, hatchetContext),
     sleepFor: async (duration) => {
       assertWorkerNotStopping(isStopping)
-      await hatchetContext.sleepFor(duration)
+      const engineDuration = readEngineDuration('sleepFor', duration).duration
+      // The wait the client's own sleepFor registers, without the re-read of the duration it makes afterwards,
+      // which throws on '500ms' and '1s1s' in every client in range, and on '1.5s' in 1.36.0.
+      await hatchetContext.waitFor({ sleepFor: engineDuration })
     },
     waitFor: async (definition, options) => {
       assertWorkerNotStopping(isStopping)
