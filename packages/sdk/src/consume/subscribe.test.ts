@@ -6,6 +6,8 @@ import type { Context, CreateTaskWorkflowOpts, HatchetClient, JsonObject, TaskWo
 import { ConcurrencyLimitStrategy, KyuError, Priority, RateLimitDuration } from '../hatchet.js'
 import type { EngineDuration } from './engineDuration.js'
 import { decodeIncomingEnvelope, subscribe } from './subscribe.js'
+import type { Subscription } from './subscribe.js'
+import { ACCEPTED_ENGINE_DURATIONS, REFUSED_ENGINE_DURATIONS } from './__tests__/engineDurationCases.js'
 import { toHatchetRateLimit } from './taskOptions.js'
 import type { SharedTaskOptions, SubscriptionRateLimitOption } from './taskOptions.js'
 
@@ -296,6 +298,39 @@ describe('subscribe: option wiring', () => {
     expect(() =>
       subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined, scheduleTimeout: value }),
     ).toThrow(/not a duration the engine reads/)
+    expect(capturedOptions()).toBeUndefined()
+  })
+})
+
+describe('subscribe: executionTimeout', () => {
+  it.each(ACCEPTED_ENGINE_DURATIONS)('passes an executionTimeout of %s to the engine unchanged', (_shape, value) => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined, executionTimeout: value })
+
+    expect(capturedOptions()?.executionTimeout).toBe(value)
+  })
+
+  // No floor: under one second the engine still honours the timeout (a 50 ms body completed at '0s', a 3 s body failed).
+  it.each([
+    ['zero', '0s'],
+    ['one millisecond', '1ms'],
+    ['just under one second', '999ms'],
+  ] as const)('passes an executionTimeout of %s to the engine unchanged', (_shape, value) => {
+    const { client, capturedOptions } = fakeHatchetClient()
+
+    subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined, executionTimeout: value })
+
+    expect(capturedOptions()?.executionTimeout).toBe(value)
+  })
+
+  it.each(REFUSED_ENGINE_DURATIONS)('refuses an executionTimeout of %s before the engine', (_shape, value) => {
+    const { client, capturedOptions } = fakeHatchetClient()
+    const subscribeWith = (): Subscription =>
+      subscribe(client, orderPlaced, { name: 'invoice-recorder', handler: () => undefined, executionTimeout: value })
+
+    expect(subscribeWith).toThrow(KyuError)
+    expect(subscribeWith).toThrow(`executionTimeout "${value}" is not a duration the engine reads`)
     expect(capturedOptions()).toBeUndefined()
   })
 })

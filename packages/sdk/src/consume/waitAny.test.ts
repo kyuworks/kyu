@@ -7,6 +7,7 @@ import { OrCondition, SleepCondition, UserEventCondition } from '../hatchet.js'
 import type { DurableContext, JsonObject } from '../hatchet.js'
 import { buildAnyWaitConditions, waitForAnyMessage } from './waitAny.js'
 import type { MessageWait } from './waitAny.js'
+import { REFUSED_ENGINE_DURATIONS } from './__tests__/engineDurationCases.js'
 
 const orderPlaced = defineEvent({
   name: 'shop.order.placed',
@@ -52,6 +53,22 @@ describe('buildAnyWaitConditions', () => {
     expect(group.conditions[0]).toBeInstanceOf(UserEventCondition)
     expect(group.conditions[1]).toBeInstanceOf(UserEventCondition)
     expect(group.conditions[2]).toBeInstanceOf(SleepCondition)
+  })
+
+  it('passes a timeout in milliseconds to the engine unchanged', async () => {
+    const envelope = await handlerEnvelope(null)
+
+    const group = buildAnyWaitConditions(envelope, waits, { timeout: '500ms' }, now)
+
+    expect(group.conditions[2]).toHaveProperty('sleepFor', '500ms')
+  })
+
+  it.each(REFUSED_ENGINE_DURATIONS)('refuses a timeout of %s before the wait is registered', async (_shape, value) => {
+    const envelope = await handlerEnvelope(null)
+    const build = (): OrCondition => buildAnyWaitConditions(envelope, waits, { timeout: value }, now)
+
+    expect(build).toThrow(KyuError)
+    expect(build).toThrow(`waitForAny timeout "${value}" is not a duration the engine reads`)
   })
 
   it('gives each branch its own readableDataKey and the sleep the timeout key', async () => {

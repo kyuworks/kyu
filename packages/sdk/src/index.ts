@@ -1,5 +1,3 @@
-import type { Duration as HatchetDuration } from './hatchet.js'
-
 export {
   MESSAGE_NAME_PATTERN,
   createEnvelope,
@@ -65,9 +63,8 @@ export type { OutboxRow, ProcessedRow } from './outbox/rows.js'
 
 export { ConcurrencyLimitStrategy, NonRetryableError, Or, Priority, createHatchetClient } from './hatchet.js'
 export type { HatchetClient, HatchetClientConfig, HatchetClientOptions, Worker } from './hatchet.js'
-// The string form: `sleepFor`/`waitFor`/`executionTimeout` never take the
-// object or millisecond forms the engine's own `Duration` also allows.
-export type Duration = Extract<HatchetDuration, string>
+// What `sleepFor`, every wait `timeout`, `executionTimeout` and `scheduleTimeout` take: the engine's own grammar.
+export type { EngineDuration as Duration } from './consume/engineDuration.js'
 
 export {
   CommandHasTwoSubscribersError,

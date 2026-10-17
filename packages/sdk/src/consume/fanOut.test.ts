@@ -8,6 +8,7 @@ import type { DurableContext, HatchetClient, JsonObject } from '../hatchet.js'
 import { buildChildConditions, waitForChildMessages } from './fanOut.js'
 import type { RunsReader } from './runOutcomes.js'
 import { runDetailFixture } from './__tests__/runDetailFixture.js'
+import { REFUSED_ENGINE_DURATIONS } from './__tests__/engineDurationCases.js'
 
 const childReplied = defineEvent({
   name: 'kyu.fan_out.child_replied',
@@ -40,6 +41,36 @@ describe('buildChildConditions', () => {
       expect(group.conditions[0]).toBeInstanceOf(UserEventCondition)
       expect(group.conditions[1]).toBeInstanceOf(SleepCondition)
     }
+  })
+
+  it('passes a timeout in milliseconds to every child unchanged', async () => {
+    const envelope = await handlerEnvelope(null)
+
+    const groups = buildChildConditions(
+      envelope,
+      childReplied,
+      { where: { field: 'data.childEnvelopeId', envelopeIds: [uuidv7(), uuidv7()] }, timeout: '500ms' },
+      now,
+    )
+
+    expect(groups.map((group) => group.conditions[1])).toEqual([
+      expect.objectContaining({ sleepFor: '500ms' }),
+      expect.objectContaining({ sleepFor: '500ms' }),
+    ])
+  })
+
+  it.each(REFUSED_ENGINE_DURATIONS)('refuses a timeout of %s before the wait is registered', async (_shape, value) => {
+    const envelope = await handlerEnvelope(null)
+    const build = (): OrCondition[] =>
+      buildChildConditions(
+        envelope,
+        childReplied,
+        { where: { field: 'data.childEnvelopeId', envelopeIds: [uuidv7()] }, timeout: value },
+        now,
+      )
+
+    expect(build).toThrow(KyuError)
+    expect(build).toThrow(`waitForChildren timeout "${value}" is not a duration the engine reads`)
   })
 
   it('keys each child condition by its index so a matched reply is attributable', async () => {

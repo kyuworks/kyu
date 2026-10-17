@@ -1,7 +1,8 @@
 import type { Envelope, MessageDataShape, MessageDefinition, MessageSchema, Unparsed } from '@kyuworks/schemas'
 import { KyuError } from '../errors.js'
 import { Or, SleepCondition } from '../hatchet.js'
-import type { DurableContext, Duration, JsonObject, OrCondition } from '../hatchet.js'
+import type { DurableContext, JsonObject, OrCondition } from '../hatchet.js'
+import { readEngineDuration } from './engineDuration.js'
 import type { EngineDuration } from './engineDuration.js'
 import { buildMessageCondition, buildWaitWindow, decodeMatchedEnvelope } from './waitMatch.js'
 import type { FieldMatch } from './waitMatch.js'
@@ -24,7 +25,7 @@ export interface WaitForAnyOptions {
   /** Defaults to `'5m'`. */
   lookback?: EngineDuration
   /** The run's total sleep and wait time must stay below the task's `executionTimeout`, or the engine cancels the run mid-wait and the result never arrives. */
-  timeout: Extract<Duration, string>
+  timeout: EngineDuration
 }
 
 /** Which entry matched, by position, and its decoded envelope, or a timeout when none did. */
@@ -66,7 +67,10 @@ export function buildAnyWaitConditions(
       afterMessageId: options.afterMessage?.id,
     }),
   )
-  return Or(...branches, new SleepCondition(options.timeout, 'timeout'))
+  return Or(
+    ...branches,
+    new SleepCondition(readEngineDuration('waitForAny timeout', options.timeout).duration, 'timeout'),
+  )
 }
 
 type AnyWaitMatches = Record<string, ReadonlyArray<Unparsed> | undefined>

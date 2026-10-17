@@ -99,6 +99,47 @@ describe('durable: sleepFor', () => {
   }, 90_000)
 })
 
+describe('durable: sleepFor in milliseconds', () => {
+  const trigger = defineEvent({
+    name: 'kyu.durable.sleep_ms_trigger',
+    version: 1,
+    data: z.object({ marker: z.string() }),
+  })
+  const sleptMs = new Map<string, number>()
+  let worker: KyuWorker | undefined
+
+  beforeAll(async () => {
+    const subscription = durable(hatchet, trigger, {
+      name: 'sleep-milliseconds',
+      // One attempt: the client's own sleepFor fails the run after a '1500ms' sleep, on every client in range.
+      retries: 0,
+      handler: async (ctx: DurableHandlerContext<{ marker: string }>) => {
+        const enteredAt = Date.now()
+        await ctx.sleepFor('1500ms')
+        sleptMs.set(ctx.envelope.id, Date.now() - enteredAt)
+      },
+    })
+    worker = await createWorker(hatchet, 'kyu-durable-sleep-ms', { subscriptions: [subscription], durableSlots: 2 })
+    void worker.start()
+    await worker.waitUntilReady()
+  }, 90_000)
+
+  afterAll(async () => {
+    await worker?.stop()
+  })
+
+  it('completes a sleep the engine reads and the client cannot, for at least that long', async () => {
+    const envelope = await createEnvelope(trigger, { marker: 'ms' }, { tenantId: null, source: 'sdk.test' })
+    await hatchet.events.push(trigger.name, envelope, {
+      additionalMetadata: toEnvelopeMetadata(envelope),
+      scope: eventScope(envelope),
+    })
+
+    expect(await waitUntil(() => sleptMs.has(envelope.id), 30_000)).toBe(true)
+    expect(sleptMs.get(envelope.id)).toBeGreaterThanOrEqual(1_400)
+  }, 60_000)
+})
+
 describe('durable: now()', () => {
   const trigger = defineEvent({
     name: 'kyu.durable.now_trigger',
