@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { NonRetryableError } from './hatchet.js'
-import { CommandHasTwoSubscribersError, WaitArgumentRejectedError, EnvelopeRejectedError, KyuError } from './errors.js'
+import { CommandHasTwoSubscribersError, EnvelopeRejectedError, KyuError, WaitArgumentRejectedError } from './errors.js'
 
 describe('KyuError', () => {
   it('is an Error identified by name', () => {

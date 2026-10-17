@@ -34,7 +34,11 @@ async function waitUntil(predicate: () => boolean, timeoutMs: number, intervalMs
   return predicate()
 }
 
-// The first run of the envelope once it has finished, or as last read when the deadline passes.
+// Local engine: attempts under retries: 2 start about 1s apart, so all are done inside 2s; 3s is past the last retry.
+const RETRY_WINDOW_MS = 3_000
+
+// The first run of the envelope once it has finished, read again after the retry window: a failed run can show
+// finishedAt between attempts, so a single read could pass on code that retries.
 async function readFinishedOutcome(envelopeId: string, timeoutMs: number): Promise<RunOutcome | undefined> {
   const deadline = Date.now() + timeoutMs
   let outcome = (await readRunOutcomes(hatchet, envelopeId)).at(0)
@@ -42,7 +46,8 @@ async function readFinishedOutcome(envelopeId: string, timeoutMs: number): Promi
     await sleep(250)
     outcome = (await readRunOutcomes(hatchet, envelopeId)).at(0)
   }
-  return outcome
+  await sleep(RETRY_WINDOW_MS)
+  return (await readRunOutcomes(hatchet, envelopeId)).at(0)
 }
 
 const orderShipped = defineEvent({
