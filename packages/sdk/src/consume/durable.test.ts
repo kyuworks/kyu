@@ -2,7 +2,7 @@ import { createEnvelope, defineEvent, toEnvelopeMetadata } from '@kyuworks/schem
 import type { Envelope, MessageDataShape } from '@kyuworks/schemas'
 import { z } from 'zod'
 import { describe, expect, it, vi } from 'vitest'
-import { DurationRejectedError, EnvelopeRejectedError, KyuError, WorkerStoppingError } from '../errors.js'
+import { EnvelopeRejectedError, KyuError, WaitArgumentRejectedError, WorkerStoppingError } from '../errors.js'
 import {
   ConcurrencyLimitStrategy,
   NonRetryableError,
@@ -66,30 +66,21 @@ describe('buildWaitForConditions', () => {
     expect(userEvent.expression).toBe('input.data.orderId == "line one\\nline two" && input.version == 1')
   })
 
-  it('rejects a where.field that is not a dotted identifier path', async () => {
+  it.each([
+    [
+      'that is not a dotted identifier path',
+      'data.orderId == "x" || true || input.data.y',
+      'is not a dotted identifier path',
+    ],
+    ['led by "input."', 'input.data.orderId', 'is relative to the payload; drop the leading "input."'],
+  ])('refuses a where.field %s with a non-retryable WaitArgumentRejectedError', async (_shape, field, reason) => {
     const envelope = await handlerEnvelope(null)
+    const build = (): ReturnType<typeof buildWaitForConditions> =>
+      buildWaitForConditions(envelope, orderShipped, { where: { field, equals: 'order-1' }, timeout: '30s' }, now)
 
-    expect(() =>
-      buildWaitForConditions(
-        envelope,
-        orderShipped,
-        { where: { field: 'data.orderId == "x" || true || input.data.y', equals: 'order-1' }, timeout: '30s' },
-        now,
-      ),
-    ).toThrow(KyuError)
-  })
-
-  it('rejects a where.field with a leading "input." segment', async () => {
-    const envelope = await handlerEnvelope(null)
-
-    expect(() =>
-      buildWaitForConditions(
-        envelope,
-        orderShipped,
-        { where: { field: 'input.data.orderId', equals: 'order-1' }, timeout: '30s' },
-        now,
-      ),
-    ).toThrow(KyuError)
+    expect(build).toThrow(NonRetryableError)
+    expect(build).toThrow(WaitArgumentRejectedError)
+    expect(build).toThrow(`waitFor: where.field "${field}" ${reason}`)
   })
 
   it('appends the target definition version to the CEL expression', async () => {
@@ -147,7 +138,7 @@ describe('buildWaitForConditions', () => {
       )
 
     expect(build).toThrow(NonRetryableError)
-    expect(build).toThrow(DurationRejectedError)
+    expect(build).toThrow(WaitArgumentRejectedError)
     expect(build).toThrow(`waitFor timeout "${value}" is not a duration the engine reads`)
   })
 
@@ -256,7 +247,7 @@ describe('buildWaitForConditions', () => {
       )
 
     expect(build).toThrow(NonRetryableError)
-    expect(build).toThrow(DurationRejectedError)
+    expect(build).toThrow(WaitArgumentRejectedError)
     expect(build).toThrow('lookback "-5m" is not a duration the engine reads')
   })
 
@@ -752,7 +743,7 @@ describe('durable: sleepFor', () => {
       })
 
       expect(error).toBeInstanceOf(NonRetryableError)
-      expect(error).toBeInstanceOf(DurationRejectedError)
+      expect(error).toBeInstanceOf(WaitArgumentRejectedError)
       expect(error).toHaveProperty(
         'message',
         expect.stringContaining(`sleepFor "${value}" is not a duration the engine reads`),
@@ -761,6 +752,19 @@ describe('durable: sleepFor', () => {
       expect(fake.sleepForCalls()).toBe(0)
     },
   )
+})
+
+describe('durable: a wait argument refused inside the body', () => {
+  it('fails the body with a non-retryable WaitArgumentRejectedError before the wait reaches the engine', async () => {
+    const { error, fake } = await runDurableBody(async (ctx) => {
+      await ctx.waitForAny([], { timeout: '30s' })
+    })
+
+    expect(error).toBeInstanceOf(NonRetryableError)
+    expect(error).toBeInstanceOf(WaitArgumentRejectedError)
+    expect(error).toHaveProperty('message', 'waitForAny: waits must not be empty')
+    expect(fake.waitForCalls()).toHaveLength(0)
+  })
 })
 
 describe('durable: durable handler context', () => {

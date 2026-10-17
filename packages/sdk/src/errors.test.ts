@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { NonRetryableError } from './hatchet.js'
-import { CommandHasTwoSubscribersError, DurationRejectedError, EnvelopeRejectedError, KyuError } from './errors.js'
+import { CommandHasTwoSubscribersError, WaitArgumentRejectedError, EnvelopeRejectedError, KyuError } from './errors.js'
 
 describe('KyuError', () => {
   it('is an Error identified by name', () => {
@@ -50,13 +50,13 @@ describe('EnvelopeRejectedError', () => {
   })
 })
 
-describe('DurationRejectedError', () => {
+describe('WaitArgumentRejectedError', () => {
   it('is a NonRetryableError, not a KyuError, identified by name', () => {
-    const error = new DurationRejectedError('sleepFor "5x" is not a duration the engine reads')
+    const error = new WaitArgumentRejectedError('sleepFor "5x" is not a duration the engine reads')
 
     expect(error).toBeInstanceOf(NonRetryableError)
     expect(error).not.toBeInstanceOf(KyuError)
-    expect(error.name).toBe('DurationRejectedError')
+    expect(error.name).toBe('WaitArgumentRejectedError')
     expect(error.message).toBe('sleepFor "5x" is not a duration the engine reads')
   })
 })

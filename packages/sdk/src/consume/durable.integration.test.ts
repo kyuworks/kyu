@@ -10,6 +10,7 @@ import type { DurableHandlerContext, WaitForOptions, WaitForResult } from './dur
 import { durable } from './durable.js'
 import type { EngineDuration } from './engineDuration.js'
 import { readRunOutcomes } from './runOutcomes.js'
+import type { RunOutcome } from './runOutcomes.js'
 import { createWorker } from './worker.js'
 import type { KyuWorker } from './worker.js'
 import type { WaitForAnyOptions } from './waitAny.js'
@@ -31,6 +32,17 @@ async function waitUntil(predicate: () => boolean, timeoutMs: number, intervalMs
     await sleep(intervalMs)
   }
   return predicate()
+}
+
+// The first run of the envelope once it has finished, or as last read when the deadline passes.
+async function readFinishedOutcome(envelopeId: string, timeoutMs: number): Promise<RunOutcome | undefined> {
+  const deadline = Date.now() + timeoutMs
+  let outcome = (await readRunOutcomes(hatchet, envelopeId)).at(0)
+  while (outcome?.finishedAt === undefined && Date.now() < deadline) {
+    await sleep(250)
+    outcome = (await readRunOutcomes(hatchet, envelopeId)).at(0)
+  }
+  return outcome
 }
 
 const orderShipped = defineEvent({
@@ -169,7 +181,7 @@ describe('durable: a refused sleepFor', () => {
     await worker?.stop()
   })
 
-  // Before DurationRejectedError the same run failed after 3 attempts (local engine v0.107.0, client 1.36.0).
+  // Before a refused duration was non-retryable the same run failed after 3 attempts (local engine v0.107.0, client 1.36.0).
   it('fails the run on its first attempt despite retries: 2', async () => {
     const envelope = await createEnvelope(trigger, { marker: 'refused' }, { tenantId: null, source: 'sdk.test' })
     await hatchet.events.push(trigger.name, envelope, {
@@ -177,16 +189,55 @@ describe('durable: a refused sleepFor', () => {
       scope: eventScope(envelope),
     })
 
-    const deadline = Date.now() + 50_000
-    let outcome = (await readRunOutcomes(hatchet, envelope.id)).at(0)
-    while (outcome?.finishedAt === undefined && Date.now() < deadline) {
-      await sleep(250)
-      outcome = (await readRunOutcomes(hatchet, envelope.id)).at(0)
-    }
+    const outcome = await readFinishedOutcome(envelope.id, 50_000)
 
     expect(outcome?.status).toBe('failed')
     expect(outcome?.attempts).toBe(1)
     expect(outcome?.error).toContain('is not a duration the engine reads')
+    expect(bodyRuns.get(envelope.id)).toBe(1)
+  }, 60_000)
+})
+
+describe('durable: an empty waitForAny', () => {
+  const trigger = defineEvent({
+    name: 'kyu.durable.empty_wait_any_trigger',
+    version: 1,
+    data: z.object({ marker: z.string() }),
+  })
+  const bodyRuns = new Map<string, number>()
+  let worker: KyuWorker | undefined
+
+  beforeAll(async () => {
+    const subscription = durable(hatchet, trigger, {
+      name: 'empty-wait-any',
+      retries: 2,
+      handler: async (ctx: DurableHandlerContext<{ marker: string }>) => {
+        bodyRuns.set(ctx.envelope.id, (bodyRuns.get(ctx.envelope.id) ?? 0) + 1)
+        await ctx.waitForAny([], { timeout: '30s' })
+      },
+    })
+    worker = await createWorker(hatchet, 'kyu-durable-empty-wait-any', { subscriptions: [subscription] })
+    void worker.start()
+    await worker.waitUntilReady()
+  }, 90_000)
+
+  afterAll(async () => {
+    await worker?.stop()
+  })
+
+  // Before WaitArgumentRejectedError the same run failed after 3 attempts (local engine v0.107.0, client 1.36.0).
+  it('fails the run on its first attempt despite retries: 2', async () => {
+    const envelope = await createEnvelope(trigger, { marker: 'empty' }, { tenantId: null, source: 'sdk.test' })
+    await hatchet.events.push(trigger.name, envelope, {
+      additionalMetadata: toEnvelopeMetadata(envelope),
+      scope: eventScope(envelope),
+    })
+
+    const outcome = await readFinishedOutcome(envelope.id, 50_000)
+
+    expect(outcome?.status).toBe('failed')
+    expect(outcome?.attempts).toBe(1)
+    expect(outcome?.error).toContain('waitForAny: waits must not be empty')
     expect(bodyRuns.get(envelope.id)).toBe(1)
   }, 60_000)
 })
