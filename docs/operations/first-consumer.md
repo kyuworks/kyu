@@ -297,7 +297,7 @@ await withTransaction(pool, (tx) =>
 | Drop a new one while one runs | `strategy: 'cancel_newest'` |
 | One run per business tenant, tenants taking turns | `{ key: TENANT_CONCURRENCY_KEY, maxRuns: 1, strategy: 'round-robin' }` |
 
-`TENANT_CONCURRENCY_KEY` fails any message whose `tenantId` is `null`. Other options: `rateLimit`, and `scheduleTimeout` (how long a run may wait for a free slot; the engine's default is 5 minutes) ([`taskOptions.ts`](../../packages/sdk/src/consume/taskOptions.ts)). A subscription `name` is lower-case letters, digits, `-` or `_`, starting with a letter.
+`TENANT_CONCURRENCY_KEY` fails any message whose `tenantId` is `null`. Other options: `rateLimit`, `executionTimeout` (how long one attempt may run; the engine's default is 60 seconds, and `durable()` sets 24 hours) and `scheduleTimeout` (how long a run may wait for a free slot; the engine's default is 5 minutes) ([`taskOptions.ts`](../../packages/sdk/src/consume/taskOptions.ts)). Every duration uses the engine's own grammar, such as `'90s'`, `'1h30m'` or `'1.5s'`; the SDK refuses anything else before the engine sees it ([`README.md`](../../README.md)). A subscription `name` is lower-case letters, digits, `-` or `_`, starting with a letter.
 
 **The worker process:**
 
