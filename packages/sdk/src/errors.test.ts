@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { NonRetryableError } from './hatchet.js'
-import { CommandHasTwoSubscribersError, EnvelopeRejectedError, KyuError } from './errors.js'
+import { CommandHasTwoSubscribersError, DurationRejectedError, EnvelopeRejectedError, KyuError } from './errors.js'
 
 describe('KyuError', () => {
   it('is an Error identified by name', () => {
@@ -47,5 +47,16 @@ describe('EnvelopeRejectedError', () => {
     const error = new EnvelopeRejectedError('bad metadata', undefined, { cause })
 
     expect(error.cause).toBe(cause)
+  })
+})
+
+describe('DurationRejectedError', () => {
+  it('is a NonRetryableError, not a KyuError, identified by name', () => {
+    const error = new DurationRejectedError('sleepFor "5x" is not a duration the engine reads')
+
+    expect(error).toBeInstanceOf(NonRetryableError)
+    expect(error).not.toBeInstanceOf(KyuError)
+    expect(error.name).toBe('DurationRejectedError')
+    expect(error.message).toBe('sleepFor "5x" is not a duration the engine reads')
   })
 })

@@ -2,7 +2,7 @@ import { createEnvelope, defineEvent, toEnvelopeMetadata } from '@kyuworks/schem
 import type { Envelope, MessageDataShape } from '@kyuworks/schemas'
 import { z } from 'zod'
 import { describe, expect, it, vi } from 'vitest'
-import { EnvelopeRejectedError, KyuError, WorkerStoppingError } from '../errors.js'
+import { DurationRejectedError, EnvelopeRejectedError, KyuError, WorkerStoppingError } from '../errors.js'
 import {
   ConcurrencyLimitStrategy,
   NonRetryableError,
@@ -146,7 +146,8 @@ describe('buildWaitForConditions', () => {
         now,
       )
 
-    expect(build).toThrow(KyuError)
+    expect(build).toThrow(NonRetryableError)
+    expect(build).toThrow(DurationRejectedError)
     expect(build).toThrow(`waitFor timeout "${value}" is not a duration the engine reads`)
   })
 
@@ -246,15 +247,17 @@ describe('buildWaitForConditions', () => {
 
   it('refuses a lookback that is not a duration', async () => {
     const envelope = await handlerEnvelope(null)
-
-    expect(() =>
+    const build = (): ReturnType<typeof buildWaitForConditions> =>
       buildWaitForConditions(
         envelope,
         orderShipped,
         { where: { field: 'data.orderId', equals: 'order-1' }, lookback: '-5m', timeout: '30s' },
         now,
-      ),
-    ).toThrow(KyuError)
+      )
+
+    expect(build).toThrow(NonRetryableError)
+    expect(build).toThrow(DurationRejectedError)
+    expect(build).toThrow('lookback "-5m" is not a duration the engine reads')
   })
 
   it('requires a later envelope id when parking again after a wake', async () => {
@@ -748,7 +751,8 @@ describe('durable: sleepFor', () => {
         await ctx.sleepFor(value)
       })
 
-      expect(error).toBeInstanceOf(KyuError)
+      expect(error).toBeInstanceOf(NonRetryableError)
+      expect(error).toBeInstanceOf(DurationRejectedError)
       expect(error).toHaveProperty(
         'message',
         expect.stringContaining(`sleepFor "${value}" is not a duration the engine reads`),

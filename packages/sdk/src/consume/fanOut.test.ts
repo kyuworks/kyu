@@ -2,8 +2,8 @@ import { createEnvelope, defineEvent, uuidv7 } from '@kyuworks/schemas'
 import type { Envelope, MessageDataShape } from '@kyuworks/schemas'
 import { z } from 'zod'
 import { describe, expect, it } from 'vitest'
-import { EnvelopeRejectedError, KyuError } from '../errors.js'
-import { OrCondition, SleepCondition, UserEventCondition } from '../hatchet.js'
+import { DurationRejectedError, EnvelopeRejectedError, KyuError } from '../errors.js'
+import { NonRetryableError, OrCondition, SleepCondition, UserEventCondition } from '../hatchet.js'
 import type { DurableContext, HatchetClient, JsonObject } from '../hatchet.js'
 import { buildChildConditions, waitForChildMessages } from './fanOut.js'
 import type { RunsReader } from './runOutcomes.js'
@@ -69,7 +69,8 @@ describe('buildChildConditions', () => {
         now,
       )
 
-    expect(build).toThrow(KyuError)
+    expect(build).toThrow(NonRetryableError)
+    expect(build).toThrow(DurationRejectedError)
     expect(build).toThrow(`waitForChildren timeout "${value}" is not a duration the engine reads`)
   })
 

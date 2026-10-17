@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { KyuError } from '../hatchet.js'
-import { engineDurationMs, readEngineDuration } from './engineDuration.js'
+import { DurationRejectedError } from '../errors.js'
+import { KyuError, NonRetryableError } from '../hatchet.js'
+import { engineDurationMs, readEngineDuration, readWaitDuration } from './engineDuration.js'
 import { REFUSED_ENGINE_DURATIONS } from './__tests__/engineDurationCases.js'
 
 // Milliseconds for values the local engine (v0.107.0) registered; the refusals are covered in subscribe.test.ts.
@@ -50,5 +51,17 @@ describe('readEngineDuration', () => {
     expect(() => readEngineDuration('executionTimeout', value)).toThrow(
       `executionTimeout "${value}" is not a duration the engine reads`,
     )
+  })
+})
+
+describe('readWaitDuration', () => {
+  it('returns the value unchanged with its milliseconds', () => {
+    expect(readWaitDuration('sleepFor', '1h30m')).toEqual({ duration: '1h30m', milliseconds: 5_400_000 })
+  })
+
+  it.each(REFUSED_ENGINE_DURATIONS)('refuses %s with a non-retryable error that names the option', (_shape, value) => {
+    expect(() => readWaitDuration('sleepFor', value)).toThrow(NonRetryableError)
+    expect(() => readWaitDuration('sleepFor', value)).toThrow(DurationRejectedError)
+    expect(() => readWaitDuration('sleepFor', value)).toThrow(`sleepFor "${value}" is not a duration the engine reads`)
   })
 })

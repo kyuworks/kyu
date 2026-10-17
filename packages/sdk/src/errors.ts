@@ -64,6 +64,17 @@ export class EnvelopeRejectedError extends NonRetryableError {
 }
 
 /**
+ * A durable body passed `sleepFor`, a wait `timeout` or `lookback` a duration the engine would refuse, lose or
+ * mis-store. Non-retryable: every attempt of the body reaches the same value.
+ */
+export class DurationRejectedError extends NonRetryableError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'DurationRejectedError'
+  }
+}
+
+/**
  * A durable handler reached `sleepFor`/`waitFor` after its worker began
  * stopping. Retryable on purpose: its worker is shutting down and the durable
  * listener is about to stop, so registering the wait would never settle and

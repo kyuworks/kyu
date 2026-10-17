@@ -1,3 +1,4 @@
+import { DurationRejectedError } from '../errors.js'
 import { KyuError } from '../hatchet.js'
 import type { Duration } from '../hatchet.js'
 
@@ -52,15 +53,28 @@ export interface EngineDurationReading {
   milliseconds: number
 }
 
-/** Reads `value` for `option`; a KyuError naming the option for one the engine would refuse, lose or mis-store. */
-export function readEngineDuration(option: string, value: EngineDuration): EngineDurationReading {
+function toEngineDurationReading(value: EngineDuration): EngineDurationReading | undefined {
   const milliseconds = engineDurationMs(value)
-  if (milliseconds === undefined) {
-    throw new KyuError(
-      `${option} "${value}" is not a duration the engine reads: use numbers of at most 15 characters with a unit of ms, s, m or h, no sign or spaces, under 292 years, for example "5m", "1h30m" or "1.5s"`,
-    )
-  }
+  if (milliseconds === undefined) return undefined
   // The client types the string narrower than the engine reads and sends it unchanged
   // (workflow-proto resolveExecutionTimeout and resolveScheduleTimeout, conditions transformer durationToString).
   return { duration: value as Extract<Duration, string>, milliseconds }
+}
+
+function engineDurationRefusal(option: string, value: EngineDuration): string {
+  return `${option} "${value}" is not a duration the engine reads: use numbers of at most 15 characters with a unit of ms, s, m or h, no sign or spaces, under 292 years, for example "5m", "1h30m" or "1.5s"`
+}
+
+/** Reads an option checked when the worker registers; a KyuError naming it for a value the engine would refuse. */
+export function readEngineDuration(option: string, value: EngineDuration): EngineDurationReading {
+  const reading = toEngineDurationReading(value)
+  if (reading === undefined) throw new KyuError(engineDurationRefusal(option, value))
+  return reading
+}
+
+/** Reads an option inside a running durable body; a DurationRejectedError for a refused value fails the run at once. */
+export function readWaitDuration(option: string, value: EngineDuration): EngineDurationReading {
+  const reading = toEngineDurationReading(value)
+  if (reading === undefined) throw new DurationRejectedError(engineDurationRefusal(option, value))
+  return reading
 }

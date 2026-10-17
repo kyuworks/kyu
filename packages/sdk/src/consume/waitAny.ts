@@ -2,7 +2,7 @@ import type { Envelope, MessageDataShape, MessageDefinition, MessageSchema, Unpa
 import { KyuError } from '../errors.js'
 import { Or, SleepCondition } from '../hatchet.js'
 import type { DurableContext, JsonObject, OrCondition } from '../hatchet.js'
-import { readEngineDuration } from './engineDuration.js'
+import { readWaitDuration } from './engineDuration.js'
 import type { EngineDuration } from './engineDuration.js'
 import { buildMessageCondition, buildWaitWindow, decodeMatchedEnvelope } from './waitMatch.js'
 import type { FieldMatch } from './waitMatch.js'
@@ -69,7 +69,7 @@ export function buildAnyWaitConditions(
   )
   return Or(
     ...branches,
-    new SleepCondition(readEngineDuration('waitForAny timeout', options.timeout).duration, 'timeout'),
+    new SleepCondition(readWaitDuration('waitForAny timeout', options.timeout).duration, 'timeout'),
   )
 }
 
