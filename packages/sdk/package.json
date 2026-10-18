@@ -1,6 +1,6 @@
 {
   "name": "@kyuworks/sdk",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Kyu client SDK: publish through a transactional outbox, subscribe with Hatchet, run durable handlers.",
   "type": "module",
   "license": "MIT",
