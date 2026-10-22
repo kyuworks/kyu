@@ -36,12 +36,12 @@
   },
   "dependencies": {
     "@standard-schema/spec": "^1.1.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^24.19.1",
-    "oxlint": "^1.87.0",
-    "oxlint-tsgolint": "7.0.2003",
+    "@types/node": "^24.19.2",
+    "oxlint": "^1.88.0",
+    "oxlint-tsgolint": "7.0.2004",
     "typescript": "^6.0.0",
     "vitest": "^4.1.0"
   }
